@@ -123,7 +123,7 @@ test('jpnov/renderFile renders ruby, 縦中横, and the pagebreak marker over th
 
   assert.ok(html.includes('<ruby class="rr">'), 'ruby must render on the custom right lane');
   assert.ok(
-    html.includes('<rt><span>よ</span><span>ぎ</span><span>り</span></rt>'),
+    html.includes('<rt><span><span>よ</span><span>ぎ</span><span>り</span></span></rt>'),
     'the reading must survive as per-character cells',
   );
   assert.ok(!html.includes('《'), 'the Aozora reading brackets must be consumed');
@@ -189,6 +189,7 @@ const MARKER = 'data-verify';
 const MEASURE_SCRIPT = `<script>
 (() => {
   const page = document.querySelector('.page');
+  const grid = document.querySelector('.grid');
   const pageRect = page ? page.getBoundingClientRect() : { width: 0, height: 0 };
   const line = document.querySelector('.line');
   let painted = 0;
@@ -211,10 +212,15 @@ const MEASURE_SCRIPT = `<script>
     };
     emphDev = gx(lines[1]) - (gx(lines[0]) - lines[0].getBoundingClientRect().width);
   }
+  // Ruby lane containment: the reading lane is out of flow, so a ruby box is exactly its base
+  // cells tall; a lane that joined the flow (WebKit's <rt> rule, #65) would inflate it.
+  const ruby = document.querySelector('ruby');
+  const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
   document.documentElement.setAttribute('${MARKER}', JSON.stringify({
     emphDev,
-    writingMode: page ? getComputedStyle(page).writingMode : 'missing',
-    rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+    rubyExtentEm: ruby ? ruby.getBoundingClientRect().height / rootPx : 0,
+    writingMode: grid ? getComputedStyle(grid).writingMode : 'missing',
+    rootFontSize: rootPx,
     pageWidth: pageRect.width,
     pageHeight: pageRect.height,
     lineCount: document.querySelectorAll('.line').length,
@@ -229,6 +235,8 @@ const MEASURE_SCRIPT = `<script>
 interface VerifyMetrics {
   /** 傍点 glyph-lattice deviation in px, or null when line 1 carries no `.emr`. */
   readonly emphDev: number | null;
+  /** The first ruby box's inline extent in root em — its base cell count while the lane stays out of flow. */
+  readonly rubyExtentEm: number;
   readonly writingMode: string;
   readonly rootFontSize: number;
   readonly pageWidth: number;
@@ -318,7 +326,7 @@ test('the built page renders vertically in a headless Chromium', BROWSER_SKIP, a
 
   const metrics = JSON.parse(await measurePage(browser, builtHtml, MEASURE_SCRIPT, 'hon')) as VerifyMetrics;
 
-  assert.equal(metrics.writingMode, 'vertical-rl', 'pages must flow vertical-rl');
+  assert.equal(metrics.writingMode, 'vertical-rl', 'the page grid must flow vertical-rl');
   // Paper fit: on screen the page border box IS the physical paper (root font in mm) —
   // the same fitPaper numbers the PDF leg asserts in pt.
   const fit = fitPaper({
@@ -357,6 +365,11 @@ test('the built page renders vertically in a headless Chromium', BROWSER_SKIP, a
     `a line must paint at least one character tall (painted ${String(metrics.paintedExtent)}px)`,
   );
   assert.ok(metrics.rubyCount >= 1, 'the ruby annotation must reach the DOM');
+  // 夜霧《よぎり》: a 2-cell base under a 3-kana reading — the lane must not inflate the box.
+  assert.ok(
+    Math.abs(metrics.rubyExtentEm - 2) < 0.05,
+    `a ruby box must be exactly its base cells tall (${String(metrics.rubyExtentEm)}em)`,
+  );
   assert.ok(metrics.tcyCount >= 2, 'both 縦中横 units must reach the DOM');
 });
 

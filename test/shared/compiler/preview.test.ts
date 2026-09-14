@@ -90,7 +90,7 @@ test('renderPreview never renders a book title', () => {
 
 test('renderPreview compiles ruby + emphasis inside the standalone doc', () => {
   const html = preview('漢字《かんじ》と語［＃「語」に傍点］');
-  assert.match(html, /<ruby class="rr"><span>漢<\/span><span>字<\/span><rt><span>か<\/span><span>ん<\/span><span>じ<\/span><\/rt><\/ruby>/);
+  assert.match(html, /<ruby class="rr"><span>漢<\/span><span>字<\/span><rt><span><span>か<\/span><span>ん<\/span><span>じ<\/span><\/span><\/rt><\/ruby>/);
   assert.match(html, /<span class="emph-fs">語<\/span>/);
 });
 

@@ -116,7 +116,7 @@ test('styleRule owns b / i too (single home of the style CSS); they have no -l v
 
 test('no channel class ever declares position/transform (custom-ruby containment invariant)', () => {
   // Channel spans wrap ruby units; the custom left-ruby layout (ruby.lr / ruby.br) absolutely
-  // positions its <rt> against the NEAREST positioned ancestor. A positioned/transformed channel
+  // positions its lane (rt>span) against the NEAREST positioned ancestor. A positioned/transformed channel
   // span would capture those annotations — so the rule table must never grow such a property.
   // (text-emphasis-position / text-underline-position are fine; the regex anchors on {/;.)
   const byChannel = styleVariantsByChannel();

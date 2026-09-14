@@ -220,7 +220,10 @@ is an icon button):
 - **Print / Save as PDF** — builds the HTML and opens it in your default
   browser. The same button floating on the page (印刷／PDF 保存)
   brings up the browser's print dialog; print on paper, or save it as a PDF
-  instead. Any modern browser works. The `.html` itself lands in the output
+  instead. Use Chrome (recommended) or Firefox. Safari is not recommended:
+  it ignores the paper size and orientation the HTML declares (`@page size`),
+  so you would have to pick them in its print dialog (landscape by default)
+  and leave its headers and footers off. The `.html` itself lands in the output
   folder: one standalone, paginated vertical file per book (inline CSS, no
   external assets) that prints the same way whenever you reopen it.
 - **Build to Text** — the chapters concatenated as Aozora-format `.txt`
@@ -553,6 +556,12 @@ npm run build:dev   # bundle to dist/ (ESM)
 The rendered images in this README are generated straight from the compiler —
 see [docs/SCREENSHOTS.md](./docs/SCREENSHOTS.md) to regenerate them or to
 retake the VS Code captures.
+
+`scripts/wkshot.swift` renders a page headlessly with the system WebKit (Safari's
+engine) and prints a JS measurement: `swiftc -O scripts/wkshot.swift -o /tmp/wkshot`,
+then `/tmp/wkshot <url> out.png <width> <height> [measure.js]`. `scripts/wkprint.swift`
+prints a page to PDF through WebKit's own print pipeline (Safari-equivalent pagination);
+its header has the invocation. Both need macOS with the Xcode Command Line Tools.
 
 ## License
 

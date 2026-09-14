@@ -2,12 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BuildChrome } from '../../../src/shared/compiler/chrome.ts';
 import { chapterGlue, concatBookText, MANUSCRIPT_SHEET, renderBook, type BookInput } from '../../../src/shared/compiler/document.ts';
-import { FOLIO_BAND, HEADER_BAND } from '../../../src/shared/compiler/geometry.ts';
+import { FOLIO_BAND, HEADER_BAND, SIDE_PAD } from '../../../src/shared/compiler/geometry.ts';
 import { indentAnnotation } from '../../../src/shared/compiler/tokenizer.ts';
 
 // Band totals come from the tunable geometry constants — never write them out as literals.
 const HTOP_RE = new RegExp(String.raw`:root\{[^}]*--htop:` + String(HEADER_BAND) + '[;}]');
-const FOLIO_PAD_RE = new RegExp(String.raw`\.page\{[^}]*padding-inline-end:` + String(FOLIO_BAND) + 'em');
+const FOLIO_PAD_RE = new RegExp(
+  String.raw`\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) ` + String(SIDE_PAD) + 'em ' + String(FOLIO_BAND) + 'em ' + String(SIDE_PAD) + 'em',
+);
 
 const book = (over: Pick<BookInput, 'files' | 'divider'>): BookInput => ({ ...over });
 
@@ -52,7 +54,7 @@ test('renderBook emits a paginated page/line skeleton document', () => {
   assert.match(html, /<style>[^<]*\.page\{/);
   assert.equal(
     bodyOf(html),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">本文</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">本文</div></div></div></div>',
   );
 });
 
@@ -104,17 +106,17 @@ test('renderBook joins files[] in order with one blank separator line', () => {
   // The glue's blank column is synthetic (srcLine −1): no data-line anchor.
   assert.equal(
     bodyOf(html),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">第一</div>' +
       '<div class="line"></div>' +
-      '<div class="line" data-line="0">第二</div></div></div>',
+      '<div class="line" data-line="0">第二</div></div></div></div>',
   );
 });
 
 test('renderBook keeps a broken ［＃ as visible literal text (build stays lenient)', () => {
   assert.equal(
     bodyOf(render('本文［＃こわれ')),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">本文［＃こわれ</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">本文［＃こわれ</div></div></div></div>',
   );
 });
 
@@ -122,8 +124,8 @@ test('renderBook: ［＃改ページ］ starts a new page', () => {
   assert.equal(
     bodyOf(render('前\n［＃改ページ］\n後')),
     '<div class="book">' +
-      '<div class="page" data-page="0"><div class="line" data-line="0">前</div></div>' +
-      '<div class="page" data-page="1"><div class="line" data-line="2">後</div></div></div>',
+      '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">前</div></div></div>' +
+      '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="2">後</div></div></div></div>',
   );
 });
 
@@ -131,28 +133,28 @@ test('renderBook paginates at linesPerPage lines per page', () => {
   assert.equal(
     bodyOf(render('一\n二\n三', { linesPerPage: 2 })),
     '<div class="book">' +
-      '<div class="page" data-page="0"><div class="line" data-line="0">一</div><div class="line" data-line="1">二</div></div>' +
-      '<div class="page" data-page="1"><div class="line" data-line="2">三</div></div></div>',
+      '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一</div><div class="line" data-line="1">二</div></div></div>' +
+      '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="2">三</div></div></div></div>',
   );
 });
 
 test('renderBook wraps a long source line at charsPerLine', () => {
   assert.equal(
     bodyOf(render('一二三四五', { charsPerLine: 2 })),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">一二</div>' +
       '<div class="line" data-line="0">三四</div>' +
-      '<div class="line" data-line="0">五</div></div></div>',
+      '<div class="line" data-line="0">五</div></div></div></div>',
   );
 });
 
 test('renderBook renders ruby + emphasis inside the page lines', () => {
   const html = render('漢字《かんじ》と語［＃「語」に傍点］');
-  assert.match(html, /<ruby class="rr"><span>漢<\/span><span>字<\/span><rt><span>か<\/span><span>ん<\/span><span>じ<\/span><\/rt><\/ruby>/);
+  assert.match(html, /<ruby class="rr"><span>漢<\/span><span>字<\/span><rt><span><span>か<\/span><span>ん<\/span><span>じ<\/span><\/span><\/rt><\/ruby>/);
   assert.match(html, /<span class="emph-fs">語<\/span>/);
   // On-demand: the used classes' rules are present inside the stylesheet.
   assert.match(html, /\.emph-fs\{text-emphasis-style:filled sesame\}/);
-  assert.match(html, /ruby\.rr>rt\{transform:translate\(-50%,-50%\) translateX\(1\.5em\)\}/);
+  assert.match(html, /ruby\.rr>rt>span\{transform:translate\(-50%,-50%\) translateX\(1\.5em\)\}/);
 });
 
 test('concatBookText strips one trailing newline per file and joins with one blank line', () => {
@@ -265,12 +267,12 @@ test('renderBook inserts the divider line + one blank as synthetic (anchor-less)
   // cpl 4 → the centring annotation is ［＃１字下げ］: the glue line carries indent-1.
   assert.equal(
     bodyOf(html),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">第一</div>' +
       '<div class="line"></div>' +
       '<div class="line indent-1">＊</div>' +
       '<div class="line"></div>' +
-      '<div class="line" data-line="0">第二</div></div></div>',
+      '<div class="line" data-line="0">第二</div></div></div></div>',
   );
   assert.match(html, /\.indent-1\{padding-inline-start:1em\}/); // its rule emits on demand
 });
@@ -336,7 +338,7 @@ test('folio parity: rightLeft puts odd pages bottom-right, even bottom-left', ()
   assert.match(body, /data-page="1">[^]*?<div class="pn l">2 \/ 3<\/div>/);
   assert.match(body, /data-page="2">[^]*?<div class="pn r">3 \/ 3<\/div>/);
   // Furniture comes AFTER the lines, so line adjacency is untouched.
-  assert.match(body, /<div class="line" data-line="0">一<\/div><div class="pn r">/);
+  assert.match(body, /<div class="line" data-line="0">一<\/div><\/div><div class="pn r">/);
 });
 
 test('folio positions: all five enum values place (or omit) the number correctly', () => {
@@ -392,7 +394,7 @@ test('header: centered furniture div, escaped, absent (with its band) when empty
   assert.doesNotMatch(off, /class="hd"/);
   // No element, but the band stays reserved — sheet geometry is header-independent.
   assert.match(off, HTOP_RE);
-  assert.match(off, /\.page\{[^}]*padding-inline-start:calc\(var\(--htop\)\*1em\)/);
+  assert.match(off, /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) /);
 });
 
 test('line numbers and edge lines never change the body DOM (pure CSS features)', () => {
@@ -622,8 +624,8 @@ test('per-book pagination: an empty book adds no blank sheet and never breaks th
   assert.equal(
     body,
     '<div class="book">' +
-      '<div class="page" data-page="0"><div class="line" data-line="0">一</div><div class="pn r">1 / 2</div></div>' +
-      '<div class="page" data-page="1"><div class="line" data-line="0">二</div><div class="pn r">2 / 2</div></div>' +
+      '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一</div></div><div class="pn r">1 / 2</div></div>' +
+      '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="0">二</div></div><div class="pn r">2 / 2</div></div>' +
       '</div>',
   );
 });
@@ -637,7 +639,7 @@ test('per-book pagination: a book opening with ［＃改ページ］ still start
   );
   // The leading page break flushes an already-empty page — no blank sheet appears.
   assert.equal((body.match(/class="page[ "]/g) ?? []).length, 2);
-  assert.match(body, /data-page="1"><div class="line" data-line="1">二<\/div>/);
+  assert.match(body, /data-page="1"><div class="grid"><div class="line" data-line="1">二<\/div>/);
 });
 
 test('cover: the folio side follows the BODY page, whatever the cover count', () => {

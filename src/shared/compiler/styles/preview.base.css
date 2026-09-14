@@ -28,7 +28,7 @@ body{margin:0;padding-inline:16px;}
    LINE_PITCHES in config/types.ts). */
 .line{block-size:calc(var(--pitch)*1em);margin:0;white-space:pre;font-size:1rem;font-family:var(--font-family);}
 /* No ruby rules here: every <rt> lives inside a classed ruby (rr/lr/br), whose on-demand
-   classRule (css.ts) owns the lane layout INCLUDING the 0.5em rt size — the single home. */
+   classRule (css.ts) owns the lane layout INCLUDING the 0.5em lane size — the single home. */
 
 /* The forced-page-break marker: a dashed rule with a small vertical 「改ページ」 label pinned
    to its middle. The negative inline margins (−8px = pad ÷ 2) stretch the auto-sized box past

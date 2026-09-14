@@ -82,7 +82,8 @@ const VARIANTS: ReadonlyMap<string, StyleEntry> = (() => {
 /**
  * Class name → full CSS rule. The ONLY place the style CSS values live.
  * INVARIANT: no channel class may declare `position`/`transform` — a positioned channel span
- * would capture the ruby lanes' absolutely positioned `<rt>`s (pinned in emphasis.test.ts).
+ * would capture the ruby lanes' absolutely positioned reading spans (`rt>span`; pinned in
+ * emphasis.test.ts).
  */
 const RULES: ReadonlyMap<string, string> = (() => {
   const m = new Map<string, string>();

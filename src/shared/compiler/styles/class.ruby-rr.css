@@ -1,11 +1,10 @@
-/* Ruby lane (rr = right, the conventional side). Every ruby renders via these CSS lanes: Chrome
-   has no working double-sided ruby (ruby-position on an <rt> is ignored; a second <rt> stacks
-   under the base) and native's fractional advance breaks the whole-cell grid. The <ruby> is an
-   inline-flex distributing its base spans; the <rt> is an absolute 0.5em vertical-rl lane,
-   centre-anchored (top:50% + translateY(-50%)), min-height:100% (of the ruby box), shifted
-   ±1.5em of its own em (= ±0.75em base: base half + rt half), spanning 2.0em — the pitch
-   interactions live on LINE_PITCHES in config/types.ts. space-around reproduces native
-   ruby-align. */
+/* Ruby lane (rr = right). Chrome has no working double-sided ruby and native ruby's fractional
+   advance breaks the whole-cell grid, so every ruby renders here: <ruby> is an inline-flex
+   distributing its base spans; <rt> is a display:contents shell (font-size:inherit undoes the
+   UA's 50%) whose single <span> is the absolute 0.5em vertical-rl lane — centred on the ruby
+   box, min-height 100% of it, shifted ±1.5em of its own em. The <rt> can never be the positioned
+   box: WebKit forces it position:static (WebCore/style/StyleAdjuster.cpp). */
 ruby.rr{display:inline-flex;flex-direction:row;justify-content:space-around;position:relative}
-ruby.rr>rt{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0.5em;line-height:1;white-space:nowrap}
-ruby.rr>rt{transform:translate(-50%,-50%) translateX(1.5em)}
+ruby.rr>rt{display:contents;font-size:inherit}
+ruby.rr>rt>span{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0.5em;line-height:1;white-space:nowrap}
+ruby.rr>rt>span{transform:translate(-50%,-50%) translateX(1.5em)}

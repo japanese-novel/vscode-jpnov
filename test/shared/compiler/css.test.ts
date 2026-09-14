@@ -100,7 +100,7 @@ function paperStrings(o: {
   paperSize?: PaperSize;
   paperOrientation?: PaperOrientation;
   lineNumbers?: boolean;
-} = {}): { page: string; font: string; border: string } {
+} = {}): { page: string; font: string; border: string; shave: string } {
   const fit = fitPaper({
     charsPerLine: o.charsPerLine ?? 40,
     linesPerPage: o.linesPerPage ?? 34,
@@ -115,14 +115,18 @@ function paperStrings(o: {
     font: `html{font-size:${fit.fontMm.toFixed(3)}mm;}`,
     border: `.page{border:solid #fff;border-width:${fit.insetTopEm.toFixed(2)}em ${block}em ` +
       `${fit.insetBottomEm.toFixed(2)}em ${block}em;}`,
+    // WebKit-only bottom-border shave (WebKit floors its page height) — see css.ts.
+    shave: `@media print{@supports (font:-apple-system-body){.page{border-bottom-width:calc(${fit.insetBottomEm.toFixed(2)}em - 4px);}}}`,
   };
 }
 
 const numRe = (n: number): string => String(n).replace('.', String.raw`\.`);
 /** `:root{…--htop:N…}` — the band total comes from the tunable constants, never a literal. */
 const htopRe = (bands: number): RegExp => new RegExp(String.raw`:root\{[^}]*--htop:` + numRe(bands) + '[;}]');
-/** `.page{…padding-inline-end:Nem…}` — the folio band's double-home, value from the TS side. */
-const folioPadRe = new RegExp(String.raw`\.page\{[^}]*padding-inline-end:` + numRe(FOLIO_BAND) + 'em');
+/** `.page{…padding:calc(var(--htop)*1em) Sem Fem Sem…}` — the band double-homes (folio band bottom, side pads), values from the TS side. */
+const folioPadRe = new RegExp(
+  String.raw`\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) ` + numRe(SIDE_PAD) + 'em ' + numRe(FOLIO_BAND) + 'em ' + numRe(SIDE_PAD) + 'em',
+);
 /** The outset frame's inset run: EDGE_INSET off the band tops, SIDE_PAD on the sides. */
 const FRAME_INSETS = `top:calc(var(--htop)*1em - ${String(EDGE_INSET)}em);right:${String(SIDE_PAD)}em;` +
   `bottom:${String(FOLIO_BAND - EDGE_INSET)}em;left:${String(SIDE_PAD)}em`;
@@ -140,8 +144,8 @@ test('paginated stylesheet sizes the page grid + fits the paper', () => {
   // pitch columns; page inline = cpl × 1em chars); the paper rules stay TS-computed
   // (var() is not portable inside @page). 25 > 30/2 → auto picks landscape A4.
   const css = build({ charsPerLine: 30, linesPerPage: 25 });
-  assert.match(css, /\.page\{[^}]*inline-size:calc\(var\(--cpl\)\*1em\)/);
-  assert.match(css, /\.page\{[^}]*block-size:calc\(var\(--lpp\)\*var\(--pitch\)\*1em\)/);
+  assert.match(css, /\.page\{[^}]*height:calc\(var\(--cpl\)\*1em\)/);
+  assert.match(css, /\.page\{[^}]*width:calc\(var\(--lpp\)\*var\(--pitch\)\*1em\)/);
   assert.match(css, /:root\{[^}]*--cpl:30/);
   assert.match(css, /:root\{[^}]*--pitch:2[;}]/);
   assert.match(css, /:root\{[^}]*--lpp:25/);
@@ -150,12 +154,26 @@ test('paginated stylesheet sizes the page grid + fits the paper', () => {
   assert.ok(css.includes(paper.page));
   assert.ok(css.includes(paper.font));
   assert.ok(css.includes(paper.border));
+  // WebKit alone gets the bottom-border shave; no size container anywhere — it breaks WebKit's
+  // forced page breaks and shifts Chromium's pagination.
+  assert.ok(css.includes(paper.shave));
+  assert.doesNotMatch(css, /container-type/);
 });
 
 test('paginated stylesheet breaks each .page onto its own sheet', () => {
   const css = build();
   assert.match(css, /\.page\{[^}]*break-after:page/);
   assert.match(css, /\.page\{[^}]*page-break-after:always/);
+  assert.match(css, /\.page\{[^}]*break-inside:avoid/);
+});
+
+test('paginated stylesheet keeps the root and the sheets horizontal; only the inner grid is vertical', () => {
+  // A vertical-rl root prints blank in WebKit (sheets laid out into negative x) and a
+  // vertical-rl sheet splits onto two papers in Chromium, so only the .grid is vertical (#65).
+  const css = build();
+  assert.doesNotMatch(css, /\.page\{[^}]*writing-mode/);
+  assert.doesNotMatch(css, /@media print\{html\{[^}]*writing-mode/);
+  assert.match(css, /\.grid\{writing-mode:vertical-rl;width:100%;height:100%;\}/);
 });
 
 test('non-paginated (preview) stylesheet makes .pagebreak a labelled rule, no @page', () => {
@@ -309,7 +327,8 @@ test('ruby rr/lr/br rule sets are on-demand, self-contained and media-identical'
       rr,
       /ruby\.rr\{display:inline-flex;flex-direction:row;justify-content:space-around;position:relative\}/,
     );
-    assert.match(rr, /ruby\.rr>rt\{transform:translate\(-50%,-50%\) translateX\(1\.5em\)\}/);
+    assert.match(rr, /ruby\.rr>rt\{display:contents;font-size:inherit\}/);
+    assert.match(rr, /ruby\.rr>rt>span\{transform:translate\(-50%,-50%\) translateX\(1\.5em\)\}/);
     assert.doesNotMatch(rr, /ruby\.(lr|br)/);
     const lr = make({ usedClasses: ['lr'] });
     // The ruby box itself distributes its base spans (stretches with rh-N like native ruby).
@@ -317,21 +336,35 @@ test('ruby rr/lr/br rule sets are on-demand, self-contained and media-identical'
       lr,
       /ruby\.lr\{display:inline-flex;flex-direction:row;justify-content:space-around;position:relative\}/,
     );
-    // Centre-anchored, box-extent lane distributing its reading spans (native ruby-align).
+    // The <rt> is a box-less shell at the ruby's own size (undoing the UA's rt{font-size:50%})…
+    assert.match(lr, /ruby\.lr>rt\{display:contents;font-size:inherit\}/);
+    // …whose span is the centre-anchored, box-extent lane distributing its reading spans
+    // (native ruby-align).
     assert.match(
       lr,
-      /ruby\.lr>rt\{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0\.5em;line-height:1;white-space:nowrap\}/,
+      /ruby\.lr>rt>span\{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0\.5em;line-height:1;white-space:nowrap\}/,
     );
-    assert.match(lr, /ruby\.lr>rt\{transform:translate\(-50%,-50%\) translateX\(-1\.5em\)\}/);
+    assert.match(lr, /ruby\.lr>rt>span\{transform:translate\(-50%,-50%\) translateX\(-1\.5em\)\}/);
     assert.doesNotMatch(lr, /ruby\.br/); // only the requested set
     const br = make({ usedClasses: ['br'] });
-    assert.match(br, /ruby\.br>rt\{transform:translate\(-50%,-50%\) translateX\(1\.5em\)\}/); // right lane
-    assert.match(br, /ruby\.br>rt\.rt-l\{transform:translate\(-50%,-50%\) translateX\(-1\.5em\)\}/); // left lane
+    assert.match(br, /ruby\.br>rt\{display:contents;font-size:inherit\}/);
+    assert.match(br, /ruby\.br>rt>span\{transform:translate\(-50%,-50%\) translateX\(1\.5em\)\}/); // right lane
+    assert.match(br, /ruby\.br>rt\.rt-l>span\{transform:translate\(-50%,-50%\) translateX\(-1\.5em\)\}/); // left lane
     assert.doesNotMatch(br, /ruby\.lr/);
     assert.doesNotMatch(make(), /ruby\.(rr|lr|br)/); // zero dead rules
     // The stretched-ruby min-height family is on-demand too, like indent-N.
     assert.match(make({ usedClasses: ['rh-23'] }), /\.rh-23\{min-height:23em\}/);
     assert.doesNotMatch(make(), /\.rh-/);
+  }
+});
+
+test('no rule positions, floats or transforms an <rt> itself (WebKit forces rt to static)', () => {
+  // WebKit's StyleAdjuster sets position:static / float:none on every <rt> by tag name, so a
+  // positioned <rt> silently joins the flow in Safari (#65): the lane box must be rt>span.
+  for (const make of [preview, build]) {
+    const css = make({ usedClasses: ['rr', 'lr', 'br', 'rh-2'] });
+    assert.doesNotMatch(css, /[\s,}>]rt(\.[\w-]+)?\{[^}]*(position|float|transform):/);
+    assert.match(css, /ruby\.rr>rt\{display:contents;font-size:inherit\}/);
   }
 });
 
@@ -464,7 +497,7 @@ const BUILD_ON: BuildChrome = {
 test('build all-on chrome: bands, outset frame, counters, rules, furniture styles', () => {
   const css = build({ chrome: BUILD_ON });
   // Bands: header 2.5 + line numbers 1 on top (--htop), folio 2.5 at the bottom (static).
-  assert.match(css, /\.page\{[^}]*padding-inline-start:calc\(var\(--htop\)\*1em\)/);
+  assert.match(css, /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) /);
   assert.match(css, htopRe(HEADER_BAND + LINENUM_BAND)); // header band + line-number band
   assert.match(css, folioPadRe);
   assert.match(css, /\.page\{[^}]*position:relative/);
@@ -480,7 +513,7 @@ test('build all-on chrome: bands, outset frame, counters, rules, furniture style
   assert.match(css, /\.page\{border:solid #fff;/);
   // The pitch is the same --pitch value with rules on or off (uniform-layout contract).
   assert.match(css, /\.page\{[^}]*line-height:var\(--pitch\)/);
-  assert.match(css, /\.page\{[^}]*block-size:calc\(var\(--lpp\)\*var\(--pitch\)\*1em\)/);
+  assert.match(css, /\.page\{[^}]*width:calc\(var\(--lpp\)\*var\(--pitch\)\*1em\)/);
   assert.match(css, /:root\{[^}]*--pitch:2[;}]/);
   assert.match(css, /:root\{[^}]*--lpp:34/);
   assert.match(css, /\.line\{[^}]*block-size:calc\(var\(--pitch\)\*1em\)/);
@@ -520,7 +553,7 @@ test('build all-off chrome keeps a plain sheet with the reserved bands, no chrom
   // frame at all (same semantics as the preview) — and the sheet lays out identically.
   assert.doesNotMatch(css, /\.page::before/);
   assert.doesNotMatch(css, /#444/); // no hard-coded grey — rule colours derive from the edge base (.pn is off here)
-  assert.match(css, /\.page\{[^}]*padding-inline-start:calc\(var\(--htop\)\*1em\)/);
+  assert.match(css, /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) /);
   assert.match(css, htopRe(HEADER_BAND)); // header band only — no line-number band
   assert.match(css, folioPadRe);
   assert.match(css, /\.page\{[^}]*line-height:var\(--pitch\)/); // the SAME pitch without edge rules
@@ -536,11 +569,10 @@ test('build all-off chrome keeps a plain sheet with the reserved bands, no chrom
   // is chrome-independent — present even with every feature off — and print resets it.
   assert.match(css, /@media screen\{html\{background:#e8e8e8;\}\.page\{box-shadow:0 1px 4px rgba\(0,0,0,0\.25\);\}\}/);
   assert.match(css, /\.page\{[^}]*margin:2\.5em auto/);
-  // Print keeps sheets one-per-page (vertical-rl root — Chromium splits orthogonal-flow
-  // sheets onto two papers) with margin pinned to ZERO on all four sides: the border box
-  // already IS the paper. @page margins stay 0 so the browser's own header/footer (its
-  // page numbers, URL, date) has nowhere to render.
-  assert.match(css, /@media print\{html\{writing-mode:vertical-rl;background:none;\}\.page\{margin:0;box-shadow:none;\}\}/);
+  // Print keeps sheets one-per-page: vertical margins ZERO (the border box already IS the
+  // paper), horizontal auto centring the rounding slack. @page margins stay 0 so the
+  // browser's own header/footer (its page numbers, URL, date) has nowhere to render.
+  assert.match(css, /@media print\{html\{background:none;\}\.page\{margin:0 auto;box-shadow:none;\}\}/);
   assert.doesNotMatch(css, /\.line[^{]*\{[^}]*box-shadow/);
   assert.doesNotMatch(css, /::after/); // no inter-column rules without edge lines
   assert.doesNotMatch(css, /counter/);
@@ -569,14 +601,14 @@ test('build bands: header/folio bands are constant; only line numbers add geomet
   ]) {
     const css = build({ chrome });
     assert.match(css, htopRe(HEADER_BAND)); // the top band is furniture-independent
-    assert.match(css, /\.page\{[^}]*padding-inline-start:calc\(var\(--htop\)\*1em\)/);
+    assert.match(css, /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) /);
     assert.match(css, folioPadRe);
     assert.ok(css.includes(paper.page)); // same paper whatever the furniture
     assert.ok(css.includes(paper.font)); // …and the same fit
   }
   const lnOnly = build({ chrome: { ...BUILD_OFF, lineNumbers: true } });
   assert.match(lnOnly, htopRe(HEADER_BAND + LINENUM_BAND)); // header band + line-number band
-  assert.match(lnOnly, /\.page\{[^}]*padding-inline-start:calc\(var\(--htop\)\*1em\)/);
+  assert.match(lnOnly, /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) /);
   assert.match(lnOnly, folioPadRe);
 });
 
@@ -635,7 +667,7 @@ test('edgeLine none draws no frame in either medium (preview/build cohesion)', (
   // unconditional (preview text inset / build grid position), so toggling edgeLine
   // never moves a glyph within its segment/page.
   assert.match(preview(), /\.segment\{position:relative;padding-inline:0\.35rem;\}/);
-  assert.match(build(), /\.page\{[^}]*padding-inline-start:calc\(var\(--htop\)\*1em\)/);
+  assert.match(build(), /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) /);
 });
 
 test('reflow stylesheet has no geometry, no chrome, no @page — the reading system owns those', () => {
