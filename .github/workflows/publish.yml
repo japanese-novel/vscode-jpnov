@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: publish
@@ -72,3 +73,7 @@ jobs:
         run: |
           git push origin "refs/tags/${{ steps.meta.outputs.tag }}"
           gh release create "${{ steps.meta.outputs.tag }}" "jpnov-${{ steps.meta.outputs.version }}.vsix" --verify-tag --title "${{ steps.meta.outputs.tag }}" --generate-notes
+      - name: Deploy the website at this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --ref "refs/tags/${{ steps.meta.outputs.tag }}"

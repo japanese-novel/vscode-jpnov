@@ -1,0 +1,67 @@
+/* The stage section: pinned motion instance (wide + motion) or the static sequence. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.stage { background: var(--color-ink); color: var(--color-paper); padding-block: 0; }
+.stage .wrap { max-width: 108rem; }
+
+/* static sequence (default) */
+.stage-static { display: grid; gap: clamp(4rem, 8vw, 7rem); padding-block: clamp(4rem, 10vw, 9rem); }
+.sbeat { display: grid; gap: 2rem; }
+@media (min-width: 64rem) { .sbeat { grid-template-columns: minmax(16rem, 3fr) minmax(0, 10fr); gap: 3rem; align-items: center; } }
+.cap h3 { font-family: var(--font-mincho); font-weight: 500; font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: 0.06em; margin-bottom: 1rem; }
+.cap p { line-height: 2; color: color-mix(in srgb, var(--color-paper) 78%, transparent); font-size: 1rem; }
+.cap p + p { margin-top: 0.75rem; }
+.stage-view { container-type: inline-size; width: 100%; min-width: 0; }
+
+/* motion instance: hidden unless JS is on, motion is allowed and the viewport is wide */
+.stage-motion { display: none; }
+@media (prefers-reduced-motion: no-preference) and (min-width: 56.25rem) {
+  html.js .stage-motion { display: block; }
+  html.js .stage-static { display: none; }
+}
+.stage-motion { height: 100vh; }
+/* Captions above the window up to 85rem, beside it from there; the view fills the rest and the
+   window sizes from that free space (a size container), so the 16:10 box always fits. */
+.stage-grid { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1.5rem 3rem; align-content: stretch; padding-block: 2.5rem; box-sizing: border-box; }
+@media (min-width: 85rem) { .stage-grid { grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: center; column-gap: 4rem; padding-block: 3rem; padding-inline: clamp(3rem, 4vw, 4rem); } }
+.caps { display: grid; align-self: center; }
+.caps > .capwrap { grid-area: 1 / 1; }
+@media (max-width: 84.99rem) { .caps { max-width: 48rem; } .caps h3 { font-size: 1.5rem; margin-bottom: 0.5rem; } .caps p { font-size: 0.9375rem; line-height: 1.8; } }
+.motion-view { position: relative; container-type: size; min-height: 0; height: 100%; display: grid; align-items: center; justify-items: center; }
+.motion-view > * { grid-area: 1 / 1; }
+.win-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); }
+.page-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); height: min(100cqh, calc(100cqw / 1.6), 50rem); container-type: size; }
+.page-wrap .jp-page { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+
+/* the built page: a standalone document, black ink */
+.jp-page { width: var(--paper-w); margin: 0 auto; position: relative; color: #000; }
+.jp-page .book { display: block; }
+.jp-page .page { margin: 0 !important; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 40px 80px -40px rgba(0, 0, 0, 0.6) !important; }
+.jp-page .print { display: inline-block; text-decoration: none; }
+.stage-view:not(.motion-view) { container-type: size; }
+.sbeat .stage-view { aspect-ratio: 16 / 10; display: grid; align-items: center; justify-items: center; }
+/* Stays a containing block: the artifact's print button is absolutely positioned inside it. */
+.sbeat .stage-view > .jp-page { position: relative; transform: none; }
+
+/* Narrow viewports: a whole window is unreadable, so each static beat shows the region it is
+   about, at VS Code's natural size (one window unit = 1px), cropped. */
+@media (max-width: 56.24rem) {
+  /* Not a size container here: the cropped window sets its own height. The page keeps a sized
+     A4-landscape box so its container-query units stay consistent. */
+  .sbeat .stage-view { aspect-ratio: auto; display: block; container-type: inline-size; }
+  /* The page as a window onto its top-right: header, first columns, legible; the print button
+     (screen UI at pixel size) would cover the text here. */
+  .sbeat[data-beat="book"] .stage-view { container-type: inline-size; aspect-ratio: 5 / 4; overflow: hidden; position: relative; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+  .sbeat[data-beat="book"] .jp-page { position: absolute; top: 0; right: 0; --jp-page-em: calc(100cqw * 1.8 * var(--fw)); }
+  .sbeat[data-beat="book"] .jp-page .page { box-shadow: none !important; }
+  .sbeat .jp-page .print { display: none; }
+  .sbeat .win { --u: 1px; aspect-ratio: auto; height: 26rem; }
+  .sbeat .win-body > .activity { display: none; }
+  .sbeat[data-beat="write"] .sidebar, .sbeat[data-beat="fix"] .sidebar,
+  .sbeat[data-beat="write"] .group.preview, .sbeat[data-beat="fix"] .group.preview { display: none; }
+  .sbeat[data-beat="check"] .sidebar, .sbeat[data-beat="check"] .group.editor { display: none; }
+  .sbeat[data-beat="check"] .editors.split .group.preview { flex: 1 1 auto; }
+  .sbeat[data-beat="collect"] .editors { display: none; }
+  .sbeat[data-beat="collect"] .sidebar { flex: 1 1 auto; }
+  .sbeat .code .ln .t { overflow: hidden; }
+  .sbeat .status .right { display: none; }
+}

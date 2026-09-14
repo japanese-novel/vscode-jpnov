@@ -1,0 +1,212 @@
+@import 'tailwindcss';
+@import './fonts.css';
+
+@theme {
+  /* Brand — resources/icon.svg: ground, ink, seal. */
+  --color-ink: #26211c;
+  --color-paper: #f4eddd;
+  --color-vermilion: #d2492a;
+  /* Page ground: a lighter cast of the same paper. */
+  --color-ground: #f8f4ec;
+
+  /* VS Code "2026 Dark" (the stage chrome). */
+  --color-vsc-editor: #121314;
+  --color-vsc-side: #191a1b;
+  --color-vsc-border: #2a2b2c;
+  --color-vsc-fg: #bbbebf;
+  --color-vsc-side-fg: #bfbfbf;
+  --color-vsc-desc: #8c8c8c;
+  --color-vsc-ln: #858889;
+  --color-vsc-line-hl: #242526;
+  --color-vsc-hover: #202122;
+  --color-vsc-button: #297aa0;
+  --color-vsc-tab-top: #3994bc;
+  --color-vsc-link: #48a0c7;
+  --color-vsc-checkbox: #242526;
+  --color-vsc-checkbox-border: #707070;
+  --color-vsc-act-on: #313233;
+
+  /* Editor token colours under the same theme. */
+  --color-tok-comment: #8b949e;
+  --color-tok-directive: #c586c0;
+  --color-tok-character: #c9d1d9;
+  --color-tok-warning: #cca700;
+  --color-tok-bulb: #ffcc00;
+
+  /* --font-mincho equals the product's DEFAULT_FONT_STACK (src/shared/compiler/css.ts). */
+  --font-mincho: "Hiragino Mincho ProN","Yu Mincho","YuMincho","游明朝","Noto Serif CJK JP","Noto Serif JP",serif;
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Noto Sans CJK JP", "Noto Sans JP", system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+}
+
+html {
+  color-scheme: light;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  overflow-x: clip;
+}
+
+body {
+  font-family: var(--font-sans);
+  line-height: 1.8;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- page structure ------------------------------------------------------------------- */
+.wrap {
+  max-width: 76rem;
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 4vw, 3rem);
+}
+section, .hero, .site-footer {
+  padding-block: clamp(4rem, 10vw, 9rem);
+}
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  letter-spacing: 0.2em;
+  /* Small text: the seal red darkened to AA contrast; the marker keeps the pure vermilion. */
+  color: color-mix(in srgb, var(--color-vermilion) 72%, var(--color-ink));
+  margin-bottom: 1.25rem;
+}
+.eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  background: var(--color-vermilion);
+  margin-right: 0.75em;
+  vertical-align: 0.1em;
+  transform: rotate(-4deg);
+}
+.section-title {
+  font-family: var(--font-mincho);
+  font-weight: 500;
+  font-size: clamp(1.75rem, 3.2vw, 2.75rem);
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  max-width: 24em;
+}
+.section-lede {
+  max-width: 40em;
+  margin-top: 1.75rem;
+  font-size: 1.0625rem;
+  line-height: 2;
+  color: color-mix(in srgb, var(--color-ink) 84%, transparent);
+}
+.note {
+  max-width: 40em;
+  margin-top: 2rem;
+  font-size: 0.9375rem;
+  line-height: 1.9;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+.q { white-space: nowrap; }
+a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-vermilion) 60%, transparent); text-underline-offset: 0.2em; }
+a:hover { text-decoration-color: var(--color-vermilion); }
+code, pre { font-family: var(--font-mono); }
+pre.source {
+  background: color-mix(in srgb, var(--color-ink) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
+  padding: 1.25rem 1.5rem;
+  font-size: 0.9375rem;
+  line-height: 1.9;
+  white-space: pre;
+  overflow-x: auto;
+}
+.cta-row { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: center; margin-top: 2.5rem; }
+.cta {
+  display: inline-block;
+  background: var(--color-ink);
+  color: var(--color-ground);
+  text-decoration: none;
+  padding: 0.9rem 1.6rem;
+  font-size: 0.9375rem;
+  letter-spacing: 0.04em;
+}
+.cta:hover { background: var(--color-vermilion); }
+.cta-quiet { font-size: 0.9375rem; }
+.paper { --jp-paper-width: 100cqw; }
+.jp-scope.paper .page { box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
+.jp-scope.paper .page { margin: 0 auto; }
+.on-paper { --jp-bg: #fff; }
+/* Vertical specimens sit on a small sheet, like the page renders. */
+.sheet { display: inline-block; background: #fff; padding: 1.75rem 2.25rem; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.1), 0 10px 28px -14px rgba(38, 33, 28, 0.3); }
+/* A window onto the top-right of a printed page (where vertical text begins), at a legible size. */
+.paper-crop { container-type: inline-size; position: relative; overflow: hidden; aspect-ratio: 5 / 4; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
+.paper-crop .jp-scope { --jp-paper-width: calc(100cqw * var(--crop-zoom, 1.9)); position: absolute; top: 0; right: 0; width: var(--jp-paper-width); }
+/* One level above the scoped stylesheet's own `.scope .page` rule, which comes later in the document. */
+.paper-crop .jp-scope .page { margin: 0; box-shadow: none; }
+figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, var(--color-ink) 72%, transparent); margin-top: 1rem; }
+
+/* ---- hero ------------------------------------------------------------------------------ */
+.hero { padding-top: clamp(2.5rem, 5vw, 4rem); }
+.hero .wrap { max-width: 88rem; }
+.hero-grid { display: grid; gap: 3rem; align-items: center; }
+@media (min-width: 64rem) { .hero-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 8fr); gap: 4rem; } }
+.hero-copy { display: flex; flex-direction: column; }
+.brand { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; white-space: nowrap; }
+.brand-name { font-family: var(--font-mincho); font-size: 1.125rem; letter-spacing: 0.06em; }
+.brand-sub { font-size: 0.8125rem; letter-spacing: 0.1em; color: color-mix(in srgb, var(--color-ink) 72%, transparent); }
+.hero-title {
+  font-family: var(--font-mincho);
+  font-weight: 500;
+  font-size: clamp(1.9rem, 3.3vw, 2.9rem);
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  writing-mode: vertical-rl;
+  /* Vertical writing: the inline axis is the height (fit the longest column, the breaks are
+     explicit) and the block axis is the width (one column per line box). */
+  inline-size: max-content;
+  align-self: flex-start;
+}
+.lede { max-width: 34em; margin-top: 1.75rem; font-size: 1rem; line-height: 2; }
+.hero-page { container-type: inline-size; margin: 0; }
+
+/* ---- stances --------------------------------------------------------------------------- */
+.stances { border-top: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent); }
+.stance-list { list-style: none; margin-top: 3.5rem; display: grid; gap: 2.5rem 4rem; }
+@media (min-width: 48rem) { .stance-list { grid-template-columns: 1fr 1fr; } }
+.stance-list h3 { font-family: var(--font-mincho); font-weight: 500; font-size: 1.375rem; margin-bottom: 0.75rem; }
+.stance-list p { line-height: 2; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
+.sm-only { display: none; }
+
+/* ---- notation -------------------------------------------------------------------------- */
+.specimen { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
+@media (min-width: 64rem) { .specimen { grid-template-columns: 1fr 1fr; gap: 4rem; } }
+.specimen > * { min-width: 0; }
+.specimen-render { display: flex; flex-direction: column; align-items: center; }
+@media (max-width: 40rem) { .specimen-render { --jp-embed-em: 20px; } }
+@media (min-width: 64rem) { .specimen-render { --jp-embed-em: 34px; } }
+.notation-list { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; margin-top: 3rem; font-size: 0.9375rem; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
+.notation-list li::before { content: '・'; color: var(--color-vermilion); }
+
+/* ---- submission ------------------------------------------------------------------------ */
+.submission-grid { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
+.submission-grid > * { min-width: 0; }
+@media (min-width: 64rem) { .submission-grid { grid-template-columns: 2fr 3fr; gap: 4rem; } }
+.cover-render { margin: 0; }
+.values { margin-top: 3rem; border-collapse: collapse; font-size: 0.9375rem; }
+.values th, .values td { text-align: left; padding: 0.7rem 1rem 0.7rem 0; border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent); vertical-align: top; }
+.values th { font-weight: 500; color: color-mix(in srgb, var(--color-ink) 72%, transparent); font-size: 0.8125rem; letter-spacing: 0.08em; }
+
+/* ---- typesetting ----------------------------------------------------------------------- */
+.kinsoku { display: flex; gap: 3rem 4rem; margin-top: 3.5rem; flex-wrap: wrap; justify-content: center; --jp-embed-em: 24px; }
+@media (max-width: 40rem) { .kinsoku { --jp-embed-em: 17px; gap: 1.5rem; } }
+.kinsoku figure { margin: 0; }
+.kinsoku figure { display: flex; flex-direction: column; align-items: center; }
+.genko { margin-top: 4rem; container-type: inline-size; }
+
+/* ---- getting started ------------------------------------------------------------------- */
+.steps { list-style: none; counter-reset: step; margin-top: 3rem; display: grid; gap: 2rem; }
+@media (min-width: 48rem) { .steps { grid-template-columns: repeat(3, 1fr); gap: 3rem; } }
+.steps li { counter-increment: step; }
+.steps li::before { content: counter(step, decimal-leading-zero); font-family: var(--font-mincho); font-size: 2rem; color: var(--color-vermilion); display: block; margin-bottom: 0.5rem; }
+.steps h3 { font-family: var(--font-mincho); font-weight: 500; font-size: 1.25rem; margin-bottom: 0.5rem; }
+.steps p { line-height: 1.9; color: color-mix(in srgb, var(--color-ink) 78%, transparent); font-size: 0.9375rem; }
+
+/* ---- footer ---------------------------------------------------------------------------- */
+.site-footer { border-top: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent); padding-block: 3rem 4rem; font-size: 0.875rem; }
+.footer-grid { display: grid; gap: 1.5rem; }
+.footer-links { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
+.credits { color: color-mix(in srgb, var(--color-ink) 72%, transparent); line-height: 1.8; }

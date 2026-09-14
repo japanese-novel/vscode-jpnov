@@ -1,0 +1,54 @@
+---
+/**
+ * The product stage: a pinned, scroll-driven window (captions beside it) for readers with motion
+ * and a wide viewport, and the same five end states stacked for everyone else (reduced motion,
+ * narrow viewports, no JS).
+ */
+import renders from '../../generated/renders.json';
+import type { Renders } from '../../../scripts/contract.ts';
+import { BEATS, STAGE_HEADING } from '../../stage/beats.ts';
+import Captions from './Captions.astro';
+import PageLayer from './PageLayer.astro';
+import Sprite from './Sprite.astro';
+import Window from './Window.astro';
+
+const stage = (renders as Renders).samples.stageEmphasised;
+if (stage.kind !== 'preview') {
+  throw new Error('stageEmphasised must be a preview render');
+}
+---
+
+<section class="stage" aria-labelledby="stage-h">
+  <Sprite />
+  <style is:inline set:html={stage.preview.css}></style>
+  <h2 id="stage-h" class="sr-only">{STAGE_HEADING}</h2>
+
+  <div class="stage-motion" data-motion>
+    <div class="wrap stage-grid">
+      <aside class="caps" data-caps>
+        {BEATS.map((beat, i) => <div class:list={['capwrap', { 'st-hide': i > 0 }]} data-t={`cap-${beat.id}`}><Captions beat={beat} /></div>)}
+      </aside>
+      <div class="stage-view motion-view">
+        <div class="win-wrap"><Window snapshot="motion" /></div>
+        <div class="page-wrap st-hide" data-t="page-wrap"><PageLayer /></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap stage-static">
+    {BEATS.map((beat) => (
+      <article class="sbeat" data-beat={beat.id}>
+        <Captions beat={beat} />
+        <div class="stage-view">
+          {beat.id === 'book' ? <PageLayer /> : <Window snapshot={beat.id} />}
+        </div>
+      </article>
+    ))}
+  </div>
+</section>
+
+<script>
+  import { mountStage } from '../../stage/mount.ts';
+
+  mountStage();
+</script>
