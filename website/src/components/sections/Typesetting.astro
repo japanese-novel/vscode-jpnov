@@ -1,0 +1,26 @@
+---
+import JpRender from '../JpRender.astro';
+---
+
+<section class="typesetting" aria-labelledby="typesetting-h">
+  <div class="wrap">
+    <p class="eyebrow">組版</p>
+    <h2 id="typesetting-h" class="section-title">既定は 40 字 × 34 行。<br />和文組版の約束事は、最初から。</h2>
+    <p class="section-lede">行の頭に句読点が来ない、行の末尾にかぎ括弧の開きが残らない。禁則処理は既定で「厳格」です。行末の句読点はぶら下げで処理します。字数・行数・行送り・本文のフォントは設定「小説 — 組版と出力」で変えられます。</p>
+    <div class="kinsoku">
+      <figure>
+        <div class="sheet"><JpRender name="kinsokuOff" em={22} class="on-paper" /></div>
+        <figcaption>禁則処理なし</figcaption>
+      </figure>
+      <figure>
+        <div class="sheet"><JpRender name="kinsokuOn" em={22} class="on-paper" /></div>
+        <figcaption>禁則処理あり（既定）</figcaption>
+      </figure>
+    </div>
+    <figure class="genko">
+      <JpRender name="genkoyoshi" class="paper" />
+      <figcaption>罫線を「赤」に、行番号をオンに、行送りを 2 倍にして印刷した例（夏目漱石『吾輩は猫である』・青空文庫より）</figcaption>
+    </figure>
+    <p class="note">用紙は A4（既定）か A6。本文のフォントの既定は OS 付属の明朝体で、印刷所への入稿も、頒布・販売もそのままできます。</p>
+  </div>
+</section>

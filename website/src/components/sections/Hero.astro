@@ -1,0 +1,23 @@
+---
+import { LINKS } from '../../copy/links.ts';
+import JpRender from '../JpRender.astro';
+import Q from '../Q.astro';
+---
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="brand"><span class="brand-name">Japanese Novel</span><span class="brand-sub">Visual Studio Code 拡張機能</span></p>
+      <h1 class="hero-title">書いて、確かめて、<br />一冊にする。<br />すべて縦書きのまま。</h1>
+      <p class="lede"><Q>Japanese Novel</Q>は、無料のエディター<Q>Visual Studio Code</Q>を小説の執筆環境に変える拡張機能です。書いた文章はすぐ隣に縦書きで表示され、章をまとめて印刷用の HTML・EPUB・テキストの本として出力できます。記法は青空文庫の注記そのまま。原稿はただのテキスト ファイルです。</p>
+      <p class="cta-row">
+        <a class="cta" href={LINKS.marketplace}>VS Code Marketplace で入手する</a>
+        <a class="cta-quiet" href={LINKS.github}>GitHub で見る</a>
+      </p>
+    </div>
+    <figure class="hero-page">
+      <JpRender name="hero" class="paper" />
+      <figcaption>出力した本をそのまま印刷した結果です（夏目漱石『吾輩は猫である』・<a href={LINKS.aozoraNeko}>青空文庫</a>より）</figcaption>
+    </figure>
+  </div>
+</header>

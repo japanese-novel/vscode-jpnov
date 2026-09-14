@@ -8,14 +8,15 @@
 import * as vscode from 'vscode';
 
 import { allSettingKeys } from '#/shared/lint/catalog.ts';
+import { lintWireValue } from '#/shared/lint/wire.ts';
 import type { RawLintConfigWire } from '#/shared/protocol.ts';
 
 export function buildLintSnapshot(): RawLintConfigWire {
   const config = vscode.workspace.getConfiguration();
   const snapshot: Record<string, boolean | number | string> = {};
   for (const key of allSettingKeys()) {
-    const value = config.get(key);
-    if (value === true || typeof value === 'number' || (typeof value === 'string' && value !== 'off')) {
+    const value = lintWireValue(config.get(key));
+    if (value !== undefined) {
       snapshot[key] = value;
     }
   }

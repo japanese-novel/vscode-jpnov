@@ -1,0 +1,63 @@
+---
+/**
+ * One editor line: gutter number plus the product's coloured runs (white-space: pre). On the
+ * motion window a typed range becomes per-character spans that the timeline reveals in
+ * keystroke order (see stage/typedLine.ts).
+ */
+import { lineText } from '../../../scripts/contract.ts';
+import type { EditorLine } from '../../../scripts/contract.ts';
+import type { TypedSpec } from '../../stage/typedLine.ts';
+
+interface Props {
+  number: number;
+  runs: EditorLine;
+  current?: boolean;
+  /** Character offset to underline with the warning squiggle (one character), if any. */
+  squiggleAt?: number | undefined;
+  /** Motion: this line's typed range, planned by the window. */
+  typed?: TypedSpec | undefined;
+  /** Motion: character 0 is the fix-all's inserted space (hidden until the fix beat). */
+  fixSpace?: boolean;
+}
+
+const { number, runs, current = false, squiggleAt, typed, fixSpace = false } = Astro.props;
+const kindAt = runs.flatMap((run) => Array.from(run.text, () => run.kind));
+const chars = Array.from(lineText(runs));
+const plan = typed?.plan;
+const typedAt = new Map(plan?.chars.map((c) => [c.index, c]) ?? []);
+
+/** Consecutive plain characters of one kind become one span; typed, fix and squiggle characters stand alone. */
+interface Piece {
+  readonly kind: string;
+  text: string;
+  readonly typed: { readonly k: number; readonly show: number } | undefined;
+  readonly fix: boolean;
+  readonly squiggle: boolean;
+}
+const pieces: Piece[] = [];
+chars.forEach((ch, i) => {
+  const kind = kindAt[i] ?? 'text';
+  const t = typedAt.get(i);
+  const fix = fixSpace && i === 0;
+  const squiggle = squiggleAt === i;
+  const last = pieces.at(-1);
+  if (t === undefined && !fix && !squiggle && last !== undefined && last.typed === undefined && !last.fix && !last.squiggle && last.kind === kind) {
+    last.text += ch;
+  } else {
+    pieces.push({ kind, text: ch, typed: t === undefined ? undefined : { k: t.k, show: t.show }, fix, squiggle });
+  }
+});
+---
+
+<div class:list={['ln', { cur: current, 'st-none': plan?.rowShow !== undefined }]} data-line={number} data-show={plan?.rowShow} data-run={typed?.run}><span class="g">{number}</span><span class="t">{plan?.phantom !== undefined && <span class="ch st-none" data-k={plan.phantom.show} data-show={plan.phantom.show} data-drop={plan.phantom.drop} data-run={typed?.run}>　</span>}{pieces.map((p) => {
+  if (p.typed !== undefined) {
+    return <span class={`ch st-none tk-${p.kind}`} data-k={p.typed.k} data-show={p.typed.show} data-run={typed?.run}>{p.text}</span>;
+  }
+  if (p.fix) {
+    return <span class={`ch st-none tk-${p.kind}`} data-t="fix-space">{p.text}</span>;
+  }
+  if (p.squiggle) {
+    return <span class={`sq tk-${p.kind}`} data-t="sq">{p.text}</span>;
+  }
+  return <span class={`tk tk-${p.kind}`}>{p.text}</span>;
+})}</span></div>

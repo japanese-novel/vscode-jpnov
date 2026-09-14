@@ -1,0 +1,22 @@
+---
+const STANCES = [
+  { title: 'AI は使いません', body: '執筆のための AI 機能を一切持ち込みません。.jpnov・.jpbook を開いている間は GitHub Copilot も既定で無効になります。執筆は最初から最後まで、人間の手で。' },
+  { title: '辞書を持ちません', body: '単語辞書から「これは人名らしい」と推測して色を付けるような機能は、あえて持ちません。目立たせたい言葉は、作者自身が登録します。辞書を積み込まないぶん、動作も軽いままです。' },
+  { title: '入れたら、それだけで動きます', body: '追加のソフトも、プログラムの知識も要りません。プレビューも本づくりも手元のパソコンの中だけで完結するので、オフラインでも使え、原稿がどこかへ送られることもありません。' },
+  { title: '原稿を囲い込みません', body: '原稿はただのテキスト、記法は昔からある青空文庫の注記です。章のファイルは .jpnov、本のファイルは .jpbook。この拡張機能が働くのは、この 2 種類のファイルだけです。' },
+] as const;
+---
+
+<section class="stances" aria-labelledby="stances-h">
+  <div class="wrap">
+    <h2 id="stances-h" class="section-title">機能の多さよりも、<br class="sm-only" />執筆の邪魔をしないこと。</h2>
+    <ol class="stance-list">
+      {STANCES.map((s) => (
+        <li>
+          <h3>{s.title}</h3>
+          <p>{s.body}</p>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>

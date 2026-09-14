@@ -1,0 +1,29 @@
+---
+import type { Fragment } from '../../../scripts/contract.ts';
+import { NAMES, PRODUCT } from '../../stage/strings.ts';
+import Icon from './Icon.astro';
+
+interface Props {
+  /** The pre-rendered preview bodies (state ids → body html) and which one shows. */
+  bodies: readonly { id: string; body: string; shown: boolean }[];
+  fragment: Fragment;
+  /** Motion: the pane starts hidden and slides in. */
+  hidden?: boolean;
+}
+
+const { bodies, fragment, hidden = false } = Astro.props;
+---
+
+<div class:list={['group', 'preview', { 'st-hide': hidden }]} data-t="preview">
+  <div class="tabs">
+    <div class="tab active"><Icon name="open-preview" class="ficon" /><span class="lbl">{PRODUCT.previewTab(NAMES.chapter1)}</span><Icon name="close" class="tclose" /></div>
+    <div class="actions"><span class="iconbtn"><Icon name="ellipsis" /></span></div>
+  </div>
+  <div class="jp-pane" data-t="pane">
+    <div class="jp-scroll" data-t="pscroll">
+      {bodies.map((b) => (
+        <div class:list={['jp-scope', fragment.scope.slice(1), { 'st-hide': !b.shown }]} data-t={`pv-${b.id}`} set:html={b.body}></div>
+      ))}
+    </div>
+  </div>
+</div>

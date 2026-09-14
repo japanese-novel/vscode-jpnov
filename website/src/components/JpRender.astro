@@ -1,0 +1,30 @@
+---
+/**
+ * Embeds one product render (src/generated/renders.json) as scoped DOM. A book fragment sizes
+ * its em from `--jp-paper-width`; a preview fragment from the pane height `--jp-vh`, which `em`
+ * derives the way the product's own fit formula does.
+ */
+import renders from '../generated/renders.json';
+import type { Renders, SampleName } from '../../scripts/contract.ts';
+
+interface Props {
+  name: SampleName;
+  /** Preview only: the character size in CSS px; a wrapper's `--jp-embed-em` overrides it (responsive sizes). */
+  em?: number;
+  class?: string;
+  style?: string;
+}
+
+const { name, em, class: cls = '', style = '' } = Astro.props;
+const sample = (renders as Renders).samples[name];
+const fragment = sample.kind === 'book' ? sample.fragment : sample.preview;
+let sizing = '';
+if (sample.kind === 'book') {
+  sizing = `--jp-em:calc(var(--jp-paper-width) * ${String(sample.paper.fontMm)} / ${String(sample.paper.widthMm)});`;
+} else if (em !== undefined) {
+  sizing = `--jp-vh:calc(var(--jp-embed-em, ${String(em)}px) * ${String(sample.options.bandCells)} + 32px);`;
+}
+---
+
+<style is:inline set:html={fragment.css}></style>
+<div class={`jp-scope ${fragment.scope.slice(1)} ${cls}`} style={`${sizing}${style}`} set:html={fragment.body}></div>

@@ -1,0 +1,61 @@
+---
+import type { DiagnosticOut, EditorLine as Runs } from '../../../scripts/contract.ts';
+import { NAMES, UI, VSCODE } from '../../stage/strings.ts';
+import type { TypedSpec } from '../../stage/typedLine.ts';
+import EditorLine from './EditorLine.astro';
+import Icon from './Icon.astro';
+
+interface Props {
+  lines: readonly Runs[];
+  currentLine: number;
+  diagnostic?: DiagnosticOut | undefined;
+  /** Show the hover widget, lightbulb and quick-fix menu for the diagnostic. */
+  fixing?: boolean;
+  /** Motion: typed ranges by 0-based line, and the line whose first character is the fix space. */
+  typed?: ReadonlyMap<number, TypedSpec> | undefined;
+  fixLine?: number | undefined;
+}
+
+const { lines, currentLine, diagnostic, fixing = false, typed, fixLine } = Astro.props;
+const sqLine = diagnostic?.range.start.line;
+const sqChar = diagnostic?.range.start.character ?? 0;
+---
+
+<div class="group editor" data-t="editor">
+  <div class="tabs">
+    <div class="tab active"><Icon name="files" class="ficon" /><span class="lbl">{NAMES.chapter1}</span>{diagnostic !== undefined && <span class="deco" data-t="tab-warn">1</span>}<Icon name="close" class="tclose" /></div>
+    <div class="actions">
+      <span class="iconbtn" data-t="act-preview"><Icon name="open-preview" /></span>
+      <span class="iconbtn"><Icon name="split-horizontal" /></span>
+      <span class="iconbtn"><Icon name="ellipsis" /></span>
+      <div class="tooltip st-hide" data-t="tip-preview">{UI.previewToSide}</div>
+    </div>
+  </div>
+  <div class="crumbs"><Icon name="files" class="ficon" /><span>{NAMES.chapter1}</span></div>
+  <div class="code" data-t="code" style={`--cur:${String(currentLine)}`}>
+    <div class="curline" data-t="curline"></div>
+    {lines.map((runs, i) => (
+      <EditorLine
+        number={i + 1}
+        runs={runs}
+        current={i === currentLine}
+        squiggleAt={i === sqLine ? (fixLine === i ? sqChar + 1 : sqChar) : undefined}
+        typed={typed?.get(i)}
+        fixSpace={fixLine === i}
+      />
+    ))}
+    {diagnostic !== undefined && (
+      <>
+        <div class:list={['bulb', { 'st-hide': !fixing }]} data-t="bulb" style={`--at:${String(sqLine)}`}><Icon name="lightbulb-autofix" /></div>
+        <div class:list={['hover', { 'st-hide': !fixing }]} data-t="hover" style={`--at:${String(sqLine)}`}>
+          <div class="msg">{diagnostic.message.ja} <span class="src">{VSCODE.lintSource}</span></div>
+          <div class="links">{VSCODE.hoverActions}</div>
+        </div>
+        <div class:list={['cam', { 'st-hide': !fixing }]} data-t="menu" style={`--at:${String(sqLine)}`}>
+          <div class="cam-h">{VSCODE.quickFix}</div>
+          <div class="cam-i sel" data-t="menu-item"><Icon name="lightbulb" />{diagnostic.message.ja}</div>
+        </div>
+      </>
+    )}
+  </div>
+</div>

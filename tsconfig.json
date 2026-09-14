@@ -1,25 +1,13 @@
 {
+  // The extension's Node program; the house strictness comes from tsconfig.base.json.
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "types": ["node", "vscode"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2025",
     // ESNext.Array: Array.fromAsync — implemented since Node 22 but not yet in the ES2025 lib.
-    "lib": ["ES2025", "ESNext.Array"],
-
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "resolveJsonModule": true,
-
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "lib": ["ES2025", "ESNext.Array"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "test-fixtures/**/*.ts", "scripts/**/*.ts"],
   // The browser-context webview code is a separate program (DOM lib, no node/vscode) — see

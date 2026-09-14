@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Master for the marketplace icon; the manifest needs PNG, so resources/icon.png is
+       exported from this file (256x256, transparent bg) — keep both in sync. Narration
+       lines start one em lower (字下げ) while the dialogue 「 opens at the line head, and
+       the bracket pair is point-symmetric about (68,64) like the vertical forms ﹁/﹂. -->
+  <rect x="2" y="2" width="124" height="124" rx="28" fill="#26211C"/>
+  <rect x="2.75" y="2.75" width="122.5" height="122.5" rx="27.4" fill="none" stroke="#F4EDDD" stroke-opacity=".08" stroke-width="1.5"/>
+  <g fill="none" stroke="#F4EDDD" stroke-linecap="round">
+    <path d="M96 32v71" stroke-width="10"/>
+    <path d="M68 37v54" stroke-width="10"/>
+    <path d="M40 32v41" stroke-width="10"/>
+    <g stroke-width="5" stroke-linejoin="round">
+      <path d="M61 20h13v9"/>
+      <path d="M62 99v9h13"/>
+    </g>
+  </g>
+  <g fill="none" stroke="#D2492A" stroke-width="4.5" stroke-linecap="round">
+    <path d="M109.5 38v11M109.5 57v11"/>
+  </g>
+  <rect x="33.5" y="85" width="13" height="13" rx="3" fill="#D2492A" transform="rotate(-4 40 91.5)"/>
+</svg>

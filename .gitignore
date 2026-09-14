@@ -13,3 +13,8 @@ src/client/book/webviewBundle.generated.ts
 src/client/preview/webviewBundle.generated.ts
 # Codicon font/stylesheet vendored from node_modules/@vscode/codicons at gen time.
 media/codicon/
+
+# Website (website/package.json): Astro cache, build-time renders, font download cache.
+website/.astro/
+website/src/generated/
+website/.cache/

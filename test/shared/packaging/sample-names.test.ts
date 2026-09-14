@@ -17,9 +17,9 @@ import { REPO_ROOT } from '../repo.ts';
 const BANNED = ['あの秋にて', '浅霧未発', '夜霧の姫', '神木', '境無', '黒剣', '朝霧', '巳一', 'みはつ', 'Arill', 'Stains'];
 
 /** Directories with no repository text: dependencies, build output, git, local tooling, binaries. */
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.scratch', '.claude', 'docs/images', 'media/codicon']);
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.scratch', '.claude', '.astro', '.cache', 'docs/images', 'media/codicon']);
 const SKIP_FILES = new Set(['package-lock.json']);
-const BINARY = /\.(png|jpe?g|gif|ico|ttf|woff2?|vsix|pdf)$/u;
+const BINARY = /\.(png|jpe?g|gif|ico|svg|webp|avif|ttf|otf|woff2?|vsix|pdf)$/u;
 
 const ROOT = fileURLToPath(REPO_ROOT);
 const relPath = (path: string): string => relative(ROOT, path).replaceAll('\\', '/');

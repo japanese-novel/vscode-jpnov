@@ -1,0 +1,87 @@
+---
+/**
+ * The reconstructed VS Code window (2026 Dark). `snapshot` renders one static end state; `motion`
+ * renders the final state with every element the timeline animates present and pre-hidden.
+ */
+import renders from '../../generated/renders.json';
+import { lineText } from '../../../scripts/contract.ts';
+import type { Renders } from '../../../scripts/contract.ts';
+import type { BeatId } from '../../stage/beats.ts';
+import { BAIT_LINE, EMPH_ANNOTATION, EMPH_LINE, TYPED_FROM } from '../../stage/sample.ts';
+import { NAMES } from '../../stage/strings.ts';
+import { planTyping } from '../../stage/typedLine.ts';
+import type { TypedSpec } from '../../stage/typedLine.ts';
+import ActivityBar from './ActivityBar.astro';
+import EditorGroup from './EditorGroup.astro';
+import PreviewGroup from './PreviewGroup.astro';
+import QuickPick from './QuickPick.astro';
+import SideBar from './SideBar.astro';
+import StatusBar from './StatusBar.astro';
+import TitleBar from './TitleBar.astro';
+
+/** A static end state (a beat short of the printed page), or the animated window. */
+export type Snapshot = Exclude<BeatId, 'book'> | 'motion';
+
+interface Props {
+  snapshot: Snapshot;
+}
+
+const { snapshot } = Astro.props;
+const samples = (renders as Renders).samples;
+const typing = samples.stageTyping;
+const emphasised = samples.stageEmphasised;
+const fixed = samples.stageFixed;
+if (typing.kind !== 'preview' || emphasised.kind !== 'preview' || fixed.kind !== 'preview') {
+  throw new Error('stage samples must be previews');
+}
+const motion = snapshot === 'motion';
+const state = snapshot === 'write' ? typing : motion ? fixed : emphasised;
+const diagnostic = emphasised.diagnostics[0];
+const chapters = snapshot === 'collect' ? [NAMES.chapter1, NAMES.chapter2, NAMES.chapter3] : [NAMES.chapter1, NAMES.chapter3];
+const currentLine = snapshot === 'write' ? state.editorLines.length - 1 : snapshot === 'fix' ? BAIT_LINE : motion ? TYPED_FROM - 1 : EMPH_LINE;
+const showPreview = snapshot !== 'write';
+
+/** Motion: lines 16–18 are typed with Enter (beat 1), then the annotation on line 5 (beat 2); keystrokes run on. */
+let typed: Map<number, TypedSpec> | undefined;
+if (motion) {
+  typed = new Map();
+  let k = 0;
+  for (let i = TYPED_FROM; i < fixed.editorLines.length; i++) {
+    const chars = Array.from(lineText(fixed.editorLines[i] ?? []));
+    const plan = planTyping(chars, 0, chars.length, k, true);
+    typed.set(i, { plan, run: 'write' });
+    k = plan.next;
+  }
+  const line5 = lineText(fixed.editorLines[EMPH_LINE] ?? []);
+  const from = Array.from(line5.slice(0, line5.indexOf(EMPH_ANNOTATION))).length;
+  typed.set(EMPH_LINE, { plan: planTyping(Array.from(line5), from, from + Array.from(EMPH_ANNOTATION).length, k, false), run: 'check' });
+}
+const bodies = motion
+  ? [
+      { id: 'A', body: typing.preview.body, shown: true },
+      { id: 'B', body: emphasised.preview.body, shown: false },
+      { id: 'C', body: fixed.preview.body, shown: false },
+    ]
+  : [{ id: 'B', body: emphasised.preview.body, shown: true }];
+---
+
+<div class:list={['win', `snap-${snapshot}`]} aria-hidden="true" data-t={motion ? 'win' : undefined}>
+  <TitleBar />
+  <div class="win-body">
+    <ActivityBar />
+    <SideBar chapters={chapters} pending={motion ? NAMES.chapter2 : undefined} />
+    <div class:list={['editors', { split: showPreview && !motion }]} data-t="editors">
+      <EditorGroup
+        lines={state.editorLines}
+        currentLine={currentLine}
+        diagnostic={diagnostic}
+        fixing={snapshot === 'fix'}
+        typed={typed}
+        fixLine={motion ? BAIT_LINE : undefined}
+      />
+      {showPreview && <PreviewGroup fragment={emphasised.preview} bodies={bodies} hidden={motion} />}
+    </div>
+  </div>
+  <StatusBar warnings={emphasised.diagnostics.length} motion={motion} />
+  <QuickPick />
+</div>

@@ -1,0 +1,20 @@
+{
+  // House rules for every TypeScript program in the repository (the extension, its webview
+  // program, the website): strictness and the ESM / .ts-extension conventions. Module system,
+  // target, libs and file lists belong to each program's own config.
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}

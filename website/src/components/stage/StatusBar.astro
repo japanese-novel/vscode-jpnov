@@ -1,0 +1,20 @@
+---
+import { UI, VSCODE } from '../../stage/strings.ts';
+import Icon from './Icon.astro';
+
+interface Props {
+  warnings: number;
+  /** Motion: keep both counts in the DOM so the timeline can swap them. */
+  motion?: boolean;
+}
+
+const { warnings, motion = false } = Astro.props;
+---
+
+<div class="status">
+  <span class="remote"><Icon name="remote" /></span>
+  <span class="problems"><Icon name="error" /> {VSCODE.problems} <Icon name="warning" /> {motion
+    ? <span class="warnbox"><b data-t="warn-1">1</b><b class="st-hide" data-t="warn-0">0</b></span>
+    : <b>{warnings}</b>}</span>
+  <span class="right"><span>{VSCODE.statusPosition}</span><span>{VSCODE.statusIndent}</span><span>{VSCODE.statusEncoding}</span><span>{VSCODE.statusEol}</span><span>{UI.container}</span><Icon name="bell" /></span>
+</div>

@@ -3,3 +3,4 @@
 * text=auto eol=lf
 *.png binary
 *.vsix binary
+*.woff2 binary

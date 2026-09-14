@@ -1,0 +1,68 @@
+name: Website
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    paths:
+      - website/**
+      - src/shared/**
+      - src/server/**
+      - l10n/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/website.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            website/package-lock.json
+      - name: Root install (prepare runs npm run gen — the compiler's generated modules)
+        run: npm ci
+      - name: Site install
+        run: npm ci
+        working-directory: website
+      - name: Site gates (astro check, lint, tests)
+        run: npm run check && npm run lint && npm test
+        working-directory: website
+      - name: Build (prebuild renders the compiler fragments)
+        run: npm run build
+        working-directory: website
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
