@@ -88,14 +88,12 @@ section, .hero, .site-footer {
   max-width: 24em;
 }
 .section-lede {
-  max-width: 40em;
   margin-top: 1.75rem;
   font-size: 1.0625rem;
   line-height: 2;
   color: color-mix(in srgb, var(--color-ink) 84%, transparent);
 }
 .note {
-  max-width: 40em;
   margin-top: 2rem;
   font-size: 0.9375rem;
   line-height: 1.9;
@@ -138,14 +136,34 @@ pre.source {
 /* One level above the scoped stylesheet's own `.scope .page` rule, which comes later in the document. */
 .paper-crop .jp-scope .page { margin: 0; box-shadow: none; }
 figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, var(--color-ink) 72%, transparent); margin-top: 1rem; }
+/* Marked elements are revealed by src/scripts/reveal.ts under this same query (REVEAL_QUERY). */
+@media (prefers-reduced-motion: no-preference) and (min-width: 48rem) {
+  html.js [data-reveal] { opacity: 0; }
+}
 
 /* ---- hero ------------------------------------------------------------------------------ */
 .hero { padding-top: clamp(2.5rem, 5vw, 4rem); }
 .hero .wrap { max-width: 88rem; }
-.hero-grid { display: grid; gap: 3rem; align-items: center; }
-@media (min-width: 64rem) { .hero-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 8fr); gap: 4rem; } }
-.hero-copy { display: flex; flex-direction: column; }
-.brand { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; white-space: nowrap; }
+/* One column at every width: the copy, then the printed page under the buttons. */
+.hero-grid { display: grid; gap: clamp(3rem, 5vw, 4.5rem); }
+/* The intro (lede and buttons) and the vertical title share a row, bottom-aligned, the title at
+   the right where vertical text begins and set in from the edge. Below 40rem the row is too
+   narrow for both, so they stack, title first. */
+.hero-copy { display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: clamp(3rem, 8vw, 8rem); align-items: end; }
+.brand { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; white-space: nowrap; }
+/* Physical margin: on a vertical-rl box, margin-inline-end would be the bottom. */
+.hero-copy > .hero-title { grid-area: 2 / 2; margin-right: clamp(1.5rem, 10vw, 12rem); }
+.hero-copy > .hero-intro { grid-area: 2 / 1; }
+/* Beside the title the buttons sit flush right under the lede, the primary one nearest the
+   title; the reversed flow keeps the source order primary-first, so when the row wraps the
+   primary button is the top line. */
+.hero-intro > .cta-row { flex-direction: row; justify-content: flex-start; }
+@media (max-width: 40rem) {
+  .hero-copy { grid-template-columns: minmax(0, 1fr); }
+  /* Stretched to the column, a vertical-rl box would lay its columns out from the right. */
+  .hero-copy > .hero-title { grid-area: auto; margin-right: 0; justify-self: start; }
+  .hero-copy > .hero-intro { grid-area: auto; margin-top: 1.75rem; }
+}
 .brand-name { font-family: var(--font-mincho); font-size: 1.125rem; letter-spacing: 0.06em; }
 .brand-sub { font-size: 0.8125rem; letter-spacing: 0.1em; color: color-mix(in srgb, var(--color-ink) 72%, transparent); }
 .hero-title {
@@ -158,9 +176,8 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
   /* Vertical writing: the inline axis is the height (fit the longest column, the breaks are
      explicit) and the block axis is the width (one column per line box). */
   inline-size: max-content;
-  align-self: flex-start;
 }
-.lede { max-width: 34em; margin-top: 1.75rem; font-size: 1rem; line-height: 2; }
+.lede { font-size: 1rem; line-height: 2; }
 .hero-page { container-type: inline-size; margin: 0; }
 
 /* ---- stances --------------------------------------------------------------------------- */
@@ -184,7 +201,7 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
 /* ---- submission ------------------------------------------------------------------------ */
 .submission-grid { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
 .submission-grid > * { min-width: 0; }
-@media (min-width: 64rem) { .submission-grid { grid-template-columns: 2fr 3fr; gap: 4rem; } }
+@media (min-width: 64rem) { .submission-grid { grid-template-columns: 3fr 2fr; gap: 4rem; } }
 .cover-render { margin: 0; }
 .values { margin-top: 3rem; border-collapse: collapse; font-size: 0.9375rem; }
 .values th, .values td { text-align: left; padding: 0.7rem 1rem 0.7rem 0; border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent); vertical-align: top; }
