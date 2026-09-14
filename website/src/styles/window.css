@@ -94,7 +94,7 @@
 .editors.split .group.editor { flex: 0 0 54%; border-right: 1px solid var(--border); }
 .group.preview { flex: 1 1 auto; }
 .tabs { flex: 0 0 auto; height: calc(35 * var(--u)); display: flex; align-items: stretch; background: var(--ui-bg); border-bottom: 1px solid var(--border); position: relative; }
-.tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(10 * var(--u)); border-right: 1px solid var(--border); color: var(--desc); font-size: calc(13 * var(--u)); position: relative; }
+.tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(10 * var(--u)); border-right: 1px solid var(--border); color: var(--desc); font-size: calc(13 * var(--u)); position: relative; white-space: nowrap; }
 .tab.active { background: var(--ed-bg); color: var(--sb-fg); }
 .tab.active::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--tab-top); }
 .tab .ficon, .crumbs .ficon { width: calc(14 * var(--u)); height: calc(14 * var(--u)); color: var(--desc); }

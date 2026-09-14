@@ -19,14 +19,18 @@
   html.js .stage-static { display: none; }
 }
 .stage-motion { height: 100vh; }
-/* Captions above the window up to 85rem, beside it from there; the view fills the rest and the
-   window sizes from that free space (a size container), so the 16:10 box always fits. */
-.stage-grid { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1.5rem 3rem; align-content: stretch; padding-block: 2.5rem; box-sizing: border-box; }
-@media (min-width: 85rem) { .stage-grid { grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: center; column-gap: 4rem; padding-block: 3rem; padding-inline: clamp(3rem, 4vw, 4rem); } }
-.caps { display: grid; align-self: center; }
+/* Up to 85rem the captions sit right above the window and the pair is centred in the viewport:
+   the view is the 16:10 box of the available width, shrinking only when the height runs out.
+   From 85rem the captions sit beside the window and the view fills the free space. Either way
+   the window sizes from the view (a size container), so the 16:10 box always fits. */
+.stage-grid { height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 1.5rem; padding-block: 2.5rem; box-sizing: border-box; }
+@media (min-width: 85rem) { .stage-grid { display: grid; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: center; column-gap: 4rem; padding-block: 3rem; padding-inline: clamp(3rem, 4vw, 4rem); } }
+.caps { display: grid; flex: 0 0 auto; }
 .caps > .capwrap { grid-area: 1 / 1; }
 @media (max-width: 84.99rem) { .caps { max-width: 48rem; } .caps h3 { font-size: 1.5rem; margin-bottom: 0.5rem; } .caps p { font-size: 0.9375rem; line-height: 1.8; } }
-.motion-view { position: relative; container-type: size; min-height: 0; height: 100%; display: grid; align-items: center; justify-items: center; }
+@media (min-width: 85rem) { .caps { align-self: center; } }
+.motion-view { position: relative; container-type: size; min-height: 0; flex: 0 1 auto; aspect-ratio: 16 / 10; display: grid; align-items: center; justify-items: center; }
+@media (min-width: 85rem) { .motion-view { height: 100%; aspect-ratio: auto; } }
 .motion-view > * { grid-area: 1 / 1; }
 .win-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); }
 .page-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); height: min(100cqh, calc(100cqw / 1.6), 50rem); container-type: size; }
@@ -58,6 +62,8 @@
   .sbeat .win-body > .activity { display: none; }
   .sbeat[data-beat="write"] .sidebar, .sbeat[data-beat="fix"] .sidebar,
   .sbeat[data-beat="write"] .group.preview, .sbeat[data-beat="fix"] .group.preview { display: none; }
+  /* The fix snapshot is split (its preview exists for wider viewports); alone, the editor takes the width. */
+  .sbeat[data-beat="fix"] .editors.split .group.editor { flex: 1 1 auto; border-right: 0; }
   .sbeat[data-beat="check"] .sidebar, .sbeat[data-beat="check"] .group.editor { display: none; }
   .sbeat[data-beat="check"] .editors.split .group.preview { flex: 1 1 auto; }
   .sbeat[data-beat="collect"] .editors { display: none; }

@@ -17,7 +17,7 @@
   "walkthrough.preview.title": "縦書きで確認する",
   "walkthrough.preview.description": "プレビューを開くと、原稿用紙のような縦書き・右から左のレイアウトで組み上がりを確認できます。書くそばから反映されます。\n[プレビューを開く](command:jpnov.previewToSide)",
   "walkthrough.build.title": "章をまとめて本にする",
-  "walkthrough.build.description": "下の「本を作成」でファイル名を入力すると、新しい本が「本の一覧」で開きます（フォルダーを開いていなければ[先に開いて](command:workbench.action.files.openFolder)ください）。章の追加・並べ替えも、タイトルやヘッダーといった「本の情報」の編集もその場で行えます。あとは出力したい本にチェックを入れます。一覧の下のボタンで、ページ組版の HTML・電子書籍の EPUB・青空文庫形式のテキストに出力します。このうち「印刷／PDF 保存」ボタンは、本を HTML に出力してブラウザーで開きます。そのまま印刷や PDF 保存ができます。`.jpbook` 1 つが本 1 冊です。中身はただのテキスト ファイルなので、手で書いても同じです（例を参照）。\n[本を作成](command:jpbook.createFile)\n[「本の一覧」を開く](command:workbench.view.extension.jpnov)",
+  "walkthrough.build.description": "下の「本を作成」でファイル名を入力すると、新しい本が「本の一覧」で開きます（フォルダーを開いていなければ[先に開いて](command:workbench.action.files.openFolder)ください）。章の追加・並べ替えも、タイトルやヘッダーといった「本の情報」の編集もその場で行えます。あとは出力したい本にチェックを入れます。一覧の下のボタンで、ページ組版の HTML・電子書籍の EPUB・青空文庫形式のテキストに出力します。このうち「印刷／PDF 保存」ボタンは、本を HTML に出力してブラウザーで開きます。そのまま印刷や PDF 保存ができます。`.jpbook` 1 つが本 1 冊です。中身はただのテキストファイルなので、手で書いても同じです（例を参照）。\n[本を作成](command:jpbook.createFile)\n[「本の一覧」を開く](command:workbench.view.extension.jpnov)",
   "walkthrough.highlight.title": "（任意）執筆と推敲を助ける設定",
   "walkthrough.highlight.description": "登場人物と造語を登録すると、執筆中の地の文でハイライトされます（名前は `太郎は` のように主語として読める箇所で色が付き、造語は現れた箇所が太字になります）。文章校正（行頭の字下げ・文末の句点・台詞の締めなど）は書いている間に自動で行われます。項目ごとのオン／オフも、投稿前の追加の確認も、文章校正の設定で調整できます。\n[ハイライト設定を開く](command:workbench.action.openSettings?%22jpnov.editor.highlight%22)\n[文章校正の設定を開く](command:workbench.action.openSettings?%22jpnov.lint%22)",
   "jpnov.lint.title": "小説 — 文章校正",
