@@ -49,15 +49,15 @@ chars.forEach((ch, i) => {
 });
 ---
 
-<div class:list={['ln', { cur: current, 'st-none': plan?.rowShow !== undefined }]} data-line={number} data-show={plan?.rowShow} data-run={typed?.run}><span class="g">{number}</span><span class="t">{plan?.phantom !== undefined && <span class="ch st-none" data-k={plan.phantom.show} data-show={plan.phantom.show} data-drop={plan.phantom.drop} data-run={typed?.run}>　</span>}{pieces.map((p) => {
+<div class:list={['jp-ln', { 'jp-cur': current, 'jp-st-none': plan?.rowShow !== undefined }]} data-line={number} data-show={plan?.rowShow} data-run={typed?.run}><span class="jp-g">{number}</span><span class="jp-t">{plan?.phantom !== undefined && <span class="jp-ch jp-st-none" data-k={plan.phantom.show} data-show={plan.phantom.show} data-drop={plan.phantom.drop} data-run={typed?.run}>　</span>}{pieces.map((p) => {
   if (p.typed !== undefined) {
-    return <span class={`ch st-none tk-${p.kind}`} data-k={p.typed.k} data-show={p.typed.show} data-run={typed?.run}>{p.text}</span>;
+    return <span class={`jp-ch jp-st-none jp-tk-${p.kind}`} data-k={p.typed.k} data-show={p.typed.show} data-run={typed?.run}>{p.text}</span>;
   }
   if (p.fix) {
-    return <span class={`ch st-none tk-${p.kind}`} data-t="fix-space">{p.text}</span>;
+    return <span class={`jp-ch jp-st-none jp-tk-${p.kind}`} data-t="fix-space">{p.text}</span>;
   }
   if (p.squiggle) {
-    return <span class={`sq tk-${p.kind}`} data-t="sq">{p.text}</span>;
+    return <span class={`jp-sq jp-tk-${p.kind}`} data-t="sq">{p.text}</span>;
   }
-  return <span class={`tk tk-${p.kind}`}>{p.text}</span>;
+  return <span class={`jp-tk jp-tk-${p.kind}`}>{p.text}</span>;
 })}</span></div>

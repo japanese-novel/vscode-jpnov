@@ -21,19 +21,19 @@ const sqLine = diagnostic?.range.start.line;
 const sqChar = diagnostic?.range.start.character ?? 0;
 ---
 
-<div class="group editor" data-t="editor">
-  <div class="tabs">
-    <div class="tab active"><Icon name="files" class="ficon" /><span class="lbl">{NAMES.chapter1}</span>{diagnostic !== undefined && <span class="deco" data-t="tab-warn">1</span>}<Icon name="close" class="tclose" /></div>
-    <div class="actions">
-      <span class="iconbtn" data-t="act-preview"><Icon name="open-preview" /></span>
-      <span class="iconbtn"><Icon name="split-horizontal" /></span>
-      <span class="iconbtn"><Icon name="ellipsis" /></span>
-      <div class="tooltip st-hide" data-t="tip-preview">{UI.previewToSide}</div>
+<div class="jp-group jp-editor" data-t="editor">
+  <div class="jp-tabs">
+    <div class="jp-tab jp-active"><Icon name="files" class="jp-ficon" /><span class="jp-lbl">{NAMES.chapter1}</span>{diagnostic !== undefined && <span class="jp-deco" data-t="tab-warn">1</span>}<Icon name="close" class="jp-tclose" /></div>
+    <div class="jp-actions">
+      <span class="jp-iconbtn" data-t="act-preview"><Icon name="open-preview" /></span>
+      <span class="jp-iconbtn"><Icon name="split-horizontal" /></span>
+      <span class="jp-iconbtn"><Icon name="ellipsis" /></span>
+      <div class="jp-tooltip jp-st-hide" data-t="tip-preview">{UI.previewToSide}</div>
     </div>
   </div>
-  <div class="crumbs"><Icon name="files" class="ficon" /><span>{NAMES.chapter1}</span></div>
-  <div class="code" data-t="code" style={`--cur:${String(currentLine)}`}>
-    <div class="curline" data-t="curline"></div>
+  <div class="jp-crumbs"><Icon name="files" class="jp-ficon" /><span>{NAMES.chapter1}</span></div>
+  <div class="jp-code" data-t="code" style={`--cur:${String(currentLine)}`}>
+    <div class="jp-curline" data-t="curline"></div>
     {lines.map((runs, i) => (
       <EditorLine
         number={i + 1}
@@ -46,14 +46,14 @@ const sqChar = diagnostic?.range.start.character ?? 0;
     ))}
     {diagnostic !== undefined && (
       <>
-        <div class:list={['bulb', { 'st-hide': !fixing }]} data-t="bulb" style={`--at:${String(sqLine)}`}><Icon name="lightbulb-autofix" /></div>
-        <div class:list={['hover', { 'st-hide': !fixing }]} data-t="hover" style={`--at:${String(sqLine)}`}>
-          <div class="msg">{diagnostic.message.ja} <span class="src">{VSCODE.lintSource}</span></div>
-          <div class="links">{VSCODE.hoverActions}</div>
+        <div class:list={['jp-bulb', { 'jp-st-hide': !fixing }]} data-t="bulb" style={`--at:${String(sqLine)}`}><Icon name="lightbulb-autofix" /></div>
+        <div class:list={['jp-hover', { 'jp-st-hide': !fixing }]} data-t="hover" style={`--at:${String(sqLine)}`}>
+          <div class="jp-msg">{diagnostic.message.ja} <span class="jp-src">{VSCODE.lintSource}</span></div>
+          <div class="jp-links">{VSCODE.hoverActions}</div>
         </div>
-        <div class:list={['cam', { 'st-hide': !fixing }]} data-t="menu" style={`--at:${String(sqLine)}`}>
-          <div class="cam-h">{VSCODE.quickFix}</div>
-          <div class="cam-i sel" data-t="menu-item"><Icon name="lightbulb" />{diagnostic.message.ja}</div>
+        <div class:list={['jp-cam', { 'jp-st-hide': !fixing }]} data-t="menu" style={`--at:${String(sqLine)}`}>
+          <div class="jp-cam-h">{VSCODE.quickFix}</div>
+          <div class="jp-cam-i jp-sel" data-t="menu-item"><Icon name="lightbulb" />{diagnostic.message.ja}</div>
         </div>
       </>
     )}

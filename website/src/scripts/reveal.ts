@@ -64,7 +64,7 @@ export function mountReveal(): void {
       }
     });
   } catch (err: unknown) {
-    document.documentElement.classList.remove('js');
+    document.documentElement.classList.remove('jp-js');
     console.error(err);
   }
 }

@@ -10,6 +10,11 @@ modules, and it lints with the root's ESLint and TypeScript install in the house
 (`eslint.house.mjs`, `tsconfig.base.json`). The packages the site shares with the root are kept
 in lockstep by `test/deps.test.ts`; the README specimens it renders live in `docs/specimens/`.
 
+Classes: every class the site defines is `jp-*`. The product fragments keep their bare names
+(`page`, `line`, …) and a site rule reaches them only under a `jp-*` ancestor. Tailwind runs with
+`source(none)`: it supplies the `@theme` variables and preflight and never a utility, because a
+harvested utility such as `.grid` lands on the fragments. `test/classes.test.ts` guards all three.
+
 ```sh
 cd website
 npm ci
