@@ -11,19 +11,19 @@ if (notation.kind !== 'preview') {
 const source = notation.src.replace(/\n$/, '');
 ---
 
-<section class="notation" aria-labelledby="notation-h">
-  <div class="wrap">
-    <p class="eyebrow">書き方</p>
-    <h2 id="notation-h" class="section-title">本文はふつうに書くだけ。<br />飾りは、青空文庫の注記で。</h2>
-    <p class="section-lede">ルビや傍点を付けたいところにだけ、<a href={LINKS.aozora}>青空文庫の注記</a>という決まった書き方を添えます。注記は、対象の言葉を後ろから指す前方参照型が基本です。範囲がわかりにくいときは前後ではさむ開始／終了型、複数行にわたるときはブロック型でも書けます。どの形でも仕上がりは同じです。</p>
-    <div class="specimen">
-      <pre class="source" data-reveal="left"><code>{source}</code></pre>
-      <figure class="specimen-render" data-reveal="right">
-        <div class="sheet"><JpRender name="notation" em={30} class="on-paper" /></div>
+<section class="jp-notation" aria-labelledby="notation-h">
+  <div class="jp-wrap">
+    <p class="jp-eyebrow">書き方</p>
+    <h2 id="notation-h" class="jp-section-title">本文はふつうに書くだけ。<br />飾りは、青空文庫の注記で。</h2>
+    <p class="jp-section-lede">ルビや傍点を付けたいところにだけ、<a href={LINKS.aozora}>青空文庫の注記</a>という決まった書き方を添えます。注記は、対象の言葉を後ろから指す前方参照型が基本です。範囲がわかりにくいときは前後ではさむ開始／終了型、複数行にわたるときはブロック型でも書けます。どの形でも仕上がりは同じです。</p>
+    <div class="jp-specimen">
+      <pre class="jp-source" data-reveal="left"><code>{source}</code></pre>
+      <figure class="jp-specimen-render" data-reveal="right">
+        <div class="jp-sheet"><JpRender name="notation" em={30} class="jp-on-paper" /></div>
         <figcaption>ルビ・両側ルビ・傍点・波線・太字・縦中横</figcaption>
       </figure>
     </div>
-    <ul class="notation-list">
+    <ul class="jp-notation-list">
       <li>ルビ（左側にも）</li>
       <li>傍点（九種）と傍線（五種）</li>
       <li>太字・斜体</li>

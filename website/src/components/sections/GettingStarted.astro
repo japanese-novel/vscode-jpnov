@@ -9,11 +9,11 @@ const STEPS = [
 ] as const;
 ---
 
-<section class="start" aria-labelledby="start-h">
-  <div class="wrap">
-    <p class="eyebrow">はじめかた</p>
-    <h2 id="start-h" class="section-title">VS Code に慣れていなくても大丈夫です。</h2>
-    <ol class="steps">
+<section class="jp-start" aria-labelledby="start-h">
+  <div class="jp-wrap">
+    <p class="jp-eyebrow">はじめかた</p>
+    <h2 id="start-h" class="jp-section-title">VS Code に慣れていなくても大丈夫です。</h2>
+    <ol class="jp-steps">
       {STEPS.map((s) => (
         <li>
           <h3>{s.title}</h3>
@@ -21,10 +21,10 @@ const STEPS = [
         </li>
       ))}
     </ol>
-    <p class="cta-row">
-      <a class="cta" href={LINKS.marketplace}>VS Code Marketplace で入手する</a>
-      <a class="cta-quiet" href={LINKS.vscode}>VS Code をダウンロード</a>
+    <p class="jp-cta-row">
+      <a class="jp-cta" href={LINKS.marketplace}>VS Code Marketplace で入手する</a>
+      <a class="jp-cta-quiet" href={LINKS.vscode}>VS Code をダウンロード</a>
     </p>
-    <p class="note">同じ流れは、VS Code の<Q>ようこそ</Q>画面にあるガイド「小説をはじめる」でも案内しています。</p>
+    <p class="jp-note">同じ流れは、VS Code の<Q>ようこそ</Q>画面にあるガイド「小説をはじめる」でも案内しています。</p>
   </div>
 </section>

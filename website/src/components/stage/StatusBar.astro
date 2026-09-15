@@ -11,10 +11,10 @@ interface Props {
 const { warnings, motion = false } = Astro.props;
 ---
 
-<div class="status">
-  <span class="remote"><Icon name="remote" /></span>
-  <span class="problems"><Icon name="error" /> {VSCODE.problems} <Icon name="warning" /> {motion
-    ? <span class="warnbox"><b data-t="warn-1">1</b><b class="st-hide" data-t="warn-0">0</b></span>
+<div class="jp-status">
+  <span class="jp-remote"><Icon name="remote" /></span>
+  <span class="jp-problems"><Icon name="error" /> {VSCODE.problems} <Icon name="warning" /> {motion
+    ? <span class="jp-warnbox"><b data-t="warn-1">1</b><b class="jp-st-hide" data-t="warn-0">0</b></span>
     : <b>{warnings}</b>}</span>
-  <span class="right"><span>{VSCODE.statusPosition}</span><span>{VSCODE.statusIndent}</span><span>{VSCODE.statusEncoding}</span><span>{VSCODE.statusEol}</span><span>{UI.container}</span><Icon name="bell" /></span>
+  <span class="jp-right"><span>{VSCODE.statusPosition}</span><span>{VSCODE.statusIndent}</span><span>{VSCODE.statusEncoding}</span><span>{VSCODE.statusEol}</span><span>{UI.container}</span><Icon name="bell" /></span>
 </div>

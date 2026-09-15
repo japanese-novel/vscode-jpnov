@@ -16,19 +16,19 @@ cover:
 第三章.jpnov`;
 ---
 
-<section class="submission" aria-labelledby="submission-h">
-  <div class="wrap">
-    <p class="eyebrow">応募のために</p>
-    <h2 id="submission-h" class="section-title">本は、章を読む順に並べた<br />ただのテキストファイルです。</h2>
-    <p class="section-lede">.jpbook には、本のタイトルやヘッダーと、章のファイル名を並べます。多くの新人賞で求められる表紙や扉、あらすじは、表紙に並べたファイルがそのページになり、本文の前に置かれます。表紙のファイルには、本の情報を差し込む注記が書けます。出力すると、その本の値が入ります。</p>
-    <div class="submission-grid">
-      <figure class="cover-render" data-reveal="left">
-        <div class="paper-crop"><JpRender name="cover" /></div>
+<section class="jp-submission" aria-labelledby="submission-h">
+  <div class="jp-wrap">
+    <p class="jp-eyebrow">応募のために</p>
+    <h2 id="submission-h" class="jp-section-title">本は、章を読む順に並べた<br />ただのテキストファイルです。</h2>
+    <p class="jp-section-lede">.jpbook には、本のタイトルやヘッダーと、章のファイル名を並べます。多くの新人賞で求められる表紙や扉、あらすじは、表紙に並べたファイルがそのページになり、本文の前に置かれます。表紙のファイルには、本の情報を差し込む注記が書けます。出力すると、その本の値が入ります。</p>
+    <div class="jp-submission-grid">
+      <figure class="jp-cover-render" data-reveal="left">
+        <div class="jp-paper-crop"><JpRender name="cover" /></div>
         <figcaption>「新しい表紙…」で作った表紙をそのまま出力したページ。内容は自動計算されます。</figcaption>
       </figure>
-      <pre class="source" data-reveal="right"><code>{JPBOOK}</code></pre>
+      <pre class="jp-source" data-reveal="right"><code>{JPBOOK}</code></pre>
     </div>
-    <table class="values">
+    <table class="jp-values">
       <thead><tr><th>差し込むもの</th><th>注記</th></tr></thead>
       <tbody>
         {VALUE_MARKS.map((v) => (
@@ -36,6 +36,6 @@ cover:
         ))}
       </tbody>
     </table>
-    <p class="note">原稿用紙換算枚数は、本文を 400 字詰め原稿用紙（縦書き 20 字 × 20 行）に組み直したときの枚数です。</p>
+    <p class="jp-note">原稿用紙換算枚数は、本文を 400 字詰め原稿用紙（縦書き 20 字 × 20 行）に組み直したときの枚数です。</p>
   </div>
 </section>

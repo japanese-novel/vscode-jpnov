@@ -18,28 +18,28 @@ if (stage.kind !== 'preview') {
 }
 ---
 
-<section class="stage" aria-labelledby="stage-h">
+<section class="jp-stage" aria-labelledby="stage-h">
   <Sprite />
   <style is:inline set:html={stage.preview.css}></style>
-  <h2 id="stage-h" class="sr-only">{STAGE_HEADING}</h2>
+  <h2 id="stage-h" class="jp-sr-only">{STAGE_HEADING}</h2>
 
-  <div class="stage-motion" data-motion>
-    <div class="wrap stage-grid">
-      <aside class="caps" data-caps>
-        {BEATS.map((beat, i) => <div class:list={['capwrap', { 'st-hide': i > 0 }]} data-t={`cap-${beat.id}`}><Captions beat={beat} /></div>)}
+  <div class="jp-stage-motion" data-motion>
+    <div class="jp-wrap jp-stage-grid">
+      <aside class="jp-caps" data-caps>
+        {BEATS.map((beat, i) => <div class:list={['jp-capwrap', { 'jp-st-hide': i > 0 }]} data-t={`cap-${beat.id}`}><Captions beat={beat} /></div>)}
       </aside>
-      <div class="stage-view motion-view">
-        <div class="win-wrap"><Window snapshot="motion" /></div>
-        <div class="page-wrap st-hide" data-t="page-wrap"><PageLayer /></div>
+      <div class="jp-stage-view jp-motion-view">
+        <div class="jp-win-wrap"><Window snapshot="motion" /></div>
+        <div class="jp-page-wrap jp-st-hide" data-t="page-wrap"><PageLayer /></div>
       </div>
     </div>
   </div>
 
-  <div class="wrap stage-static">
+  <div class="jp-wrap jp-stage-static">
     {BEATS.map((beat) => (
-      <article class="sbeat" data-beat={beat.id}>
+      <article class="jp-sbeat" data-beat={beat.id}>
         <Captions beat={beat} />
-        <div class="stage-view">
+        <div class="jp-stage-view">
           {beat.id === 'book' ? <PageLayer /> : <Window snapshot={beat.id} />}
         </div>
       </article>

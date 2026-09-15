@@ -16,35 +16,35 @@ const EPUB_PATH = 'M297.63,462.07,171.58,336l126-126,42,42-84.05,84,42,42L423.69
 const rows = pending === undefined ? chapters : [...chapters, pending];
 ---
 
-<div class="sidebar">
-  <div class="vhead"><span>{PRODUCT.viewTitle(NAMES.bookTitle)}</span><Icon name="refresh" /></div>
-  <div class="scroll">
-    <div class="dhdr"><span class="iconbtn"><Icon name="chevron-left" /></span><div class="dtitle">{NAMES.bookTitle}</div></div>
-    <div class="section">
-      <div class="shead"><span class="sectoggle"><Icon name="chevron-right" class="caret" /><span class="stitle">{UI.bookInfo}</span></span></div>
+<div class="jp-sidebar">
+  <div class="jp-vhead"><span>{PRODUCT.viewTitle(NAMES.bookTitle)}</span><Icon name="refresh" /></div>
+  <div class="jp-scroll">
+    <div class="jp-dhdr"><span class="jp-iconbtn"><Icon name="chevron-left" /></span><div class="jp-dtitle">{NAMES.bookTitle}</div></div>
+    <div class="jp-section">
+      <div class="jp-shead"><span class="jp-sectoggle"><Icon name="chevron-right" class="jp-caret" /><span class="jp-stitle">{UI.bookInfo}</span></span></div>
     </div>
-    <div class="section">
-      <div class="shead"><span class="sectoggle"><Icon name="chevron-right" class="caret" /><span class="stitle">{UI.covers}</span></span></div>
+    <div class="jp-section">
+      <div class="jp-shead"><span class="jp-sectoggle"><Icon name="chevron-right" class="jp-caret" /><span class="jp-stitle">{UI.covers}</span></span></div>
     </div>
-    <div class="section toc" data-t="toc">
-      <div class="shead"><span class="stitle">{UI.chapters}</span><span class="iconbtn" data-t="toc-add" title={UI.addChapters}><Icon name="checklist" /></span></div>
+    <div class="jp-section jp-toc" data-t="toc">
+      <div class="jp-shead"><span class="jp-stitle">{UI.chapters}</span><span class="jp-iconbtn" data-t="toc-add" title={UI.addChapters}><Icon name="checklist" /></span></div>
       {rows.map((name, i) => (
-        <div class:list={['row', 'entry', { 'st-none': name === pending }]} data-t={`row-${String(i + 1)}`}>
-          <Icon name="gripper" class="grip" />
-          <span class="emain"><span class="title">{name}</span></span>
-          <span class="acts" data-t={`acts-${String(i + 1)}`}>
-            <span class:list={['iconbtn', { dis: i === 0 }]}><Icon name="chevron-up" /></span>
-            <span class:list={['iconbtn', { dis: i === chapters.length - 1 && name !== pending }]}><Icon name="chevron-down" /></span>
-            <span class="iconbtn"><Icon name="close" /></span>
+        <div class:list={['jp-row', 'jp-entry', { 'jp-st-none': name === pending }]} data-t={`row-${String(i + 1)}`}>
+          <Icon name="gripper" class="jp-grip" />
+          <span class="jp-emain"><span class="jp-title">{name}</span></span>
+          <span class="jp-acts" data-t={`acts-${String(i + 1)}`}>
+            <span class:list={['jp-iconbtn', { 'jp-dis': i === 0 }]}><Icon name="chevron-up" /></span>
+            <span class:list={['jp-iconbtn', { 'jp-dis': i === chapters.length - 1 && name !== pending }]}><Icon name="chevron-down" /></span>
+            <span class="jp-iconbtn"><Icon name="close" /></span>
           </span>
         </div>
       ))}
-      <div class="row action"><Icon name="new-file" /><span>{UI.newChapter}</span></div>
+      <div class="jp-row jp-action"><Icon name="new-file" /><span>{UI.newChapter}</span></div>
     </div>
   </div>
-  <div class="footer">
-    <span class="btn primary" data-t="btn-print"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d={PRINT_PATH}></path></svg>{UI.print}</span>
-    <div class="btnrow"><span class="btn">{UI.txt}</span><span class="btn icon" title={UI.epub}><svg viewBox="97.1 135.5 401.2 401.2" fill="currentColor" aria-hidden="true"><path d={EPUB_PATH}></path></svg></span></div>
-    <span class="chkrow"><i class="chk"><Icon name="check" /></i>{UI.openAfterBuild}</span>
+  <div class="jp-footer">
+    <span class="jp-btn jp-primary" data-t="btn-print"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d={PRINT_PATH}></path></svg>{UI.print}</span>
+    <div class="jp-btnrow"><span class="jp-btn">{UI.txt}</span><span class="jp-btn jp-icon" title={UI.epub}><svg viewBox="97.1 135.5 401.2 401.2" fill="currentColor" aria-hidden="true"><path d={EPUB_PATH}></path></svg></span></div>
+    <span class="jp-chkrow"><i class="jp-chk"><Icon name="check" /></i>{UI.openAfterBuild}</span>
   </div>
 </div>

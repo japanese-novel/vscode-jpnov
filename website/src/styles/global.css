@@ -1,7 +1,12 @@
-@import 'tailwindcss';
+/* source(none): no automatic class detection, so Tailwind emits its @theme variables and
+   preflight and never a utility. The embedded product fragments carry bare class names
+   (grid, indent-N, …) and any harvested utility would land on them (#70). */
+@import 'tailwindcss' source(none);
 @import './fonts.css';
 
-@theme {
+/* static: window.css and stage.css read these through var(), which Tailwind does not see, so
+   every variable is emitted rather than only the ones global.css uses. */
+@theme static {
   /* Brand — resources/icon.svg: ground, ink, seal. */
   --color-ink: #26211c;
   --color-paper: #f4eddd;
@@ -53,15 +58,15 @@ body {
 }
 
 /* ---- page structure ------------------------------------------------------------------- */
-.wrap {
+.jp-wrap {
   max-width: 76rem;
   margin-inline: auto;
   padding-inline: clamp(1.25rem, 4vw, 3rem);
 }
-section, .hero, .site-footer {
+section, .jp-hero, .jp-site-footer {
   padding-block: clamp(4rem, 10vw, 9rem);
 }
-.eyebrow {
+.jp-eyebrow {
   font-family: var(--font-sans);
   font-size: 0.8125rem;
   letter-spacing: 0.2em;
@@ -69,7 +74,7 @@ section, .hero, .site-footer {
   color: color-mix(in srgb, var(--color-vermilion) 72%, var(--color-ink));
   margin-bottom: 1.25rem;
 }
-.eyebrow::before {
+.jp-eyebrow::before {
   content: '';
   display: inline-block;
   width: 0.5em;
@@ -79,7 +84,7 @@ section, .hero, .site-footer {
   vertical-align: 0.1em;
   transform: rotate(-4deg);
 }
-.section-title {
+.jp-section-title {
   font-family: var(--font-mincho);
   font-weight: 500;
   font-size: clamp(1.75rem, 3.2vw, 2.75rem);
@@ -87,23 +92,23 @@ section, .hero, .site-footer {
   letter-spacing: 0.02em;
   max-width: 24em;
 }
-.section-lede {
+.jp-section-lede {
   margin-top: 1.75rem;
   font-size: 1.0625rem;
   line-height: 2;
   color: color-mix(in srgb, var(--color-ink) 84%, transparent);
 }
-.note {
+.jp-note {
   margin-top: 2rem;
   font-size: 0.9375rem;
   line-height: 1.9;
   color: color-mix(in srgb, var(--color-ink) 70%, transparent);
 }
-.q { white-space: nowrap; }
+.jp-q { white-space: nowrap; }
 a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-vermilion) 60%, transparent); text-underline-offset: 0.2em; }
 a:hover { text-decoration-color: var(--color-vermilion); }
 code, pre { font-family: var(--font-mono); }
-pre.source {
+pre.jp-source {
   background: color-mix(in srgb, var(--color-ink) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
   padding: 1.25rem 1.5rem;
@@ -112,8 +117,8 @@ pre.source {
   white-space: pre;
   overflow-x: auto;
 }
-.cta-row { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: center; margin-top: 2.5rem; }
-.cta {
+.jp-cta-row { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: center; margin-top: 2.5rem; }
+.jp-cta {
   display: inline-block;
   background: var(--color-ink);
   color: var(--color-ground);
@@ -122,52 +127,52 @@ pre.source {
   font-size: 0.9375rem;
   letter-spacing: 0.04em;
 }
-.cta:hover { background: var(--color-vermilion); }
-.cta-quiet { font-size: 0.9375rem; }
-.paper { --jp-paper-width: 100cqw; }
-.jp-scope.paper .page { box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
-.jp-scope.paper .page { margin: 0 auto; }
-.on-paper { --jp-bg: #fff; }
+.jp-cta:hover { background: var(--color-vermilion); }
+.jp-cta-quiet { font-size: 0.9375rem; }
+.jp-paper { --jp-paper-width: 100cqw; }
+.jp-scope.jp-paper .page { box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
+.jp-scope.jp-paper .page { margin: 0 auto; }
+.jp-on-paper { --jp-bg: #fff; }
 /* Vertical specimens sit on a small sheet, like the page renders. Flex, not inline-block:
    WebKit sizes a vertical-rl inline-block's intrinsic width as 0 inside a shrink-to-fit box. */
-.sheet { display: inline-flex; background: #fff; padding: 1.75rem 2.25rem; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.1), 0 10px 28px -14px rgba(38, 33, 28, 0.3); }
+.jp-sheet { display: inline-flex; background: #fff; padding: 1.75rem 2.25rem; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.1), 0 10px 28px -14px rgba(38, 33, 28, 0.3); }
 /* A window onto the top-right of a printed page (where vertical text begins), at a legible size. */
-.paper-crop { container-type: inline-size; position: relative; overflow: hidden; aspect-ratio: 5 / 4; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
-.paper-crop .jp-scope { --jp-paper-width: calc(100cqw * var(--crop-zoom, 1.9)); position: absolute; top: 0; right: 0; width: var(--jp-paper-width); }
+.jp-paper-crop { container-type: inline-size; position: relative; overflow: hidden; aspect-ratio: 5 / 4; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
+.jp-paper-crop .jp-scope { --jp-paper-width: calc(100cqw * var(--crop-zoom, 1.9)); position: absolute; top: 0; right: 0; width: var(--jp-paper-width); }
 /* One level above the scoped stylesheet's own `.scope .page` rule, which comes later in the document. */
-.paper-crop .jp-scope .page { margin: 0; box-shadow: none; }
+.jp-paper-crop .jp-scope .page { margin: 0; box-shadow: none; }
 figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, var(--color-ink) 72%, transparent); margin-top: 1rem; }
 /* Marked elements are revealed by src/scripts/reveal.ts under this same query (REVEAL_QUERY). */
 @media (prefers-reduced-motion: no-preference) and (min-width: 48rem) {
-  html.js [data-reveal] { opacity: 0; }
+  html.jp-js [data-reveal] { opacity: 0; }
 }
 
 /* ---- hero ------------------------------------------------------------------------------ */
-.hero { padding-top: clamp(2.5rem, 5vw, 4rem); }
-.hero .wrap { max-width: 88rem; }
+.jp-hero { padding-top: clamp(2.5rem, 5vw, 4rem); }
+.jp-hero .jp-wrap { max-width: 88rem; }
 /* One column at every width: the copy, then the printed page under the buttons. */
-.hero-grid { display: grid; gap: clamp(3rem, 5vw, 4.5rem); }
+.jp-hero-grid { display: grid; gap: clamp(3rem, 5vw, 4.5rem); }
 /* The intro (lede and buttons) and the vertical title share a row, bottom-aligned, the title at
    the right where vertical text begins and set in from the edge. Below 40rem the row is too
    narrow for both, so they stack, title first. */
-.hero-copy { display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: clamp(3rem, 8vw, 8rem); align-items: end; }
-.brand { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; white-space: nowrap; }
+.jp-hero-copy { display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: clamp(3rem, 8vw, 8rem); align-items: end; }
+.jp-brand { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; white-space: nowrap; }
 /* Physical margin: on a vertical-rl box, margin-inline-end would be the bottom. */
-.hero-copy > .hero-title { grid-area: 2 / 2; margin-right: clamp(1.5rem, 10vw, 12rem); }
-.hero-copy > .hero-intro { grid-area: 2 / 1; }
+.jp-hero-copy > .jp-hero-title { grid-area: 2 / 2; margin-right: clamp(1.5rem, 10vw, 12rem); }
+.jp-hero-copy > .jp-hero-intro { grid-area: 2 / 1; }
 /* Beside the title the buttons sit flush right under the lede, the primary one nearest the
    title; the reversed flow keeps the source order primary-first, so when the row wraps the
    primary button is the top line. */
-.hero-intro > .cta-row { flex-direction: row; justify-content: flex-start; }
+.jp-hero-intro > .jp-cta-row { flex-direction: row; justify-content: flex-start; }
 @media (max-width: 40rem) {
-  .hero-copy { grid-template-columns: minmax(0, 1fr); }
+  .jp-hero-copy { grid-template-columns: minmax(0, 1fr); }
   /* Stretched to the column, a vertical-rl box would lay its columns out from the right. */
-  .hero-copy > .hero-title { grid-area: auto; margin-right: 0; justify-self: start; }
-  .hero-copy > .hero-intro { grid-area: auto; margin-top: 1.75rem; }
+  .jp-hero-copy > .jp-hero-title { grid-area: auto; margin-right: 0; justify-self: start; }
+  .jp-hero-copy > .jp-hero-intro { grid-area: auto; margin-top: 1.75rem; }
 }
-.brand-name { font-family: var(--font-mincho); font-size: 1.125rem; letter-spacing: 0.06em; }
-.brand-sub { font-size: 0.8125rem; letter-spacing: 0.1em; color: color-mix(in srgb, var(--color-ink) 72%, transparent); }
-.hero-title {
+.jp-brand-name { font-family: var(--font-mincho); font-size: 1.125rem; letter-spacing: 0.06em; }
+.jp-brand-sub { font-size: 0.8125rem; letter-spacing: 0.1em; color: color-mix(in srgb, var(--color-ink) 72%, transparent); }
+.jp-hero-title {
   font-family: var(--font-mincho);
   font-weight: 500;
   font-size: clamp(1.9rem, 3.3vw, 2.9rem);
@@ -178,53 +183,53 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
      explicit) and the block axis is the width (one column per line box). */
   inline-size: max-content;
 }
-.lede { font-size: 1rem; line-height: 2; }
-.hero-page { container-type: inline-size; margin: 0; }
+.jp-lede { font-size: 1rem; line-height: 2; }
+.jp-hero-page { container-type: inline-size; margin: 0; }
 
 /* ---- stances --------------------------------------------------------------------------- */
-.stances { border-top: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent); }
-.stance-list { list-style: none; margin-top: 3.5rem; display: grid; gap: 2.5rem 4rem; }
-@media (min-width: 48rem) { .stance-list { grid-template-columns: 1fr 1fr; } }
-.stance-list h3 { font-family: var(--font-mincho); font-weight: 500; font-size: 1.375rem; margin-bottom: 0.75rem; }
-.stance-list p { line-height: 2; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
-.sm-only { display: none; }
+.jp-stances { border-top: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent); }
+.jp-stance-list { list-style: none; margin-top: 3.5rem; display: grid; gap: 2.5rem 4rem; }
+@media (min-width: 48rem) { .jp-stance-list { grid-template-columns: 1fr 1fr; } }
+.jp-stance-list h3 { font-family: var(--font-mincho); font-weight: 500; font-size: 1.375rem; margin-bottom: 0.75rem; }
+.jp-stance-list p { line-height: 2; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
+.jp-sm-only { display: none; }
 
 /* ---- notation -------------------------------------------------------------------------- */
-.specimen { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
-@media (min-width: 64rem) { .specimen { grid-template-columns: 1fr 1fr; gap: 4rem; } }
-.specimen > * { min-width: 0; }
-.specimen-render { display: flex; flex-direction: column; align-items: center; }
-@media (max-width: 40rem) { .specimen-render { --jp-embed-em: 20px; } }
-@media (min-width: 64rem) { .specimen-render { --jp-embed-em: 34px; } }
-.notation-list { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; margin-top: 3rem; font-size: 0.9375rem; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
-.notation-list li::before { content: '・'; color: var(--color-vermilion); }
+.jp-specimen { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
+@media (min-width: 64rem) { .jp-specimen { grid-template-columns: 1fr 1fr; gap: 4rem; } }
+.jp-specimen > * { min-width: 0; }
+.jp-specimen-render { display: flex; flex-direction: column; align-items: center; }
+@media (max-width: 40rem) { .jp-specimen-render { --jp-embed-em: 20px; } }
+@media (min-width: 64rem) { .jp-specimen-render { --jp-embed-em: 34px; } }
+.jp-notation-list { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; margin-top: 3rem; font-size: 0.9375rem; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
+.jp-notation-list li::before { content: '・'; color: var(--color-vermilion); }
 
 /* ---- submission ------------------------------------------------------------------------ */
-.submission-grid { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
-.submission-grid > * { min-width: 0; }
-@media (min-width: 64rem) { .submission-grid { grid-template-columns: 3fr 2fr; gap: 4rem; } }
-.cover-render { margin: 0; }
-.values { margin-top: 3rem; border-collapse: collapse; font-size: 0.9375rem; }
-.values th, .values td { text-align: left; padding: 0.7rem 1rem 0.7rem 0; border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent); vertical-align: top; }
-.values th { font-weight: 500; color: color-mix(in srgb, var(--color-ink) 72%, transparent); font-size: 0.8125rem; letter-spacing: 0.08em; }
+.jp-submission-grid { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
+.jp-submission-grid > * { min-width: 0; }
+@media (min-width: 64rem) { .jp-submission-grid { grid-template-columns: 3fr 2fr; gap: 4rem; } }
+.jp-cover-render { margin: 0; }
+.jp-values { margin-top: 3rem; border-collapse: collapse; font-size: 0.9375rem; }
+.jp-values th, .jp-values td { text-align: left; padding: 0.7rem 1rem 0.7rem 0; border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent); vertical-align: top; }
+.jp-values th { font-weight: 500; color: color-mix(in srgb, var(--color-ink) 72%, transparent); font-size: 0.8125rem; letter-spacing: 0.08em; }
 
 /* ---- typesetting ----------------------------------------------------------------------- */
-.kinsoku { display: flex; gap: 3rem 4rem; margin-top: 3.5rem; flex-wrap: wrap; justify-content: center; --jp-embed-em: 24px; }
-@media (max-width: 40rem) { .kinsoku { --jp-embed-em: 17px; gap: 1.5rem; } }
-.kinsoku figure { margin: 0; }
-.kinsoku figure { display: flex; flex-direction: column; align-items: center; }
-.genko { margin-top: 4rem; container-type: inline-size; }
+.jp-kinsoku { display: flex; gap: 3rem 4rem; margin-top: 3.5rem; flex-wrap: wrap; justify-content: center; --jp-embed-em: 24px; }
+@media (max-width: 40rem) { .jp-kinsoku { --jp-embed-em: 17px; gap: 1.5rem; } }
+.jp-kinsoku figure { margin: 0; }
+.jp-kinsoku figure { display: flex; flex-direction: column; align-items: center; }
+.jp-genko { margin-top: 4rem; container-type: inline-size; }
 
 /* ---- getting started ------------------------------------------------------------------- */
-.steps { list-style: none; counter-reset: step; margin-top: 3rem; display: grid; gap: 2rem; }
-@media (min-width: 48rem) { .steps { grid-template-columns: repeat(3, 1fr); gap: 3rem; } }
-.steps li { counter-increment: step; }
-.steps li::before { content: counter(step, decimal-leading-zero); font-family: var(--font-mincho); font-size: 2rem; color: var(--color-vermilion); display: block; margin-bottom: 0.5rem; }
-.steps h3 { font-family: var(--font-mincho); font-weight: 500; font-size: 1.25rem; margin-bottom: 0.5rem; }
-.steps p { line-height: 1.9; color: color-mix(in srgb, var(--color-ink) 78%, transparent); font-size: 0.9375rem; }
+.jp-steps { list-style: none; counter-reset: step; margin-top: 3rem; display: grid; gap: 2rem; }
+@media (min-width: 48rem) { .jp-steps { grid-template-columns: repeat(3, 1fr); gap: 3rem; } }
+.jp-steps li { counter-increment: step; }
+.jp-steps li::before { content: counter(step, decimal-leading-zero); font-family: var(--font-mincho); font-size: 2rem; color: var(--color-vermilion); display: block; margin-bottom: 0.5rem; }
+.jp-steps h3 { font-family: var(--font-mincho); font-weight: 500; font-size: 1.25rem; margin-bottom: 0.5rem; }
+.jp-steps p { line-height: 1.9; color: color-mix(in srgb, var(--color-ink) 78%, transparent); font-size: 0.9375rem; }
 
 /* ---- footer ---------------------------------------------------------------------------- */
-.site-footer { border-top: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent); padding-block: 3rem 4rem; font-size: 0.875rem; }
-.footer-grid { display: grid; gap: 1.5rem; }
-.footer-links { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
-.credits { color: color-mix(in srgb, var(--color-ink) 72%, transparent); line-height: 1.8; }
+.jp-site-footer { border-top: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent); padding-block: 3rem 4rem; font-size: 0.875rem; }
+.jp-footer-grid { display: grid; gap: 1.5rem; }
+.jp-footer-links { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
+.jp-credits { color: color-mix(in srgb, var(--color-ink) 72%, transparent); line-height: 1.8; }

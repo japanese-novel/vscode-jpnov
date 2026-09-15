@@ -65,12 +65,12 @@ const bodies = motion
   : [{ id: 'B', body: emphasised.preview.body, shown: true }];
 ---
 
-<div class:list={['win', `snap-${snapshot}`]} aria-hidden="true" data-t={motion ? 'win' : undefined}>
+<div class:list={['jp-win', `jp-snap-${snapshot}`]} aria-hidden="true" data-t={motion ? 'win' : undefined}>
   <TitleBar />
-  <div class="win-body">
+  <div class="jp-win-body">
     <ActivityBar />
     <SideBar chapters={chapters} pending={motion ? NAMES.chapter2 : undefined} />
-    <div class:list={['editors', { split: showPreview && !motion }]} data-t="editors">
+    <div class:list={['jp-editors', { 'jp-split': showPreview && !motion }]} data-t="editors">
       <EditorGroup
         lines={state.editorLines}
         currentLine={currentLine}

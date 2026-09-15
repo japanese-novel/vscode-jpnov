@@ -6,6 +6,6 @@ import type { Icon } from '../../../scripts/icons.ts';
 const entries = Object.entries(icons as Record<string, Icon>);
 ---
 
-<svg class="cd-sprite" aria-hidden="true" width="0" height="0" style="position:absolute">
+<svg class="jp-cd-sprite" aria-hidden="true" width="0" height="0" style="position:absolute">
   {entries.map(([id, icon]) => <symbol id={`cd-${id}`} viewBox={icon.viewBox} fill="currentColor" set:html={icon.inner}></symbol>)}
 </svg>

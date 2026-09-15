@@ -1,7 +1,7 @@
 /**
  * Places the typing keystrokes on the timeline from the DOM's `data-k` / `data-show` /
  * `data-drop` markers (stage/typedLine.ts wrote them): one zero-duration set per keystroke, so
- * scrubbing backwards is exact. The caret is `.ch::after`, driven by the `--c` custom property.
+ * scrubbing backwards is exact. The caret is `.jp-ch::after`, driven by the `--c` custom property.
  */
 import type { gsap } from 'gsap';
 
@@ -38,11 +38,11 @@ export function keystrokes(code: HTMLElement, run: TypingRun): Keystroke[] {
     if (show !== null) {
       const entry = at(show);
       entry.show.push(el);
-      if (el.classList.contains('ln')) {
+      if (el.classList.contains('jp-ln')) {
         entry.row = el;
       }
     }
-    if (k !== null && el.classList.contains('ch')) {
+    if (k !== null && el.classList.contains('jp-ch')) {
       at(k).caret = el;
     }
     if (drop !== null) {
@@ -58,7 +58,7 @@ export function placeTyping(tl: gsap.core.Timeline, code: HTMLElement, steps: re
   steps.forEach((s, i) => {
     const t = start + i * step;
     for (const el of s.show) {
-      tl.set(el, { display: el.classList.contains('ln') ? 'flex' : 'inline' }, t);
+      tl.set(el, { display: el.classList.contains('jp-ln') ? 'flex' : 'inline' }, t);
     }
     for (const el of s.drop) {
       tl.set(el, { display: 'none' }, t);

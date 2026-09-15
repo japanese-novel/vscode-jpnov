@@ -98,7 +98,7 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
   const row2 = q(root, 'row-3');
   const row3 = q(root, 'row-2');
   tl.fromTo(qp, { autoAlpha: 0, y: -6 }, { autoAlpha: 1, y: 0, duration: 0.25 }, t + 0.2);
-  tl.set(q(root, 'qp-cb'), { className: 'qi-cb on' }, t + 0.7);
+  tl.set(q(root, 'qp-cb'), { className: 'jp-qi-cb jp-on' }, t + 0.7);
   tl.to(qp, { autoAlpha: 0, y: -6, duration: 0.15 }, t + 1.0);
   tl.set(row2, { display: 'flex' }, t + 1.15);
   tl.fromTo(row2, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.25 }, t + 1.15);
