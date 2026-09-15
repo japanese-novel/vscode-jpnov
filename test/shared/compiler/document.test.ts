@@ -179,6 +179,25 @@ test('concatBookText strips one trailing newline per file and joins with one bla
   assert.equal(concatBookText(book({ files: [] }), 'none', 40), '');
 });
 
+test('concatBookText follows the manuscript EOL: CRLF throughout when any chapter is CRLF', () => {
+  const files = (a: string, b: string, divider?: string): BookInput =>
+    book({ files: [{ name: 'a.jpnov', src: a }, { name: 'b.jpnov', src: b }], divider });
+  // seam and divider line included
+  assert.equal(concatBookText(files('あいう\r\n', 'かきく\r\n'), 'none', 40), 'あいう\r\n\r\nかきく');
+  assert.equal(
+    concatBookText(files('あ\r\n', 'か\r\n', '＊'), 'none', 8),
+    'あ\r\n\r\n［＃３字下げ］＊\r\n\r\nか',
+  );
+  // any CRLF chapter decides; an all-LF book stays LF
+  assert.equal(concatBookText(files('あ\r\n', 'か\n'), 'none', 40), 'あ\r\n\r\nか');
+  assert.equal(concatBookText(files('あ\n', 'か\n'), 'none', 40), 'あ\n\nか');
+});
+
+test('renderBook: a CRLF chapter paginates exactly like its LF twin', () => {
+  const lf = 'あいう\n［＃ここから２字下げ］\nあ\n［＃ここで字下げ終わり］\n［＃縦中横］12\n［＃改ページ］\nか\n';
+  assert.equal(render(lf.replaceAll('\n', '\r\n'), { charsPerLine: 3 }), render(lf, { charsPerLine: 3 }));
+});
+
 // --- chapter divider (章区切り) --------------------------------------------------------
 
 const two = (a: string, b: string, divider?: string): BookInput =>
@@ -296,6 +315,7 @@ test('dual invariant: per-file render + glue == rendering the concatenated .txt'
     two('あ\n［＃改ページ］', '\nか', '＊'), // page-break suppression
     two('あ', 'か'), // no divider configured
     two('あ', 'か', '［＃３字下げ］◇'), // indented divider
+    two('あ\r\n\r\nい\r\n', 'か\r\n', '＊'), // CRLF chapters
   ];
   const strip = (h: string): string => bodyOf(h).replace(/ data-line="\d+"/g, '');
   for (const b of matrix) {

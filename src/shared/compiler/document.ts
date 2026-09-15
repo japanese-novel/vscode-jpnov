@@ -4,7 +4,7 @@ import type { BuildChrome } from './chrome.ts';
 import { emrProbe, stylesheet } from './css.ts';
 import type { PaperOrientation, PaperSize } from './geometry.ts';
 import { buildRows, paginate, pagesToHtml, type DisplayLine, type RenderPage, type Row } from './layout.ts';
-import { indentAnnotation, tokenize, VALUE_FIELD_PLACEHOLDERS, type ValueField } from './tokenizer.ts';
+import { indentAnnotation, splitLines, tokenize, VALUE_FIELD_PLACEHOLDERS, type ValueField } from './tokenizer.ts';
 
 /** 400字詰め原稿用紙 (20 字 × 20 行): the grid ［＃ここに「原稿用紙換算枚数」の値を表示］
  *  re-flows the body on. Tests derive from this, never write 20. */
@@ -31,12 +31,11 @@ export interface BookInput {
   } | undefined;
 }
 
-/** The first (or last) non-blank line of a chapter source, `\r`-stripped; null when none. */
+/** The first (or last) non-blank line of a chapter source (no terminator); null when none. */
 function boundaryLine(src: string, edge: 'first' | 'last'): string | null {
-  const lines = src.split('\n');
+  const lines = splitLines(src);
   const ordered = edge === 'first' ? lines : lines.reverse();
-  for (const raw of ordered) {
-    const line = raw.replace(/\r$/, '');
+  for (const line of ordered) {
     if (line.trim() !== '') {
       return line;
     }
@@ -107,7 +106,7 @@ function dividerLine(divider: string, charsPerLine: number | null): string {
  * joins newline-stripped chapter sources with `'\n' + glue`, and the HTML build inserts
  * `buildRows(tokenize(glue))` between the files' row batches — the leading `'\n'` belongs to
  * the txt seam only (it terminates the previous chapter's last line, which the HTML side has
- * already emitted), so the two outputs stay byte-faithful duals.
+ * already emitted), so the two outputs stay faithful duals.
  *
  * One blank line ALWAYS separates chapters. The divider line plus one more blank follows
  * only when a divider is configured AND the next chapter does not open with a 見出し (the
@@ -281,34 +280,29 @@ export function renderBook(opts: {
 }
 
 /**
- * Concatenates a book's `files[]` into ONE plain-text document — the byte-faithful dual of
- * {@link renderBook}. Each file's single trailing newline (the final-newline artifact) is
- * stripped, then adjacent files join with `'\n' + chapterGlue(...)`: the `'\n'` terminates
- * the previous chapter's last line, and the glue re-tokenizes into exactly the rows
- * `renderBook` inserts at that seam — cf. `buildRows`' `endLine`, which DROPS a trailing
- * empty line at end-of-input but KEEPS a genuine blank column on a real `\n` (so the glue's
- * own `"\n"` is one blank column, never a doubled one).
- *
- * Interior bytes pass through verbatim (no CRLF normalization): the tokenizer splits on `\n`
- * and treats a lone `\r` as a literal, exactly as the HTML build does. An empty book -> "".
- * (A wholly-empty middle file contributes one extra blank separator line compared to the
- * per-file render — a benign divergence, harmless for the Aozora `.txt` deliverable.)
- *
- * `autoTcy` is the ONE exception to byte-fidelity: `punctuationPairs` materializes the
- * 自動縦中横 rewrite per file (the same front door {@link renderBook} tokenizes through), so
- * the `.txt` carries explicit markers and round-trips idempotently. Pure + vscode-free.
+ * Concatenates a book's `files[]` into ONE plain-text document, the dual of {@link renderBook}:
+ * each file loses its single trailing newline, then files join with `'\n' + chapterGlue(...)`
+ * (the `'\n'` ends the previous chapter's last line; the glue re-tokenizes into exactly the rows
+ * the HTML build inserts at that seam). The output takes the manuscript's line endings: CRLF
+ * throughout when any chapter file is CRLF, else LF; a lone `\r` passes through. `autoTcy`
+ * materializes the 自動縦中横 rewrite per file so the `.txt` round-trips idempotently. An empty
+ * book -> "" (a wholly-empty middle file adds one extra blank line — benign). Pure + vscode-free.
  */
 export function concatBookText(
   book: BookInput,
   autoTcy: AutoTcyMode,
   charsPerLine: number,
 ): string {
-  const sources = book.files.map((file) => applyAutoTcy(file.src, autoTcy).replace(/\r?\n$/, ''));
-  return sources.reduce(
+  const eol = book.files.some((file) => file.src.includes('\r\n')) ? '\r\n' : '\n';
+  const sources = book.files.map((file) =>
+    applyAutoTcy(file.src.replace(/\r\n/g, '\n'), autoTcy).replace(/\n$/, ''),
+  );
+  const joined = sources.reduce(
     (acc, src, i) =>
       i === 0
         ? src
         : `${acc}\n${chapterGlue(sources[i - 1] ?? '', src, book.divider ?? '', charsPerLine)}${src}`,
     '',
   );
+  return eol === '\n' ? joined : joined.replace(/\n/g, eol);
 }

@@ -87,3 +87,9 @@ test('concatBookText materializes per file under punctuationPairs and round-trip
   // none keeps the byte-faithful concat (chapters separated by the one blank glue line).
   assert.equal(concatBookText(book, 'none', 40), '驚き!!だ\n\n次!?');
 });
+
+test('CRLF: the rewrite keeps the \\r; the postfix lands before it', () => {
+  const once = materializeAutoTcy('えっ!?\r\n次');
+  assert.equal(once, 'えっ!?［＃「!?」は縦中横］\r\n次');
+  assert.equal(materializeAutoTcy(once), once);
+});

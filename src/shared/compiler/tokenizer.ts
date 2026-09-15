@@ -544,6 +544,14 @@ function endOfLine(src: string, from: number): number {
   return src.charAt(end - 1) === '\r' ? end - 1 : end;
 }
 
+/**
+ * `text` cut at '\n' or '\r\n' (the '\r' dropped with it); a lone '\r' stays literal, as in
+ * {@link endOfLine}. Offset consumers walk `text` verbatim instead.
+ */
+export function splitLines(text: string): string[] {
+  return text.split(/\r?\n/);
+}
+
 export function tokenize(src: string): Token[] {
   const tokens: Token[] = [];
   let textBuf = '';
@@ -848,11 +856,11 @@ export function findTcyIssues(src: string): TcyIssue[] {
         break;
       case 'text':
         if (open !== null) {
-          const nl = token.text.indexOf('\n');
-          const part = nl === -1 ? token.text : token.text.slice(0, nl);
+          const parts = splitLines(token.text);
+          const part = parts[0] ?? '';
           contentLen += Array.from(part).length;
           contentEnd = offset + part.length;
-          if (nl !== -1) {
+          if (parts.length > 1) {
             closeAsUnterminated(); // the line break auto-closes the span (line-local)
           }
         }

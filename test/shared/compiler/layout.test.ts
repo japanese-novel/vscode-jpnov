@@ -1112,3 +1112,16 @@ test('値の表示: a postfix after a value field is left unjudged (the scan is 
   assert.deepEqual(targets('［＃ここに「タイトル」の値を表示］\nです［＃「ですす」に傍点］'), ['ですす']);
   assert.deepEqual(targets('です［＃「ですす」に傍点］'), ['ですす']);
 });
+
+// --------------------------------------------------------------- CRLF sources
+
+test('CRLF: a \\r\\n source lays out exactly like its LF twin', () => {
+  const lf = 'あいう\n［＃ここから２字下げ］\nあ\n［＃ここで字下げ終わり］\n［＃縦中横］12\n［＃改ページ］\nか\n';
+  const crlf = lf.replaceAll('\n', '\r\n');
+  assert.deepEqual(buildRows(tokenize(crlf)), buildRows(tokenize(lf)));
+  assert.equal(html(crlf), html(lf));
+  // no ghost cell: one column for 3 chars at cpl 3, no column for the directive line, digits-only 縦中横
+  assert.equal(pages('あいう\r\n', 3).flat().length, 1);
+  assert.doesNotMatch(html(crlf), /data-line="1"/);
+  assert.match(html(crlf), /<span class="tcy">12<\/span>/);
+});

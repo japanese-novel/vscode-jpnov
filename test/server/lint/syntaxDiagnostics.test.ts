@@ -147,6 +147,12 @@ test('縦中横 structural issues surface as Warnings with their codes', () => {
   assert.deepEqual(annotationDiagnostics(doc('令和［＃縦中横］12［＃縦中横終わり］年')), []);
 });
 
+test('縦中横: a CRLF \\r is not content (no tooLong on three digits)', () => {
+  const diags = annotationDiagnostics(doc('［＃縦中横］123\r\n次'));
+  assert.equal(diags.length, 1); // the line-end auto-close only
+  assert.deepEqual(diags[0]?.data, { code: 'syntax.unterminatedTcy' });
+});
+
 // --------------------------------------------------------------- postfix target Warnings
 
 test('an unresolved postfix target yields one Warning over the annotation, carrying the target', () => {

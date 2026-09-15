@@ -942,3 +942,24 @@ test('build: a missing chapter outranks a missing cover, so every format reports
     assert.deepEqual(result.errors[0]?.args, ['src/gone-chapter.jpnov'], `${format} names the chapter`);
   }
 });
+
+test('build: CRLF chapters — the txt keeps CRLF, the html equals the LF build', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'vol1.jpbook', 'src/a.jpnov\nsrc/b.jpnov');
+  const build = async (eol: string, format: 'txt' | 'html'): Promise<string> => {
+    await writeUnder(ws.dir, 'src/a.jpnov', `あいう${eol}`);
+    await writeUnder(ws.dir, 'src/b.jpnov', `かきく${eol}`);
+    const result: BuildResult = await handleBuild(boot().ctx, {
+      format,
+      settings: SETTINGS,
+      projectDirs: projectsFor(ws.uri),
+    });
+    assert.equal(result.ok, true);
+    const artifact = result.artifacts[0];
+    assert.ok(artifact !== undefined && artifact.kind !== 'epub');
+    return artifact.content;
+  };
+  assert.equal(await build('\r\n', 'txt'), 'あいう\r\n\r\nかきく');
+  assert.equal(await build('\n', 'txt'), 'あいう\n\nかきく');
+  assert.equal(await build('\r\n', 'html'), await build('\n', 'html'));
+});

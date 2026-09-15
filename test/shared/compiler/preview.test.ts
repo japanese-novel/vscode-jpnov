@@ -240,3 +240,8 @@ test('renderPreview: value annotations show the bookless placeholders (a templat
   assert.match(out, new RegExp(`<div class="line" data-line="1">${VALUE_FIELD_PLACEHOLDERS.author}</div>`));
   assert.match(out, new RegExp(`全${VALUE_FIELD_PLACEHOLDERS.totalPages}ページ`));
 });
+
+test('renderPreview: a CRLF source renders exactly like its LF twin', () => {
+  const lf = 'あいう\n［＃ここから２字下げ］\nあ\n［＃ここで字下げ終わり］\n［＃縦中横］12\n［＃改ページ］\nか\n';
+  assert.equal(preview(lf.replaceAll('\n', '\r\n'), { charsPerLine: 3 }), preview(lf, { charsPerLine: 3 }));
+});

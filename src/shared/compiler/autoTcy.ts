@@ -49,7 +49,7 @@ export function materializeAutoTcy(src: string): string {
       const skipTail = next?.kind === 'tcyPostfix' ? next.target : null;
       // The manual span is LINE-LOCAL: a line break inside the text closes it, so only the
       // first segment is exempt while the span is open; later segments scan normally.
-      const parts = token.text.split('\n');
+      const parts = token.text.split('\n'); // not splitLines: the rejoin keeps a CRLF '\r'
       const rewritten = parts.map((part, pi) => {
         const exempt = inSpan && pi === 0;
         if (parts.length > 1 && pi === 0) {
