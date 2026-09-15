@@ -212,13 +212,18 @@ const MEASURE_SCRIPT = `<script>
     };
     emphDev = gx(lines[1]) - (gx(lines[0]) - lines[0].getBoundingClientRect().width);
   }
-  // Ruby lane containment: the reading lane is out of flow, so a ruby box is exactly its base
-  // cells tall; a lane that joined the flow (WebKit's <rt> rule, #65) would inflate it.
+  // Ruby lane containment: the reading lane is out of flow, so a ruby box is exactly as tall
+  // as its base spans; a lane that joined the flow (WebKit's <rt> rule, #65) adds the reading.
+  // Measured against the base spans, not em: a fallback font without vertical metrics
+  // advances a glyph by more than 1em (CI has no Hiragino).
   const ruby = document.querySelector('ruby');
+  const baseExtent = ruby
+    ? [...ruby.children].filter((c) => c.tagName === 'SPAN').reduce((n, s) => n + s.getBoundingClientRect().height, 0)
+    : 0;
   const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
   document.documentElement.setAttribute('${MARKER}', JSON.stringify({
     emphDev,
-    rubyExtentEm: ruby ? ruby.getBoundingClientRect().height / rootPx : 0,
+    rubyLaneSpillPx: ruby ? ruby.getBoundingClientRect().height - baseExtent : 0,
     writingMode: grid ? getComputedStyle(grid).writingMode : 'missing',
     rootFontSize: rootPx,
     pageWidth: pageRect.width,
@@ -235,8 +240,8 @@ const MEASURE_SCRIPT = `<script>
 interface VerifyMetrics {
   /** 傍点 glyph-lattice deviation in px, or null when line 1 carries no `.emr`. */
   readonly emphDev: number | null;
-  /** The first ruby box's inline extent in root em — its base cell count while the lane stays out of flow. */
-  readonly rubyExtentEm: number;
+  /** The first ruby box's inline extent beyond its base spans, in px — 0 while the lane stays out of flow. */
+  readonly rubyLaneSpillPx: number;
   readonly writingMode: string;
   readonly rootFontSize: number;
   readonly pageWidth: number;
@@ -365,10 +370,10 @@ test('the built page renders vertically in a headless Chromium', BROWSER_SKIP, a
     `a line must paint at least one character tall (painted ${String(metrics.paintedExtent)}px)`,
   );
   assert.ok(metrics.rubyCount >= 1, 'the ruby annotation must reach the DOM');
-  // 夜霧《よぎり》: a 2-cell base under a 3-kana reading — the lane must not inflate the box.
+  // 夜霧《よぎり》: the 3-kana reading lane must not inflate the box beyond its 2-glyph base.
   assert.ok(
-    Math.abs(metrics.rubyExtentEm - 2) < 0.05,
-    `a ruby box must be exactly its base cells tall (${String(metrics.rubyExtentEm)}em)`,
+    Math.abs(metrics.rubyLaneSpillPx) < 0.5,
+    `a ruby box must be exactly as tall as its base spans (lane spill ${String(metrics.rubyLaneSpillPx)}px)`,
   );
   assert.ok(metrics.tcyCount >= 2, 'both 縦中横 units must reach the DOM');
 });
