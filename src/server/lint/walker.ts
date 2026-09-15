@@ -139,7 +139,7 @@ class LineBuilder {
 /**
  * Walks `src` and yields one {@link LintLine} per source line, INCLUDING the final line (even when
  * empty — the line after the final terminator; what it means is each rule's call). Line numbers match LSP positions for '\n' / '\r\n'
- * sources; a lone '\r' also ends a line here (layout.ts counts only '\n' — pathological input).
+ * sources; a lone '\r' also ends a line here (layout.ts keeps it literal — pathological input).
  */
 export function* walkLines(src: string): Generator<LintLine, void, undefined> {
   // Cross-line state (the "big state machine").

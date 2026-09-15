@@ -18,7 +18,7 @@ import type { DashMode, KinsokuMode } from '../config/types.ts';
 import type { BuildChrome, PageNumberPosition } from './chrome.ts';
 import { resolveStyle } from './emphasis.ts';
 import { escapeComment, escapeHtml } from './escape.ts';
-import { tokenize, VALUE_FIELD_PLACEHOLDERS, type HeadingLevel, type Token, type ValueField } from './tokenizer.ts';
+import { splitLines, tokenize, VALUE_FIELD_PLACEHOLDERS, type HeadingLevel, type Token, type ValueField } from './tokenizer.ts';
 
 /**
  * One laid-out glyph group: a char (1 cell), a ruby unit (base char count, atomic), or a
@@ -470,7 +470,7 @@ export function buildRows(
     }
     switch (token.kind) {
       case 'text': {
-        const parts = token.text.split('\n');
+        const parts = splitLines(token.text);
         for (let idx = 0; idx < parts.length; idx += 1) {
           if (idx > 0) {
             flushTcy(); // an open ［＃縦中横］ auto-closes at its line end (line-local)

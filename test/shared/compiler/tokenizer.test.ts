@@ -4,6 +4,7 @@ import {
   findBrokenAnnotations,
   findTcyIssues,
   findUnpairedBlocks,
+  splitLines,
   tokenize,
   VALUE_FIELD_BY_NAME,
   VALUE_FIELD_PLACEHOLDERS,
@@ -642,4 +643,22 @@ test('findUnpairedBlocks: 見出し blocks ride their own channel', () => {
     findUnpairedBlocks('［＃ここから大見出し］\n［＃ここから中見出し］\nA\n［＃ここで小見出し終わり］'),
     [],
   );
+});
+
+// --------------------------------------------------------------- splitLines
+
+test('splitLines: \\n and \\r\\n terminate; a lone \\r stays literal', () => {
+  assert.deepEqual(splitLines('あ\r\nい\n\r\n'), ['あ', 'い', '', '']);
+  assert.deepEqual(splitLines('あ\rい'), ['あ\rい']);
+  assert.deepEqual(splitLines(''), ['']);
+});
+
+test('findTcyIssues: a CRLF \\r is neither content nor inside the range', () => {
+  // the line-end auto-close only, no tooLong
+  assert.deepEqual(findTcyIssues('［＃縦中横］123\r\n次'), [{ start: 0, end: 6, kind: 'unterminated' }]);
+  // the range stops before the \r
+  assert.deepEqual(findTcyIssues('［＃縦中横］1234\r\n次'), [
+    { start: 0, end: 6, kind: 'unterminated' },
+    { start: 6, end: 10, kind: 'tooLong' },
+  ]);
 });

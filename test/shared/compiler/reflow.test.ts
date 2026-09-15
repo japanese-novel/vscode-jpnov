@@ -30,6 +30,11 @@ test('a blank source line survives as <p><br/></p>, 1:1, never merged', () => {
   assert.equal(body('あ\n\n\nい'), '<p>あ</p><p><br/></p><p><br/></p><p>い</p>');
 });
 
+test('CRLF: a blank \\r\\n line is <p><br/></p>; a 見出し label carries no \\r', () => {
+  assert.equal(body('あ\r\n\r\nい'), '<p>あ</p><p><br/></p><p>い</p>');
+  assert.equal(segs('序章［＃「序章」は大見出し］\r\n本文')[0]?.heading, '序章');
+});
+
 test('a comment-only line keeps its blank column, comment inside the <p>', () => {
   const b = body('あ\n［＃謎の注記］\nい');
   assert.equal(b, '<p>あ</p><p><!--謎の注記--><br/></p><p>い</p>');

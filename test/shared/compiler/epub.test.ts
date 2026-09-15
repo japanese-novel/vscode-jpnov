@@ -144,3 +144,10 @@ test('a value annotation reflows as its bookless placeholder (EPUB has no page c
   const xhtml = out.find((m) => m.name === 'OEBPS/text/ch001.xhtml')?.content ?? '';
   assert.match(xhtml, new RegExp(`全${VALUE_FIELD_PLACEHOLDERS.totalPages}ページ`));
 });
+
+test('CRLF chapters yield the same members as their LF twins', () => {
+  const crlf: BookInput = {
+    files: TWO_CHAPTERS.files.map((f) => ({ ...f, src: f.src.replaceAll('\n', '\r\n') })),
+  };
+  assert.deepEqual(members(crlf), members(TWO_CHAPTERS));
+});
