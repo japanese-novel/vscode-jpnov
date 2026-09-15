@@ -8,13 +8,10 @@
  */
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { HEADER_BAND, fitPaper } from '../../src/shared/compiler/geometry.ts';
@@ -28,6 +25,7 @@ import type {
 } from '../../src/shared/protocol.ts';
 
 import { resolveBrowserExecutable } from './_browser.ts';
+import { MARKER, measurePage } from './_headless.ts';
 import { LspClient } from './lsp.ts';
 
 const SERVER_MODULE = fileURLToPath(new URL('../../dist/server/server.js', import.meta.url));
@@ -179,8 +177,6 @@ test('jpnov/listBooks + jpnov/build round-trip a real workspace over the wire', 
   builtHtml = htmlArtifact.content;
 });
 
-const MARKER = 'data-verify';
-
 /**
  * Runs SYNCHRONOUSLY at parse time (getBoundingClientRect forces layout), because
  * `--dump-dom` serializes right at document load — a load/rAF listener would fire too late
@@ -254,82 +250,12 @@ interface VerifyMetrics {
   readonly tcyCount: number;
 }
 
-/** The serializer escapes the attribute value; only `"` and `&` can occur in the JSON. */
-const unescapeAttr = (s: string): string => s.replaceAll('&quot;', '"').replaceAll('&amp;', '&');
-
-/**
- * Dumps the page DOM headlessly and extracts the marker attribute. The browser process
- * lingers after dumping, so poll the collected stdout for the complete marker, then kill.
- */
-async function dumpMarker(browserPath: string, pageUrl: string, profileDir: string): Promise<string> {
-  const ciFlags = process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
-  const child = spawn(browserPath, [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-first-run',
-    '--disable-extensions',
-    ...ciFlags,
-    `--user-data-dir=${profileDir}`,
-    '--window-size=900,700',
-    '--timeout=3000',
-    '--dump-dom',
-    pageUrl,
-  ], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  let out = '';
-  let err = '';
-  child.stdout.on('data', (chunk: string) => {
-    out += chunk;
-  });
-  child.stderr.on('data', (chunk: string) => {
-    err += chunk;
-  });
-
-  const marker = new RegExp(`${MARKER}="([^"]*)"`);
-  const deadline = Date.now() + 90_000;
-  try {
-    while (Date.now() < deadline) {
-      const found = marker.exec(out);
-      if (found) {
-        return found[1] ?? '';
-      }
-      if (child.exitCode !== null) {
-        break;
-      }
-      await delay(100);
-    }
-  } finally {
-    if (child.pid !== undefined) {
-      try {
-        process.kill(-child.pid, 'SIGKILL');
-      } catch {
-        child.kill('SIGKILL');
-      }
-      if (child.exitCode === null) {
-        await once(child, 'exit');
-      }
-    }
-  }
-  throw new Error(`no ${MARKER} marker in browser output.\nstderr tail: ${err.slice(-2000)}`);
-}
-
-/** Injects `script` before </body>, dumps the page headlessly, and returns the marker JSON text. */
-async function measurePage(browserPath: string, html: string, script: string, prefix: string): Promise<string> {
-  const pageDir = await mkdtemp(join(tmpdir(), `jpnov-e2e-${prefix}-`));
-  cleanups.push(pageDir);
-  const pagePath = join(pageDir, `${prefix}.html`);
-  await writeFile(pagePath, html.replace('</body>', `${script}</body>`), 'utf8');
-  const profileDir = await mkdtemp(join(pageDir, 'profile-'));
-  return unescapeAttr(await dumpMarker(browserPath, pathToFileURL(pagePath).href, profileDir));
-}
-
 test('the built page renders vertically in a headless Chromium', BROWSER_SKIP, async () => {
   assert.ok(browser, 'JPNOV_E2E_REQUIRE_BROWSER=1 but no Chromium-family browser was found');
   assert.ok(builtHtml, 'the build leg must have produced an HTML artifact');
   assert.ok(builtHtml.includes('</body>'), 'built HTML must close <body> for script injection');
 
-  const metrics = JSON.parse(await measurePage(browser, builtHtml, MEASURE_SCRIPT, 'hon')) as VerifyMetrics;
+  const metrics = JSON.parse(await measurePage(browser, builtHtml, MEASURE_SCRIPT, 'hon', cleanups)) as VerifyMetrics;
 
   assert.equal(metrics.writingMode, 'vertical-rl', 'the page grid must flow vertical-rl');
   // Paper fit: on screen the page border box IS the physical paper (root font in mm) —
@@ -410,7 +336,7 @@ test('the built page follows every 行送り tier (column width and fitted font 
       orientation: HTML_SETTINGS.paperOrientation,
     });
     const prefix = `pitch-${String(linePitch).replace('.', '_')}`;
-    const m = JSON.parse(await measurePage(browser, artifact.content, MEASURE_SCRIPT, prefix)) as VerifyMetrics;
+    const m = JSON.parse(await measurePage(browser, artifact.content, MEASURE_SCRIPT, prefix, cleanups)) as VerifyMetrics;
     assert.ok(
       Math.abs(m.rootFontSize - fit.fontMm * MM_TO_PX) < 0.05,
       `@${String(linePitch)}: root font must track the pitch-fitted size (${String(m.rootFontSize)}px vs ${String(fit.fontMm * MM_TO_PX)}px)`,
@@ -483,7 +409,7 @@ test('a ダッシュ pair advances exactly two cells as bare glyphs', BROWSER_SK
     text: DASH_TEXT,
     settings: PREVIEW_SETTINGS,
   });
-  const m = JSON.parse(await measurePage(browser, html, DASH_MEASURE_SCRIPT, 'dash')) as DashMetrics;
+  const m = JSON.parse(await measurePage(browser, html, DASH_MEASURE_SCRIPT, 'dash', cleanups)) as DashMetrics;
   // The .b span wraps exactly the translated pair; a full-width em dash advances one cell, so
   // any font substitution or kerning collapse shows up as a broken 2em extent.
   assert.ok(
@@ -539,7 +465,7 @@ test('a ［＃改ページ］-shortened preview segment frames and rules a full 
     });
 
     const prefix = `edge-${String(linePitch).replace('.', '_')}`;
-    const m = JSON.parse(await measurePage(browser, html, EDGE_MEASURE_SCRIPT, prefix)) as EdgeMetrics;
+    const m = JSON.parse(await measurePage(browser, html, EDGE_MEASURE_SCRIPT, prefix, cleanups)) as EdgeMetrics;
 
     assert.equal(
       m.ruleLayers,

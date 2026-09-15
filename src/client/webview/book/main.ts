@@ -7,9 +7,10 @@
  * echoed, but each `state` push is authoritative and reconciles the view.
  *
  * Because every push rebuilds the DOM, cross-render continuity rides on two mechanisms: `data-fk`
- * focus keys captured/restored around each rebuild (capture/restore/focusFk), and applyControls(),
- * which owns the list footer's disabled state after each list render and optimistic toggle.
- * Localized strings arrive once via the host's `__INIT` bootstrap.
+ * focus keys captured/restored around each rebuild (capture/restore/focusKeys; each control also
+ * declares its `fallback` keys for when it vanishes or goes disabled), and applyControls(), which
+ * owns the list footer's disabled state after each list render and optimistic toggle. Localized
+ * strings arrive once via the host's `__INIT` bootstrap.
  */
 import type {
   BooksInbound,
@@ -95,14 +96,19 @@ interface Props {
   readonly 'aria-expanded'?: boolean;
   readonly 'aria-hidden'?: true;
   readonly 'data-fk'?: string;
+  /** Focus keys to try, in order, when this control is gone or disabled after a rebuild; `undefined`
+   * entries (absent neighbours) are dropped. Never a destructive or build action. */
+  readonly fallback?: readonly (string | undefined)[];
   readonly onClick?: () => void;
 }
 /** A child of `h()`; `false` is skipped so call sites can inline `cond && h(...)` conditionals. */
 type Child = Node | string | false;
 
 /** The Props keys h() writes with `setAttribute`; booleans serialize as 'true'/'false'. */
-const ATTRS: readonly Exclude<keyof Props, 'onClick'>[] =
+const ATTRS: readonly Exclude<keyof Props, 'onClick' | 'fallback'>[] =
   ['class', 'title', 'role', 'type', 'aria-label', 'aria-expanded', 'aria-hidden', 'data-fk'];
+/** Each control's declared `fallback` keys, read by capture() off the outgoing DOM. */
+const FALLBACK = new WeakMap<Element, readonly string[]>();
 
 function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -118,6 +124,9 @@ function h<K extends keyof HTMLElementTagNameMap>(
   }
   if (props.onClick !== undefined) {
     el.addEventListener('click', props.onClick);
+  }
+  if (props.fallback !== undefined) {
+    FALLBACK.set(el, props.fallback.filter((k): k is string => k !== undefined));
   }
   for (const c of children) {
     if (c !== false) {
@@ -173,10 +182,14 @@ function glyph(name: keyof typeof GLYPH): SVGSVGElement {
 /** `data-fk` is required — every icon button participates in the focus-restore system. */
 interface BtnExtra {
   readonly 'data-fk': string;
+  readonly fallback?: readonly (string | undefined)[];
   readonly disabled?: boolean;
 }
 function iconBtn(name: IconName, aria: string, fn: () => void, extra: BtnExtra): HTMLButtonElement {
-  const b = h('button', { class: 'iconbtn', 'aria-label': aria, title: aria, onClick: fn, 'data-fk': extra['data-fk'] }, icon(name));
+  const b = h('button', {
+    class: 'iconbtn', 'aria-label': aria, title: aria, onClick: fn,
+    'data-fk': extra['data-fk'], fallback: extra.fallback ?? [],
+  }, icon(name));
   b.disabled = extra.disabled ?? false;
   return b;
 }
@@ -188,48 +201,31 @@ function scroller(): Element | null {
   return app.querySelector('.scroll');
 }
 
-/** A captured focus key + scroll offset, restored across a host-driven re-render. */
+/** The focus keys to try (own key first, then its declared fallbacks) + scroll offset, restored
+ * across a host-driven re-render. */
 interface Capture {
-  readonly key: string | null;
+  readonly keys: readonly string[];
   readonly top: number;
 }
 // Focus + scroll preservation across host-driven re-renders (the detail edit loop rebuilds the DOM).
 function capture(): Capture {
   const a = document.activeElement;
-  const key = a !== null ? a.getAttribute('data-fk') : null;
+  const key = a === null ? null : a.getAttribute('data-fk');
+  const keys = a === null || key === null ? [] : [key, ...(FALLBACK.get(a) ?? [])];
   const sc = scroller();
-  return { key, top: sc ? sc.scrollTop : 0 };
+  return { keys, top: sc ? sc.scrollTop : 0 };
 }
-function focusFk(key: string | null): void {
-  if (key === null) {
-    return;
-  }
-  const els = app.querySelectorAll<HTMLButtonElement>('[data-fk]');
-  let idx = -1;
-  for (let i = 0; i < els.length; i++) {
-    if (els[i]?.getAttribute('data-fk') === key) {
-      idx = i;
-      break;
+/** Focuses the first key whose control exists and is enabled; none → focus stays where the rebuild left it. */
+function focusKeys(keys: readonly string[]): void {
+  const byKey = new Map<string, HTMLButtonElement>();
+  for (const el of app.querySelectorAll<HTMLButtonElement>('[data-fk]')) {
+    const k = el.getAttribute('data-fk');
+    if (k !== null) {
+      byKey.set(k, el);
     }
   }
-  if (idx < 0) {
-    return;
-  }
-  const target = els[idx];
-  if (target !== undefined && !target.disabled) {
-    target.focus();
-    return;
-  }
-  // The target went disabled (e.g. Select-all after selecting all) — focus the nearest enabled control.
-  for (let j = idx + 1; j < els.length; j++) {
-    const el = els[j];
-    if (el !== undefined && !el.disabled) {
-      el.focus();
-      return;
-    }
-  }
-  for (let k = idx - 1; k >= 0; k--) {
-    const el = els[k];
+  for (const key of keys) {
+    const el = byKey.get(key);
     if (el !== undefined && !el.disabled) {
       el.focus();
       return;
@@ -241,7 +237,7 @@ function restore(cap: Capture): void {
   if (sc) {
     sc.scrollTop = cap.top;
   }
-  focusFk(cap.key);
+  focusKeys(cap.keys);
 }
 function counts(): { selected: number; total: number } {
   let sel = 0;
@@ -322,10 +318,14 @@ function renderList(): void {
     return;
   }
   const groups = state?.groups ?? [];
+  const flat = groups.flatMap((g) => g.books); // row neighbours run across group boundaries
   app.replaceChildren(
     scrollPane(h('div', { class: 'list' }, ...groups.flatMap((g) => [
       g.rootLabel !== null && h('div', { class: 'group-header' }, g.rootLabel),
-      ...g.books.map((b) => bookRow(b)),
+      ...g.books.map((b) => {
+        const i = flat.indexOf(b);
+        return bookRow(b, flat[i + 1], flat[i - 1]);
+      }),
     ]))),
     footer(),
   );
@@ -340,7 +340,13 @@ function paintChecked(cb: HTMLButtonElement, checked: boolean): void {
   cb.replaceChildren(icon(checked ? 'cbOn' : 'cbOff'));
 }
 
-function bookRow(bk: BookVM): HTMLElement {
+/** A neighbouring book's row key, or undefined past the list's edge. */
+function bookKey(prefix: 'cb:' | 'book:', b: BookVM | undefined): string | undefined {
+  return b === undefined ? undefined : prefix + b.uri;
+}
+
+// `next`/`prev`: the rows focus moves to once this one is gone (the book deleted), staying in its column.
+function bookRow(bk: BookVM, next: BookVM | undefined, prev: BookVM | undefined): HTMLElement {
   // Custom checkbox: a button with role=checkbox. The glyph is always in the DOM (hidden until hover
   // or checked); the .on class tints the tile and swaps the outline circle for the filled one.
   const cb = h('button', {
@@ -348,6 +354,7 @@ function bookRow(bk: BookVM): HTMLElement {
     role: 'checkbox',
     'aria-label': L.selectBook + ': ' + bk.title,
     'data-fk': 'cb:' + bk.uri,
+    fallback: [bookKey('cb:', next), bookKey('cb:', prev)],
   });
   paintChecked(cb, bk.checked);
   cb.addEventListener('click', () => {
@@ -366,6 +373,7 @@ function bookRow(bk: BookVM): HTMLElement {
       class: 'main',
       'aria-label': bk.title,
       'data-fk': 'book:' + bk.uri,
+      fallback: [bookKey('book:', next), bookKey('book:', prev)],
       onClick: () => {
         detailWanted = true;
         post({ type: 'openDetail', uri: bk.uri });
@@ -382,21 +390,25 @@ function footer(buildUri?: string): HTMLElement {
   const build = (format: BuildAction): BooksOutbound =>
     buildUri === undefined ? { type: 'build', format } : { type: 'build', format, uri: buildUri };
   return h('div', { class: 'footer' },
-    // Justified to the two edges: Deselect on the left, Select on the right.
+    // Justified to the two edges: Deselect on the left, Select on the right. Each link's own click
+    // disables it (none / all selected), so focus crosses to the other one.
     buildUri === undefined &&
       h('div', { class: 'selrow' },
-        h('button', { class: 'link', 'data-fk': 'deselall', onClick: poster({ type: 'deselectAll' }) }, L.deselectAll),
-        h('button', { class: 'link', 'data-fk': 'selall', onClick: poster({ type: 'selectAll' }) }, L.selectAll)),
+        h('button', { class: 'link', 'data-fk': 'deselall', fallback: ['selall'], onClick: poster({ type: 'deselectAll' }) },
+          L.deselectAll),
+        h('button', { class: 'link', 'data-fk': 'selall', fallback: ['deselall'], onClick: poster({ type: 'selectAll' }) },
+          L.selectAll)),
+    // Build buttons go disabled only on the list (the last checked book vanished); Select all is the way back.
     // Icon + text primary: a printer glyph rides the print button.
-    h('button', { class: 'btn primary', 'data-fk': 'bprint', onClick: poster(build('print')) },
+    h('button', { class: 'btn primary', 'data-fk': 'bprint', fallback: ['selall'], onClick: poster(build('print')) },
       glyph('print'), L.print),
     // The text button keeps the row's growing flex; EPUB is an icon button whose
     // accessible name doubles as the hover tooltip.
     h('div', { class: 'btnrow' },
-      h('button', { class: 'btn', 'data-fk': 'btxt', onClick: poster(build('txt')) }, L.buildTxt),
+      h('button', { class: 'btn', 'data-fk': 'btxt', fallback: ['selall'], onClick: poster(build('txt')) }, L.buildTxt),
       h('button', {
         class: 'btn icon', 'data-fk': 'bepub', title: L.buildEpub, 'aria-label': L.buildEpub,
-        onClick: poster(build('epub')),
+        fallback: ['selall'], onClick: poster(build('epub')),
       }, glyph('epub'))),
     revealRow(),
   );
@@ -436,7 +448,7 @@ function renderDetail(): void {
       detail = null;
       post({ type: 'closeDetail' });
       render();
-      focusFk('book:' + (lastDetailUri ?? ''));
+      focusKeys(['book:' + (lastDetailUri ?? '')]);
     }, { 'data-fk': 'back' }),
     h('div', { class: 'dtitle' }, d.title));
   // Book Info: collapsible (collapsed by default), ABOVE the lists.
@@ -467,8 +479,9 @@ function disclosure(open: boolean, title: string, fkKey: string, flip: () => voi
   h('span', { class: 'stitle' }, title));
 }
 
+type EntryPart = 'open' | 'up' | 'down' | 'rm';
 /** Focus keys carry the list: a file may be both a cover and a chapter, so its URI alone is not unique. */
-function fk(list: EntryList, part: 'open' | 'up' | 'down' | 'rm', fileUri: string): string {
+function fk(list: EntryList, part: EntryPart, fileUri: string): string {
   return list + ':' + part + ':' + fileUri;
 }
 
@@ -493,7 +506,7 @@ function listSection(d: DetailMessage, list: EntryList): HTMLElement {
   if (open) {
     body.push(
       entries.length === 0 && h('div', { class: 'empty' }, text.empty),
-      ...entries.map((e, i) => entryRow(d, list, e, i, entries.length)),
+      ...entries.map((e, i) => entryRow(d, list, e, i, entries)),
       h('button', {
         class: 'row action',
         'data-fk': list + ':new',
@@ -508,15 +521,21 @@ function listSection(d: DetailMessage, list: EntryList): HTMLElement {
     ...body);
 }
 
-function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, count: number): HTMLElement {
+function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, entries: readonly EntryVM[]): HTMLElement {
   const grip = icon('grip', 'grip');
+  const key = (part: EntryPart): string => fk(list, part, e.fileUri);
+  // Once this row is gone (removed, or dropped by an edit) focus goes to the next row, which slides
+  // into its place, else the previous, else the list header's add button.
+  const openOf = (n: EntryVM | undefined): string | undefined => (n === undefined ? undefined : fk(list, 'open', n.fileUri));
+  const vanished = [openOf(entries[idx + 1]), openOf(entries[idx - 1]), list + ':add'];
   const row = h('div', { class: 'row entry' + (e.missing ? ' missing' : '') },
     grip,
     h('button', {
       class: 'emain',
       title: e.missing ? (L.missing + ': ' + e.name) : LIST_TEXT[list].open,
       'aria-label': e.name,
-      'data-fk': fk(list, 'open', e.fileUri),
+      'data-fk': key('open'),
+      fallback: vanished,
       onClick: poster({ type: 'openFile', uri: e.fileUri }),
     },
     e.missing && icon('err', 'err'),
@@ -525,13 +544,14 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, co
         e.folder !== '' && h('span', { class: 'dir' }, e.folder + '/'),
         e.name))),
     // Focus keys use the entry's fileUri (stable across a move) so keyboard focus follows the row.
+    // An arrow disabled at the list's edge hands focus to the other arrow, then the row — never to Remove.
     h('div', { class: 'acts' },
       iconBtn('up', L.moveUp, poster({ type: 'moveEntry', uri: d.uri, list, line: e.line, dir: -1 }),
-        { 'data-fk': fk(list, 'up', e.fileUri), disabled: idx === 0 }),
+        { 'data-fk': key('up'), fallback: [key('down'), key('open'), ...vanished], disabled: idx === 0 }),
       iconBtn('down', L.moveDown, poster({ type: 'moveEntry', uri: d.uri, list, line: e.line, dir: 1 }),
-        { 'data-fk': fk(list, 'down', e.fileUri), disabled: idx === count - 1 }),
+        { 'data-fk': key('down'), fallback: [key('up'), key('open'), ...vanished], disabled: idx === entries.length - 1 }),
       iconBtn('close', L.remove, poster({ type: 'removeEntry', uri: d.uri, list, line: e.line }),
-        { 'data-fk': fk(list, 'rm', e.fileUri) })));
+        { 'data-fk': key('rm'), fallback: vanished })));
 
   // Drag wiring attaches after construction — the handlers mutate `row` from both elements.
   grip.draggable = true;
@@ -643,16 +663,18 @@ window.addEventListener('message', (e: MessageEvent) => {
         infoOpen = false; // a freshly opened book folds Book Info; the cover list opens only to show an error
         coverOpen = troubled;
         render();
-        focusFk('back');
+        focusKeys(['back']);
       }
       break;
     }
     case 'closeDetail':
+      // Precedes the list re-push that drops a vanished book (view.ts refresh()), so its row is still
+      // here to take focus; the next `state` then moves focus on through the row's fallback keys.
       detailWanted = false;
       screen = 'list';
       detail = null;
       render();
-      focusFk('book:' + (lastDetailUri ?? ''));
+      focusKeys(['book:' + (lastDetailUri ?? '')]);
       break;
   }
 });
