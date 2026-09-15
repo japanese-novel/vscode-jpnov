@@ -16,11 +16,11 @@
   ],
   "homepage": "https://jpnov.com",
   "bugs": {
-    "url": "https://github.com/asagirimihatsu/vscode-jpnov/issues"
+    "url": "https://github.com/japanese-novel/vscode-jpnov/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/asagirimihatsu/vscode-jpnov.git"
+    "url": "https://github.com/japanese-novel/vscode-jpnov.git"
   },
   "license": "MIT",
   "author": "Mihatsu Asagiri",
