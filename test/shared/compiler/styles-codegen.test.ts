@@ -61,23 +61,27 @@ function cssValue(css: string, selector: string, prop: string, within?: string):
 test('the .css geometry literals equal the geometry.ts constants (paper-fit double-home guard)', () => {
   const buildBase = read('build.base.css');
 
-  // FOLIO_BAND: the always-reserved bottom band.
-  assert.equal(cssValue(buildBase, '.page', 'padding-inline-end'), FOLIO_BAND);
+  // The sheet's physical band padding shorthand: top --htop (the header/line-number bands),
+  // right SIDE_PAD, bottom FOLIO_BAND (the always-reserved folio band), left SIDE_PAD.
+  const pad = /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) ([\d.]+)em ([\d.]+)em ([\d.]+)em[;}]/.exec(buildBase);
+  assert.ok(pad !== null, '.page{padding:calc(var(--htop)*1em) <side>em <folio>em <side>em} not found');
+  assert.equal(Number.parseFloat(pad[2] ?? ''), FOLIO_BAND);
   // …and its one DERIVED literal: the outset frame's bottom inset in build.edge.css is
   // FOLIO_BAND − EDGE_INSET; a change to either constant could silently leave it behind —
   // guard it here.
   assert.equal(cssValue(read('build.edge.css'), '.page::before', 'bottom'), FOLIO_BAND - EDGE_INSET);
 
-  // Print margin: pinned to ZERO on all four sides — the paper inset rides the TS-emitted
-  // border (geometry.ts fitPaper), so any non-zero print margin would push the border box
-  // (== the paper) past the @page box. PRINT_MARGIN lives only in the fit math now.
+  // Print margin: the vertical sides pinned to ZERO — the paper inset rides the TS-emitted
+  // border (geometry.ts fitPaper), so any vertical print margin would push the border box
+  // (== the paper) past the @page box; the horizontal `auto` only centres the rounding
+  // slack. PRINT_MARGIN lives only in the fit math now.
   assert.equal(cssValue(buildBase, '.page', 'margin', '@media print'), 0);
 
   // SIDE_PAD: the sheet's physical left/right padding (fitPaper's block-axis sheet size), the
   // outset frame's side insets (flush with the grid's side columns), and its one derived
   // literal — the folio corners at SIDE_PAD + EDGE_INSET (just inside the frame line).
-  assert.equal(cssValue(buildBase, '.page', 'padding-block-start'), SIDE_PAD);
-  assert.equal(cssValue(buildBase, '.page', 'padding-block-end'), SIDE_PAD);
+  assert.equal(Number.parseFloat(pad[1] ?? ''), SIDE_PAD);
+  assert.equal(Number.parseFloat(pad[3] ?? ''), SIDE_PAD);
   assert.equal(cssValue(read('build.edge.css'), '.page::before', 'left'), SIDE_PAD);
   assert.equal(cssValue(read('build.edge.css'), '.page::before', 'right'), SIDE_PAD);
   assert.equal(cssValue(read('build.folio.css'), '.pn.r', 'right'), SIDE_PAD + EDGE_INSET);
@@ -112,7 +116,7 @@ test('the pitch-bearing fragment sites all read var(--pitch), and no literal pit
   assert.ok(read('preview.base.css').includes('line-height:var(--pitch);'), 'preview html line-height must read var(--pitch)');
   assert.ok(read('preview.base.css').includes('.line{block-size:calc(var(--pitch)*1em);'), 'preview .line must read var(--pitch)');
   assert.ok(read('build.base.css').includes('line-height:var(--pitch);'), 'build .page line-height must read var(--pitch)');
-  assert.ok(read('build.base.css').includes('block-size:calc(var(--lpp)*var(--pitch)*1em);'), 'build .page extent must read var(--pitch)');
+  assert.ok(read('build.base.css').includes('width:calc(var(--lpp)*var(--pitch)*1em);'), 'build .page extent must read var(--pitch)');
   assert.ok(read('build.base.css').includes('.line{block-size:calc(var(--pitch)*1em);'), 'build .line must read var(--pitch)');
   // Tripwire: a bare pitch number sneaking back into a pitch-bearing fragment would silently
   // detach that site from the setting (comments excepted — they may name the tiers).

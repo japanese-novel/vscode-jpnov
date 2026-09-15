@@ -123,7 +123,7 @@ test('jpnov/renderFile renders ruby, 縦中横, and the pagebreak marker over th
 
   assert.ok(html.includes('<ruby class="rr">'), 'ruby must render on the custom right lane');
   assert.ok(
-    html.includes('<rt><span>よ</span><span>ぎ</span><span>り</span></rt>'),
+    html.includes('<rt><span><span>よ</span><span>ぎ</span><span>り</span></span></rt>'),
     'the reading must survive as per-character cells',
   );
   assert.ok(!html.includes('《'), 'the Aozora reading brackets must be consumed');
@@ -189,6 +189,7 @@ const MARKER = 'data-verify';
 const MEASURE_SCRIPT = `<script>
 (() => {
   const page = document.querySelector('.page');
+  const grid = document.querySelector('.grid');
   const pageRect = page ? page.getBoundingClientRect() : { width: 0, height: 0 };
   const line = document.querySelector('.line');
   let painted = 0;
@@ -211,10 +212,20 @@ const MEASURE_SCRIPT = `<script>
     };
     emphDev = gx(lines[1]) - (gx(lines[0]) - lines[0].getBoundingClientRect().width);
   }
+  // Ruby lane containment: the reading lane is out of flow, so a ruby box is exactly as tall
+  // as its base spans; a lane that joined the flow (WebKit's <rt> rule, #65) adds the reading.
+  // Measured against the base spans, not em: a fallback font without vertical metrics
+  // advances a glyph by more than 1em (CI has no Hiragino).
+  const ruby = document.querySelector('ruby');
+  const baseExtent = ruby
+    ? [...ruby.children].filter((c) => c.tagName === 'SPAN').reduce((n, s) => n + s.getBoundingClientRect().height, 0)
+    : 0;
+  const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
   document.documentElement.setAttribute('${MARKER}', JSON.stringify({
     emphDev,
-    writingMode: page ? getComputedStyle(page).writingMode : 'missing',
-    rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+    rubyLaneSpillPx: ruby ? ruby.getBoundingClientRect().height - baseExtent : 0,
+    writingMode: grid ? getComputedStyle(grid).writingMode : 'missing',
+    rootFontSize: rootPx,
     pageWidth: pageRect.width,
     pageHeight: pageRect.height,
     lineCount: document.querySelectorAll('.line').length,
@@ -229,6 +240,8 @@ const MEASURE_SCRIPT = `<script>
 interface VerifyMetrics {
   /** 傍点 glyph-lattice deviation in px, or null when line 1 carries no `.emr`. */
   readonly emphDev: number | null;
+  /** The first ruby box's inline extent beyond its base spans, in px — 0 while the lane stays out of flow. */
+  readonly rubyLaneSpillPx: number;
   readonly writingMode: string;
   readonly rootFontSize: number;
   readonly pageWidth: number;
@@ -318,7 +331,7 @@ test('the built page renders vertically in a headless Chromium', BROWSER_SKIP, a
 
   const metrics = JSON.parse(await measurePage(browser, builtHtml, MEASURE_SCRIPT, 'hon')) as VerifyMetrics;
 
-  assert.equal(metrics.writingMode, 'vertical-rl', 'pages must flow vertical-rl');
+  assert.equal(metrics.writingMode, 'vertical-rl', 'the page grid must flow vertical-rl');
   // Paper fit: on screen the page border box IS the physical paper (root font in mm) —
   // the same fitPaper numbers the PDF leg asserts in pt.
   const fit = fitPaper({
@@ -357,6 +370,11 @@ test('the built page renders vertically in a headless Chromium', BROWSER_SKIP, a
     `a line must paint at least one character tall (painted ${String(metrics.paintedExtent)}px)`,
   );
   assert.ok(metrics.rubyCount >= 1, 'the ruby annotation must reach the DOM');
+  // 夜霧《よぎり》: the 3-kana reading lane must not inflate the box beyond its 2-glyph base.
+  assert.ok(
+    Math.abs(metrics.rubyLaneSpillPx) < 0.5,
+    `a ruby box must be exactly as tall as its base spans (lane spill ${String(metrics.rubyLaneSpillPx)}px)`,
+  );
   assert.ok(metrics.tcyCount >= 2, 'both 縦中横 units must reach the DOM');
 });
 

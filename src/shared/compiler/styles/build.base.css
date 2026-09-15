@@ -5,37 +5,30 @@ html{font-family:var(--font-family);}
 body{margin:0;}
 .book{display:block;}
 
-/* One sheet: linesPerPage columns (block axis, var(--pitch) em each) × charsPerLine chars
-   (inline axis, 1em each). The bands are padding OUTSIDE the content box, so the grid keeps its
-   exact size and the sheet grows instead; overflow's clip box is the padding box, so band
-   content stays visible while anything past it is cut. --htop = header band 2 + on-demand
-   line-number band 1 (em); the 2em end pad = FOLIO_BAND and the 1.5em block pads = SIDE_PAD
-   (see geometry.ts — fitPaper consumes the same numbers, guarded by styles-codegen.test.ts).
-   The sheet's own band padding stays LOGICAL: .page is vertical-rl itself, so
-   padding-inline-start/end = physical top/bottom and padding-block-start/end = physical
-   right/left — the side pads keep the grid and the outset frame off the paper's side cut.
-   css.ts adds a white BORDER (the sheet→paper inset from fitPaper): the border box IS the
-   physical paper in both media, while clipping and the furniture offsets stay on the
-   padding box. */
-.page{writing-mode:vertical-rl;line-height:var(--pitch);inline-size:calc(var(--cpl)*1em);block-size:calc(var(--lpp)*var(--pitch)*1em);padding-inline-start:calc(var(--htop)*1em);padding-inline-end:2em;padding-block-start:1.5em;padding-block-end:1.5em;position:relative;margin:2.5em auto;background:#fff;box-sizing:content-box;overflow:hidden;break-after:page;page-break-after:always;}
+/* One sheet = the paper (css.ts adds the white border that insets it). The sheet is a plain
+   horizontal-tb block and only the .grid inside flows vertical-rl: a vertical-rl root prints
+   blank in WebKit (sheets laid out into negative x) and a vertical-rl sheet splits onto two
+   papers in Chromium (orthogonal near-page-size block). Bands are physical padding outside the
+   grid — top --htop em, bottom 2em = FOLIO_BAND, sides 1.5em = SIDE_PAD (geometry.ts, guarded by
+   styles-codegen.test.ts); overflow clips on the padding box, where the furniture anchors. */
+.page{line-height:var(--pitch);width:calc(var(--lpp)*var(--pitch)*1em);height:calc(var(--cpl)*1em);padding:calc(var(--htop)*1em) 1.5em 2em 1.5em;position:relative;margin:2.5em auto;background:#fff;box-sizing:content-box;overflow:hidden;break-after:page;page-break-after:always;break-inside:avoid;}
+
+/* The text grid: linesPerPage columns × charsPerLine chars filling the sheet's content box;
+   explicit 100% sizes because an orthogonal flow's auto size is engine-dependent. */
+.grid{writing-mode:vertical-rl;width:100%;height:100%;}
 
 /* Each line is one fixed-thickness column of the configured 行送り (--pitch em; the
    ruby-clearance ladder lives on LINE_PITCHES in config/types.ts). */
 .line{block-size:calc(var(--pitch)*1em);margin:0;white-space:pre;}
 /* No ruby rules here: every <rt> lives inside a classed ruby (rr/lr/br), whose on-demand
-   classRule (css.ts) owns the lane layout INCLUDING the 0.5em rt size — the single home. */
+   classRule (css.ts) owns the lane layout INCLUDING the 0.5em lane size — the single home. */
 
 /* Screen-only paper look: grey backdrop + paper shadow make the white paper's edges visible
    (the shadow rides the border box = the paper). The 2.5em surround is a purely cosmetic
    inter-paper gap (vertical margins collapse). Nothing here exists under @media print. */
 @media screen{html{background:#e8e8e8;}.page{box-shadow:0 1px 4px rgba(0,0,0,0.25);}}
 
-/* Print fixes, verified against headless Chromium:
-   - root goes vertical-rl so the sheets are ordinary in-flow blocks — as ORTHOGONAL flows
-     (vertical sheets in a horizontal root) Chromium splits every near-page-size sheet onto two
-     papers regardless of fit;
-   - the margin must pin ALL FOUR sides to ZERO: the border box already IS the paper (css.ts's
-     fitPaper border), and the base rule's horizontal `auto` resolves to 0 in the vertical-rl
-     root's block direction anyway. The @page rule itself (0 margin — keeps the browser's
-     own header/footer off the paper) is injected by css.ts: @page cannot read var() portably. */
-@media print{html{writing-mode:vertical-rl;background:none;}.page{margin:0;box-shadow:none;}}
+/* Print: one sheet per page. The vertical margins stay 0 (any gap spills the sheet onto a
+   second page); the horizontal auto centres the rounding slack, as on screen. @page and the
+   WebKit-only bottom-border shave come from css.ts (@page cannot read var()). */
+@media print{html{background:none;}.page{margin:0 auto;box-shadow:none;}}

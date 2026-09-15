@@ -36,10 +36,9 @@ export interface BookScoped extends PreviewScoped {
 }
 
 /** Classes the emitters write that have no on-demand rule of their own (layout structure). */
-const STRUCTURAL = new Set(['book', 'segment', 'line', 'page', 'cover', 'hd', 'pn', 'r', 'l', 'ln', 'pagebreak', 'pb-label', 'print', 'rt-l']);
+const STRUCTURAL = new Set(['book', 'grid', 'segment', 'line', 'page', 'cover', 'hd', 'pn', 'r', 'l', 'ln', 'pagebreak', 'pb-label', 'print', 'rt-l']);
 
 /** One rule block possibly nested one level (an `@media` group of plain rules). */
-const MEDIA_PRINT = /@media print\{(?:[^{}]*\{[^{}]*\})*\}/g;
 const MEDIA_SCREEN = /@media screen\{((?:[^{}]*\{[^{}]*\})*)\}/g;
 const PAGE_RULE = /@page\{size:(\d+(?:\.\d+)?)mm (\d+(?:\.\d+)?)mm;margin:0;\}/;
 const ROOT_FONT_MM = /html\{font-size:(\d+(?:\.\d+)?)mm;\}/;
@@ -90,12 +89,30 @@ function baseRule(scope: string, kind: 'preview' | 'book'): string {
   return `${scope}{display:block;position:relative;font-size:var(--jp-em);}${reset}`;
 }
 
+/** Removes every `@media print{…}` group, nested groups included (css.ts nests a WebKit-only `@supports` in one). */
+function stripMediaPrint(css: string): string {
+  const open = '@media print{';
+  let out = css;
+  for (let at = out.indexOf(open); at !== -1; at = out.indexOf(open)) {
+    let depth = 0;
+    let end = at + open.length - 1;
+    for (; end < out.length; end++) {
+      if (out[end] === '{') {
+        depth++;
+      } else if (out[end] === '}' && --depth === 0) {
+        break;
+      }
+    }
+    out = out.slice(0, at) + out.slice(end + 1);
+  }
+  return out;
+}
+
 /** Drops the print-only rules, capturing the book's paper size and root font size on the way. */
 function stripPrintRules(raw: string): { css: string; size: { widthMm: number; heightMm: number } | undefined; fontMm: number | undefined } {
   let size: { widthMm: number; heightMm: number } | undefined;
   let fontMm: number | undefined;
-  const css = raw
-    .replace(MEDIA_PRINT, '')
+  const css = stripMediaPrint(raw)
     .replace(MEDIA_SCREEN, '$1')
     .replace(PAGE_RULE, (_m, w: string, h: string) => {
       size = { widthMm: Number(w), heightMm: Number(h) };

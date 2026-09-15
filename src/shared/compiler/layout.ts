@@ -1,6 +1,6 @@
 /**
  * Build-time pagination engine: flows a book's token stream into an explicit
- * page → line DOM skeleton (`<div class="page"><div class="line">…`). Unlike the
+ * page → line DOM skeleton (`<div class="page"><div class="grid"><div class="line">…`). Unlike the
  * continuous preview, the build output is paginated IN the compiler so printed pages are
  * WYSIWYG and the page furniture (page numbers, line numbers, 原稿用紙 grid) has real
  * elements to hang off. Pure + vscode-free.
@@ -177,17 +177,18 @@ function readingSpans(reading: string): string {
 
 /**
  * The HTML for a ruby unit — EVERY ruby renders through the custom lanes (rr/lr/br): Chrome
- * has no working double-sided ruby (`ruby-position` on an `<rt>` is ignored; a second `<rt>`
- * stacks under the base) and native's fractional advance breaks the whole-cell grid. The
- * semantic `<ruby>`/`<rt>` tags stay; base and readings are {@link readingSpans} units and a
- * reading longer than the base adds the on-demand `rh-N` stretch class.
+ * has no working double-sided ruby and native's fractional advance breaks the whole-cell
+ * grid. `<ruby>`/`<rt>` stay semantic; the positioned lane is the single `<span>` inside each
+ * `<rt>`, because WebKit forces position:static on `<rt>` (WebCore/style/StyleAdjuster.cpp).
+ * Base and readings are {@link readingSpans} units; a reading longer than the base adds the
+ * on-demand `rh-N` stretch class.
  */
 function rubyHtml(
   r: { base: string; right?: string | undefined; left?: string | undefined },
   cells: number,
 ): string {
-  const right = r.right === undefined ? '' : `<rt>${readingSpans(r.right)}</rt>`;
-  const left = r.left === undefined ? '' : `<rt class="rt-l">${readingSpans(r.left)}</rt>`;
+  const right = r.right === undefined ? '' : `<rt><span>${readingSpans(r.right)}</span></rt>`;
+  const left = r.left === undefined ? '' : `<rt class="rt-l"><span>${readingSpans(r.left)}</span></rt>`;
   return `<ruby class="${rubyLane(r, cells)}">${readingSpans(r.base)}${right}${left}</ruby>`;
 }
 
@@ -1185,7 +1186,8 @@ export interface RenderPage {
 /**
  * Renders paginated pages into the `<div class="book">…</div>` body fragment, each page
  * carrying its chrome furniture AFTER the lines (so line-adjacency is preserved for
- * anything matching consecutive `.line`s). When a `used` sink is passed, every emphasis
+ * anything matching consecutive `.line`s). The lines sit in a `.grid`, the sheet's only
+ * vertical-rl box (build.base.css). When a `used` sink is passed, every emphasis
  * class emitted is recorded into it so the caller can emit only those rules (on-demand CSS)
  * — the structural `cover` class stays out of the sink. `data-page` is the sequential DOM
  * ordinal over ALL pages; the folio number and its {@link folioSide} parity count BODY pages
@@ -1203,7 +1205,7 @@ export function pagesToHtml(
       const lines = page.lines.map((line) => emitLine(line, used)).join('');
       const furniture = page.cover === true ? '' : pageFurniture(chrome, bodyPi++, totalPage);
       const cls = page.cover === true ? 'page cover' : 'page';
-      return `<div class="${cls}" data-page="${String(di)}">${lines}${furniture}</div>`;
+      return `<div class="${cls}" data-page="${String(di)}"><div class="grid">${lines}</div>${furniture}</div>`;
     })
     .join('');
   return `<div class="book">${body}</div>`;

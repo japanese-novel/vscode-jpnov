@@ -128,8 +128,9 @@ pre.source {
 .jp-scope.paper .page { box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
 .jp-scope.paper .page { margin: 0 auto; }
 .on-paper { --jp-bg: #fff; }
-/* Vertical specimens sit on a small sheet, like the page renders. */
-.sheet { display: inline-block; background: #fff; padding: 1.75rem 2.25rem; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.1), 0 10px 28px -14px rgba(38, 33, 28, 0.3); }
+/* Vertical specimens sit on a small sheet, like the page renders. Flex, not inline-block:
+   WebKit sizes a vertical-rl inline-block's intrinsic width as 0 inside a shrink-to-fit box. */
+.sheet { display: inline-flex; background: #fff; padding: 1.75rem 2.25rem; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.1), 0 10px 28px -14px rgba(38, 33, 28, 0.3); }
 /* A window onto the top-right of a printed page (where vertical text begins), at a legible size. */
 .paper-crop { container-type: inline-size; position: relative; overflow: hidden; aspect-ratio: 5 / 4; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
 .paper-crop .jp-scope { --jp-paper-width: calc(100cqw * var(--crop-zoom, 1.9)); position: absolute; top: 0; right: 0; width: var(--jp-paper-width); }

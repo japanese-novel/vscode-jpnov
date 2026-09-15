@@ -1,5 +1,6 @@
 /* Ruby lane (lr = left). The single <rt> IS the left reading. See class.ruby-rr.css for the
-   shared absolute-lane geometry rationale. */
+   shared lane geometry and the display:contents <rt> rationale. */
 ruby.lr{display:inline-flex;flex-direction:row;justify-content:space-around;position:relative}
-ruby.lr>rt{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0.5em;line-height:1;white-space:nowrap}
-ruby.lr>rt{transform:translate(-50%,-50%) translateX(-1.5em)}
+ruby.lr>rt{display:contents;font-size:inherit}
+ruby.lr>rt>span{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0.5em;line-height:1;white-space:nowrap}
+ruby.lr>rt>span{transform:translate(-50%,-50%) translateX(-1.5em)}

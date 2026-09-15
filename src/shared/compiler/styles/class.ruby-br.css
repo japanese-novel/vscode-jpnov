@@ -1,6 +1,7 @@
 /* Ruby lane (br = both sides). The class-less <rt> is the right reading, rt.rt-l the left. See
-   class.ruby-rr.css for the shared absolute-lane geometry rationale. */
+   class.ruby-rr.css for the shared lane geometry and the display:contents <rt> rationale. */
 ruby.br{display:inline-flex;flex-direction:row;justify-content:space-around;position:relative}
-ruby.br>rt{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0.5em;line-height:1;white-space:nowrap}
-ruby.br>rt{transform:translate(-50%,-50%) translateX(1.5em)}
-ruby.br>rt.rt-l{transform:translate(-50%,-50%) translateX(-1.5em)}
+ruby.br>rt{display:contents;font-size:inherit}
+ruby.br>rt>span{position:absolute;top:50%;left:50%;min-height:100%;display:flex;flex-direction:row;justify-content:space-around;writing-mode:vertical-rl;font-size:0.5em;line-height:1;white-space:nowrap}
+ruby.br>rt>span{transform:translate(-50%,-50%) translateX(1.5em)}
+ruby.br>rt.rt-l>span{transform:translate(-50%,-50%) translateX(-1.5em)}

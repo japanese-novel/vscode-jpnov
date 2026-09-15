@@ -166,7 +166,19 @@ function paperRules(fit: PaperFit): string {
   return `@page{size:${String(fit.widthMm)}mm ${String(fit.heightMm)}mm;margin:0;}` +
     `html{font-size:${fit.fontMm.toFixed(3)}mm;}` +
     `.page{border:solid #fff;border-width:${fit.insetTopEm.toFixed(2)}em ${fit.insetBlockEm.toFixed(2)}em ` +
-    `${fit.insetBottomEm.toFixed(2)}em ${fit.insetBlockEm.toFixed(2)}em;}`;
+    `${fit.insetBottomEm.toFixed(2)}em ${fit.insetBlockEm.toFixed(2)}em;}` +
+    webkitPrintShave(fit);
+}
+
+/**
+ * WebKit (Safari) floors the page height it derives from its print layout width, so a sheet
+ * that is exactly the paper overruns its page by a pixel or two — a blank page after every
+ * sheet. Shave the bottom border under WebKit only (`-apple-system-body` parses nowhere else);
+ * Chromium and Gecko place the sheet on the paper exactly. Source: LocalFrameView::
+ * forceLayoutForPagination → resizePageRectsKeepingRatio.
+ */
+function webkitPrintShave(fit: PaperFit): string {
+  return `@media print{@supports (font:-apple-system-body){.page{border-bottom-width:calc(${fit.insetBottomEm.toFixed(2)}em - 4px);}}}`;
 }
 
 type StylesheetOptions =

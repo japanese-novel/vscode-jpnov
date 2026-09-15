@@ -52,22 +52,22 @@ const html = (src: string, charsPerLine = 40, linesPerPage = 34) =>
 test('one display line per source line; trailing newline dropped, middle blank kept', () => {
   assert.equal(
     html('一\n二'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">一</div><div class="line" data-line="1">二</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一</div><div class="line" data-line="1">二</div></div></div></div>',
   );
   assert.equal(
     html('一\n'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">一</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一</div></div></div></div>',
   );
   assert.equal(
     html('一\n\n二'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">一</div><div class="line" data-line="1"></div><div class="line" data-line="2">二</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一</div><div class="line" data-line="1"></div><div class="line" data-line="2">二</div></div></div></div>',
   );
 });
 
 test('a long source line hard-wraps at charsPerLine', () => {
   assert.equal(
     html('一二三', 2),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">一二</div><div class="line" data-line="0">三</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一二</div><div class="line" data-line="0">三</div></div></div></div>',
   );
 });
 
@@ -78,10 +78,10 @@ test('a ruby unit is atomic — it wraps whole, never split', () => {
   // justification-unit spans.
   assert.equal(
     html('あ漢字《かんじ》', 2),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">あ</div>' +
       '<div class="line" data-line="0"><ruby class="rr"><span>漢</span><span>字</span>' +
-      '<rt><span>か</span><span>ん</span><span>じ</span></rt></ruby></div></div></div>',
+      '<rt><span><span>か</span><span>ん</span><span>じ</span></span></rt></ruby></div></div></div></div>',
   );
 });
 
@@ -96,8 +96,8 @@ test('［＃改ページ］ forces a new page', () => {
   assert.equal(
     html('前\n［＃改ページ］\n後'),
     '<div class="book">' +
-      '<div class="page" data-page="0"><div class="line" data-line="0">前</div></div>' +
-      '<div class="page" data-page="1"><div class="line" data-line="2">後</div></div></div>',
+      '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">前</div></div></div>' +
+      '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="2">後</div></div></div></div>',
   );
 });
 
@@ -108,9 +108,9 @@ test('emphasis span groups consecutive units and re-opens across a wrap', () => 
   );
   assert.equal(
     html('［＃傍点］一二三［＃傍点終わり］', 2),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line emr" data-line="0"><span class="emph-fs">一二</span></div>' +
-      '<div class="line emr" data-line="0"><span class="emph-fs">三</span></div></div></div>',
+      '<div class="line emr" data-line="0"><span class="emph-fs">三</span></div></div></div></div>',
   );
 });
 
@@ -124,16 +124,16 @@ test('postfix emphasis marks the last occurrence on the source line', () => {
 test('a comment is zero-width: it does not consume a cell or force a wrap', () => {
   assert.equal(
     html('［＃注記］本', 1),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0"><!--注記-->本</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0"><!--注記-->本</div></div></div></div>',
   );
 });
 
 test('a broken ［＃ renders as visible literal text, bounded to its own line', () => {
   assert.equal(
     html('本［＃こわれ\n次'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">本［＃こわれ</div>' +
-      '<div class="line" data-line="1">次</div></div></div>',
+      '<div class="line" data-line="1">次</div></div></div></div>',
   );
 });
 
@@ -141,9 +141,9 @@ test('broken-annotation text consumes cells and wraps like ordinary prose', () =
   // cpl 3: 本＋［＃こ… — the swallowed chars are real 1-cell units, so the line hard-wraps.
   assert.equal(
     html('本［＃こわれ', 3),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">本［＃</div>' +
-      '<div class="line" data-line="0">こわれ</div></div></div>',
+      '<div class="line" data-line="0">こわれ</div></div></div></div>',
   );
 });
 
@@ -397,7 +397,7 @@ const dashHtml = (src: string): string =>
 test('ダッシュ: the configured spelling is emitted as the em dash — bare glyph, no markup', () => {
   assert.equal(
     dashHtml('あ――い'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">あ——い</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">あ——い</div></div></div></div>',
   );
   assert.doesNotMatch(dashFlow('あ――い'), /class="dash/);
   // Translation is per glyph and selected-only; `text` keeps the source for every spelling.
@@ -462,17 +462,17 @@ test('flowToHtml: lineNumbers emits JS-numbered .ln heads that restart at a brea
 test('emit: postfix target missing on the source line degrades to a comment', () => {
   assert.equal(
     html('別の文［＃「無」に傍点］'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">別の文<!--「無」に傍点--></div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">別の文<!--「無」に傍点--></div></div></div></div>',
   );
 });
 
 test('emit: an emphasis span re-opens on the next source line', () => {
   assert.equal(
     html('これは［＃傍点］強調\nされる文［＃傍点終わり］です'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line emr" data-line="0">これは<span class="emph-fs">強調</span></div>' +
-      '<div class="line emr" data-line="1"><span class="emph-fs">される文</span>です</div></div></div>',
+      '<div class="line emr" data-line="1"><span class="emph-fs">される文</span>です</div></div></div></div>',
   );
 });
 
@@ -485,16 +485,16 @@ test('emit: right-side 傍点 stamps .emr on its line; left-side and 傍線 do n
 test('emit: escapes & < > " in text', () => {
   assert.equal(
     html('a<b>&"c'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">a&lt;b&gt;&amp;&quot;c</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">a&lt;b&gt;&amp;&quot;c</div></div></div></div>',
   );
 });
 
 test('emit: leading 全角 spaces are preserved verbatim (no auto-indent)', () => {
   assert.equal(
     html('　　本文'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">　　本文</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">　　本文</div></div></div></div>',
   );
 });
 
@@ -535,10 +535,10 @@ test('左ルビ on plain text merges into ONE lr ruby unit (custom layout classe
   // flex space-around boxes distribute them like native ruby-align.
   assert.equal(
     html('青空文庫［＃「青空文庫」の左に「あおぞらぶんこ」のルビ］'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">' +
-      '<ruby class="lr"><span>青</span><span>空</span><span>文</span><span>庫</span><rt class="rt-l">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">' +
+      '<ruby class="lr"><span>青</span><span>空</span><span>文</span><span>庫</span><rt class="rt-l"><span>' +
       '<span>あ</span><span>お</span><span>ぞ</span><span>ら</span><span>ぶ</span><span>ん</span><span>こ</span>' +
-      '</rt></ruby></div></div></div>',
+      '</span></rt></ruby></div></div></div></div>',
   );
 });
 
@@ -548,21 +548,21 @@ test('両側ルビ: the left reading joins the existing right-ruby unit (br, bot
   // no rh-N stretch class.
   assert.equal(
     html('青空文庫《あおぞらぶんこ》［＃「青空文庫」の左に「aozora bunko」のルビ］'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">' +
-      '<ruby class="br"><span>青</span><span>空</span><span>文</span><span>庫</span><rt>' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">' +
+      '<ruby class="br"><span>青</span><span>空</span><span>文</span><span>庫</span><rt><span>' +
       '<span>あ</span><span>お</span><span>ぞ</span><span>ら</span><span>ぶ</span><span>ん</span><span>こ</span>' +
-      '</rt><rt class="rt-l"><span>aozora bunko</span></rt></ruby>' +
-      '</div></div></div>',
+      '</span></rt><rt class="rt-l"><span><span>aozora bunko</span></span></rt></ruby>' +
+      '</div></div></div></div>',
   );
 });
 
 test('a half-width space in a reading survives into the lane (right, left AND base runs)', () => {
-  assert.match(html('英雄《Super Hero》'), /<rt><span>Super Hero<\/span><\/rt>/);
+  assert.match(html('英雄《Super Hero》'), /<rt><span><span>Super Hero<\/span><\/span><\/rt>/);
   assert.match(
     html('英雄《えいゆう》［＃「英雄」の左に「Super Hero」のルビ］'),
-    /<rt class="rt-l"><span>Super Hero<\/span><\/rt>/,
+    /<rt class="rt-l"><span><span>Super Hero<\/span><\/span><\/rt>/,
   );
-  assert.match(html('｜Au revoir《さらば》'), /<ruby class="rr"><span>Au revoir<\/span><rt>/);
+  assert.match(html('｜Au revoir《さらば》'), /<ruby class="rr"><span>Au revoir<\/span><rt><span>/);
 });
 
 test('a full-width space in a reading is its own blank unit', () => {
@@ -570,7 +570,7 @@ test('a full-width space in a reading is its own blank unit', () => {
   // already counts it at 2 quarters).
   assert.match(
     html('漢字《かん　じ》'),
-    /<rt><span>か<\/span><span>ん<\/span><span>　<\/span><span>じ<\/span><\/rt>/,
+    /<rt><span><span>か<\/span><span>ん<\/span><span>　<\/span><span>じ<\/span><\/span><\/rt>/,
   );
 });
 
@@ -636,10 +636,10 @@ test('a long HALF-width reading counts at ≈quarter-em: no premature stretch', 
 test('左ルビ cutting into a ruby unit is unaligned → degrade + warn', () => {
   assert.equal(
     html('漢字《かんじ》［＃「字」の左に「よみ」のルビ］'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">' +
       '<ruby class="rr"><span>漢</span><span>字</span>' +
-      '<rt><span>か</span><span>ん</span><span>じ</span></rt></ruby>' +
-      '<!--「字」の左に「よみ」のルビ--></div></div></div>',
+      '<rt><span><span>か</span><span>ん</span><span>じ</span></span></rt></ruby>' +
+      '<!--「字」の左に「よみ」のルビ--></div></div></div></div>',
   );
   assert.equal(findPostfixTargetIssues('漢字《かんじ》［＃「字」の左に「よみ」のルビ］').length, 1);
 });
@@ -648,7 +648,7 @@ test('左ルビ over MIXED coverage (a ruby unit plus text) degrades + warns', (
   // 青空 is a ruby unit, 文庫 plain text: aligned, but re-basing would drop the inner right
   // reading — the author must split the annotation.
   const src = '青空《あお》文庫［＃「青空文庫」の左に「x」のルビ］';
-  assert.match(html(src), /<ruby class="rr"><span>青<\/span><span>空<\/span><rt><span>あ<\/span><span>お<\/span><\/rt><\/ruby>文庫<!--/);
+  assert.match(html(src), /<ruby class="rr"><span>青<\/span><span>空<\/span><rt><span><span>あ<\/span><span>お<\/span><\/span><\/rt><\/ruby>文庫<!--/);
   assert.equal(findPostfixTargetIssues(src).length, 1);
 });
 
@@ -658,7 +658,7 @@ test('左ルビ inherits the replaced units’ channels and stays postfix-matcha
   const out = html('［＃太字］青空［＃太字終わり］［＃「青空」の左に「あお」のルビ］［＃「青空」に傍点］');
   assert.match(
     out,
-    /<span class="emph-fs b"><ruby class="lr"><span>青<\/span><span>空<\/span><rt class="rt-l"><span>あ<\/span><span>お<\/span><\/rt><\/ruby><\/span>/,
+    /<span class="emph-fs b"><ruby class="lr"><span>青<\/span><span>空<\/span><rt class="rt-l"><span><span>あ<\/span><span>お<\/span><\/span><\/rt><\/ruby><\/span>/,
   );
 });
 
@@ -674,8 +674,8 @@ test('the used sink collects lr / br', () => {
 test('縦中横 span combines its content into ONE upright cell', () => {
   assert.equal(
     html('令和［＃縦中横］12［＃縦中横終わり］年'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">令和<span class="tcy">12</span>年</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">令和<span class="tcy">12</span>年</div></div></div></div>',
   );
   // The pair takes ONE cell: 令+和+[12]+年 = 4 cells, so cpl 4 still fits on one display line.
   const p = pages('令和［＃縦中横］12［＃縦中横終わり］年', 4);
@@ -685,8 +685,8 @@ test('縦中横 span combines its content into ONE upright cell', () => {
 test('縦中横 postfix merges the aligned match into one 1-cell unit', () => {
   assert.equal(
     html('米機Ｂ29［＃「29」は縦中横］'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">米機Ｂ<span class="tcy">29</span></div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">米機Ｂ<span class="tcy">29</span></div></div></div></div>',
   );
 });
 
@@ -700,17 +700,17 @@ test('a merged 縦中横 cell keeps its text: a later postfix can cover it whole
 test('an unclosed ［＃縦中横］ auto-closes at its line end (line-local)', () => {
   assert.equal(
     html('序［＃縦中横］12\n次'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">序<span class="tcy">12</span></div>' +
-      '<div class="line" data-line="1">次</div></div></div>',
+      '<div class="line" data-line="1">次</div></div></div></div>',
   );
 });
 
 test('a dangling ［＃縦中横終わり］ is a render no-op', () => {
   assert.equal(
     html('AB［＃縦中横終わり］'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">AB</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">AB</div></div></div></div>',
   );
 });
 
@@ -750,16 +750,16 @@ test('a postfix cutting into an atomic ruby unit does not apply (boundary alignm
   // refuse and degrade to a comment (plus the editor Warning, below), never dot the unit.
   assert.equal(
     html('漢字《かんじ》［＃「字」に傍点］'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0"><ruby class="rr"><span>漢</span><span>字</span>' +
-      '<rt><span>か</span><span>ん</span><span>じ</span></rt></ruby><!--「字」に傍点--></div></div></div>',
+      '<rt><span><span>か</span><span>ん</span><span>じ</span></span></rt></ruby><!--「字」に傍点--></div></div></div></div>',
   );
 });
 
 test('whole-unit coverage of a ruby unit still applies (aligned)', () => {
   assert.match(
     html('漢字《かんじ》［＃「漢字」に傍点］'),
-    /<span class="emph-fs"><ruby class="rr"><span>漢<\/span><span>字<\/span><rt><span>か<\/span><span>ん<\/span><span>じ<\/span><\/rt><\/ruby><\/span>/,
+    /<span class="emph-fs"><ruby class="rr"><span>漢<\/span><span>字<\/span><rt><span><span>か<\/span><span>ん<\/span><span>じ<\/span><\/span><\/rt><\/ruby><\/span>/,
   );
 });
 
@@ -787,40 +787,40 @@ test('findPostfixTargetIssues: absent and unaligned targets warn; aligned matche
 test('block 字下げ: every wrapped continuation column keeps indent-N', () => {
   assert.equal(
     html('［＃ここから１字下げ］\n一二三\n［＃ここで字下げ終わり］', 2),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line indent-1" data-line="1">一</div>' +
       '<div class="line indent-1" data-line="1">二</div>' +
-      '<div class="line indent-1" data-line="1">三</div></div></div>',
+      '<div class="line indent-1" data-line="1">三</div></div></div></div>',
   );
 });
 
 test('N_eff clamp: an indent ≥ charsPerLine clamps to cpl−1 for BOTH class and budget', () => {
   assert.equal(
     html('［＃９字下げ］一二', 3),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line indent-2" data-line="0">一</div>' +
-      '<div class="line indent-2" data-line="0">二</div></div></div>',
+      '<div class="line indent-2" data-line="0">二</div></div></div></div>',
   );
 });
 
 test('０字下げ / a dangling ［＃ここで字下げ終わり］ are render no-ops', () => {
   assert.equal(
     html('［＃０字下げ］頭'),
-    '<div class="book"><div class="page" data-page="0"><div class="line" data-line="0">頭</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">頭</div></div></div></div>',
   );
   assert.equal(
     html('あ［＃ここで字下げ終わり］\nい'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">あ</div><div class="line" data-line="1">い</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">あ</div><div class="line" data-line="1">い</div></div></div></div>',
   );
 });
 
 test('unclosed block 字下げ leniently continues to EOF', () => {
   assert.equal(
     html('［＃ここから２字下げ］\n一\n二'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line indent-2" data-line="1">一</div>' +
-      '<div class="line indent-2" data-line="2">二</div></div></div>',
+      '<div class="line indent-2" data-line="2">二</div></div></div></div>',
   );
 });
 
@@ -829,26 +829,26 @@ test('unclosed block 字下げ leniently continues to EOF', () => {
 test('見出し line: the whole column carries .midashi; the annotation is consumed', () => {
   assert.equal(
     html('第一章　出会い［＃「第一章　出会い」は大見出し］\n本文'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line midashi" data-line="0">第一章　出会い</div>' +
-      '<div class="line" data-line="1">本文</div></div></div>',
+      '<div class="line" data-line="1">本文</div></div></div></div>',
   );
 });
 
 test('見出し: every wrapped continuation keeps .midashi (like indent)', () => {
   assert.equal(
     html('一二三［＃「一二三」は中見出し］', 2),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line midashi" data-line="0">一二</div>' +
-      '<div class="line midashi" data-line="0">三</div></div></div>',
+      '<div class="line midashi" data-line="0">三</div></div></div></div>',
   );
 });
 
 test('見出し composes with 字下げ; a ruby-bearing heading matches its BASE text', () => {
   assert.equal(
     html('［＃２字下げ］序［＃「序」は小見出し］'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line indent-2 midashi" data-line="0">序</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line indent-2 midashi" data-line="0">序</div></div></div></div>',
   );
   // Aozora: the heading target EXCLUDES ruby readings — base-text matching resolves it.
   assert.match(
@@ -860,8 +860,8 @@ test('見出し composes with 字下げ; a ruby-bearing heading matches its BASE
 test('見出し with an unresolved target degrades to a comment and reports the miss', () => {
   assert.equal(
     html('本文［＃「別文」は大見出し］'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">本文<!--「別文」は大見出し--></div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">本文<!--「別文」は大見出し--></div></div></div></div>',
   );
   assert.deepEqual(
     findPostfixTargetIssues('本文［＃「別文」は大見出し］').map((i) => i.target),
@@ -881,38 +881,38 @@ test('見出し postfix is line-local: the next source line renders plain', () =
 test('見出し inline span: same-line pair marks its line; the annotations are consumed', () => {
   assert.equal(
     html('［＃大見出し］第一章　出会い［＃大見出し終わり］\n本文'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line midashi" data-line="0">第一章　出会い</div>' +
-      '<div class="line" data-line="1">本文</div></div></div>',
+      '<div class="line" data-line="1">本文</div></div></div></div>',
   );
 });
 
 test('見出し inline span carries ACROSS lines until the end annotation (like 太字)', () => {
   assert.equal(
     html('［＃大見出し］美味しいです。\n焼き肉は。［＃大見出し終わり］\n本文'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line midashi" data-line="0">美味しいです。</div>' +
       '<div class="line midashi" data-line="1">焼き肉は。</div>' +
-      '<div class="line" data-line="2">本文</div></div></div>',
+      '<div class="line" data-line="2">本文</div></div></div></div>',
   );
 });
 
 test('見出し block: the directive lines vanish and the body lines carry .midashi', () => {
   assert.equal(
     html('［＃ここから大見出し］\n第一章\n出会い\n［＃ここで大見出し終わり］\n本文'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line midashi" data-line="1">第一章</div>' +
       '<div class="line midashi" data-line="2">出会い</div>' +
-      '<div class="line" data-line="4">本文</div></div></div>',
+      '<div class="line" data-line="4">本文</div></div></div></div>',
   );
 });
 
 test('ここから見出し on a text line: that line keeps its pre-block state (like indent)', () => {
   assert.equal(
     html('前文［＃ここから中見出し］\n題'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">前文</div>' +
-      '<div class="line midashi" data-line="1">題</div></div></div>',
+      '<div class="line midashi" data-line="1">題</div></div></div></div>',
   );
 });
 
@@ -920,28 +920,28 @@ test('見出し levels share one slot: any 終わり closes; dangling is a no-op
   // A mismatched-level end still closes the open heading (one parameterized channel).
   assert.equal(
     html('［＃ここから大見出し］\n題\n［＃ここで中見出し終わり］\n後'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line midashi" data-line="1">題</div>' +
-      '<div class="line" data-line="3">後</div></div></div>',
+      '<div class="line" data-line="3">後</div></div></div></div>',
   );
   assert.equal(
     html('あ［＃大見出し終わり］\nい'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line" data-line="0">あ</div><div class="line" data-line="1">い</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">あ</div><div class="line" data-line="1">い</div></div></div></div>',
   );
   assert.equal(
     html('［＃中見出し］題\n続'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line midashi" data-line="0">題</div>' +
-      '<div class="line midashi" data-line="1">続</div></div></div>',
+      '<div class="line midashi" data-line="1">続</div></div></div></div>',
   );
 });
 
 test('見出し block composes with a 字下げ block: both classes on the body line', () => {
   assert.equal(
     html('［＃ここから２字下げ］\n［＃ここから小見出し］\n章\n［＃ここで小見出し終わり］\n［＃ここで字下げ終わり］'),
-    '<div class="book"><div class="page" data-page="0">' +
-      '<div class="line indent-2 midashi" data-line="2">章</div></div></div>',
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line indent-2 midashi" data-line="2">章</div></div></div></div>',
   );
 });
 
@@ -951,9 +951,9 @@ test('a block-directive-only line paints no column; the next line is indented', 
   const out = html('あ\n［＃ここから２字下げ］\nい');
   assert.equal(
     out,
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">あ</div>' +
-      '<div class="line indent-2" data-line="2">い</div></div></div>',
+      '<div class="line indent-2" data-line="2">い</div></div></div></div>',
   );
   // data-line numbering gaps over the suppressed directive line but stays true after it.
   assert.doesNotMatch(out, /data-line="1"/);
@@ -969,18 +969,18 @@ test('a plain comment-only line KEEPS its blank column (unchanged behaviour)', (
 test('ここから on a text line: that line keeps the pre-block indent, block starts next line', () => {
   assert.equal(
     html('［＃ここから２字下げ］あ\nい'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">あ</div>' +
-      '<div class="line indent-2" data-line="1">い</div></div></div>',
+      '<div class="line indent-2" data-line="1">い</div></div></div></div>',
   );
 });
 
 test('block 太字: the directive lines vanish and the body lines carry the b class', () => {
   assert.equal(
     html('［＃ここから太字］\n強い\n［＃ここで太字終わり］\n後'),
-    '<div class="book"><div class="page" data-page="0">' +
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="1"><span class="b">強い</span></div>' +
-      '<div class="line" data-line="3">後</div></div></div>',
+      '<div class="line" data-line="3">後</div></div></div></div>',
   );
 });
 
@@ -1095,10 +1095,10 @@ test('cover pages: a cover-less document emits exactly what it always did', () =
   assert.equal(
     pagesToHtml(sheets(plain), undefined, FURNISHED),
     '<div class="book">' +
-      '<div class="page" data-page="0"><div class="line" data-line="0">前</div>' +
-      '<div class="hd">柱</div><div class="pn r">1 / 2</div></div>' +
-      '<div class="page" data-page="1"><div class="line" data-line="2">後</div>' +
-      '<div class="hd">柱</div><div class="pn l">2 / 2</div></div>' +
+      '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">前</div>' +
+      '</div><div class="hd">柱</div><div class="pn r">1 / 2</div></div>' +
+      '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="2">後</div>' +
+      '</div><div class="hd">柱</div><div class="pn l">2 / 2</div></div>' +
       '</div>',
   );
 });
