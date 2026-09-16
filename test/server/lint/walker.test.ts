@@ -277,3 +277,92 @@ test('indent and heading stay in lockstep with buildRows per source line', () =>
     assert.equal(line.heading, row.heading, `heading of line ${String(line.srcLine)}`);
   }
 });
+
+// --- outer extents: where an insert before/after a piece lands (#72) ---
+
+/** Each piece of line `n` as [its text, the source its outer extents cover]. */
+function outer(src: string, n = 0): [string, string][] {
+  const l = lines(src)[n];
+  assert.ok(l);
+  return l.pieces.map((p) => [p.text, src.slice(p.outerStart, p.outerEnd)]);
+}
+
+test('a ruby reading extends the base piece; an explicit ｜ pulls its start before the marker', () => {
+  assert.deepEqual(outer('　彼は山田《やまだ》'), [['　彼は山田', '　彼は山田《やまだ》']]);
+  assert.deepEqual(outer('｜大人《おとな》は笑った。'), [['大人', '｜大人《おとな》'], ['は笑った。', 'は笑った。']]);
+  assert.deepEqual(outer('「山田《やまだ》」'), [['「', '「'], ['山田', '山田《やまだ》'], ['」', '」']]);
+});
+
+test('a span wraps the piece inside it; stacked and postfix closers all extend it', () => {
+  assert.deepEqual(outer('［＃縦中横］12［＃縦中横終わり］年'), [['12', '［＃縦中横］12［＃縦中横終わり］'], ['年', '年']]);
+  assert.deepEqual(outer('［＃傍点］青空文庫［＃傍点終わり］で読書しよう'), [
+    ['青空文庫', '［＃傍点］青空文庫［＃傍点終わり］'],
+    ['で読書しよう', 'で読書しよう'],
+  ]);
+  assert.deepEqual(outer('［＃丸傍点］青空文庫で読書しよう［＃丸傍点終わり］。'), [
+    ['青空文庫で読書しよう', '［＃丸傍点］青空文庫で読書しよう［＃丸傍点終わり］'],
+    ['。', '。'],
+  ]);
+  const stacked = '［＃縦中横］［＃傍点］12［＃傍点終わり］［＃縦中横終わり］';
+  assert.deepEqual(outer(stacked), [['12', stacked]]);
+  assert.deepEqual(outer('好き［＃「好き」に傍点］'), [['好き', '好き［＃「好き」に傍点］']]);
+  assert.deepEqual(outer('!?［＃「!?」は縦中横］'), [['!?', '!?［＃「!?」は縦中横］']]);
+  assert.deepEqual(outer('序章［＃「序章」は大見出し］'), [['序章', '序章［＃「序章」は大見出し］']]);
+  const both = '｜山田《やまだ》［＃「山田」の左に「たろう」のルビ］';
+  assert.deepEqual(outer(both), [['山田', both]]);
+});
+
+test('an opener seals the piece before it; an empty span in between is transparent', () => {
+  assert.deepEqual(outer('　驚いた！｜山田《やまだ》'), [['　驚いた！', '　驚いた！'], ['山田', '｜山田《やまだ》']]);
+  assert.deepEqual(outer('　すごい！［＃ここから太字］そして［＃ここで太字終わり］'), [
+    ['　すごい！', '　すごい！'],
+    ['そして', '［＃ここから太字］そして［＃ここで太字終わり］'],
+  ]);
+  const inner = '［＃傍点］12［＃太字］［＃太字終わり］［＃傍点終わり］';
+  assert.deepEqual(outer(inner), [['12', inner]]);
+  assert.deepEqual(outer('［＃傍点］［＃傍点終わり］山田'), [['山田', '山田']]);
+  // a postfix is not a span end: it neither ends the pending opener nor reaches the sealed piece
+  assert.deepEqual(outer('山田［＃太字］［＃「山田」に傍点］太郎'), [['山田', '山田'], ['太郎', '［＃太字］［＃「山田」に傍点］太郎']]);
+});
+
+test('spans pair per channel: another channel in between neither seals a piece nor ends an opener', () => {
+  assert.deepEqual(outer('［＃傍点］すごい！［＃太字］［＃傍点終わり］そして［＃太字終わり］'), [
+    ['すごい！', '［＃傍点］すごい！［＃太字］［＃傍点終わり］'],
+    ['そして', '［＃太字］［＃傍点終わり］そして［＃太字終わり］'],
+  ]);
+  assert.deepEqual(outer('［＃傍点］［＃太字終わり］本文'), [['本文', '［＃傍点］［＃太字終わり］本文']]);
+  assert.deepEqual(outer('［＃傍点］［＃丸傍点終わり］本文'), [['本文', '［＃傍点］［＃丸傍点終わり］本文']]); // a variant is its own channel
+  assert.deepEqual(outer('［＃大見出し］［＃中見出し終わり］題'), [['題', '題']]); // the heading levels share one slot
+  assert.deepEqual(outer('全［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］頁'), [['全', '全'], ['頁', '頁']]);
+});
+
+test('neutral markup binds nothing: a line-head 字下げ stays at the head, a comment is transparent', () => {
+  assert.deepEqual(outer('［＃０字下げ］本文'), [['本文', '本文']]);
+  assert.deepEqual(outer('［＃０字下げ］［＃傍点］内容だ［＃傍点終わり］'), [['内容だ', '［＃傍点］内容だ［＃傍点終わり］']]);
+  assert.deepEqual(outer('山田［＃メモ］［＃傍点終わり］'), [['山田', '山田［＃メモ］［＃傍点終わり］']]);
+  assert.deepEqual(outer('［＃傍点終わり］山田'), [['山田', '山田']]);
+  assert.deepEqual(outer('［＃縦中横］12'), [['12', '［＃縦中横］12']]); // unterminated: nothing to skip
+});
+
+test('a value field is rendered text: it extends the piece before it, like a postfix', () => {
+  const field = '［＃ここに「タイトル」の値を表示］';
+  assert.deepEqual(outer(`本文${field}次`), [['本文', `本文${field}`], ['次', '次']]);
+  assert.deepEqual(outer(`［＃傍点］${field}本文［＃傍点終わり］`), [['本文', `［＃傍点］${field}本文［＃傍点終わり］`]]);
+});
+
+test('a depth change inside a span splits the extents across the corner pieces', () => {
+  assert.deepEqual(outer('［＃傍点］「山田」［＃傍点終わり］'), [
+    ['「', '［＃傍点］「'],
+    ['山田', '山田'],
+    ['」', '」［＃傍点終わり］'],
+  ]);
+});
+
+test('extents are per line: an opener never reaches the next line; CRLF and astral chars are plain', () => {
+  const src = '［＃傍点］\n山田［＃傍点終わり］';
+  assert.deepEqual(outer(src, 0), []);
+  assert.deepEqual(outer(src, 1), [['山田', '山田［＃傍点終わり］']]);
+  const astral = '　彼は𠮷《よし》\r\n次';
+  assert.deepEqual(outer(astral, 0), [['　彼は𠮷', '　彼は𠮷《よし》']]);
+  assert.deepEqual(outer(astral, 1), [['次', '次']]);
+});

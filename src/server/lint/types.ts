@@ -13,11 +13,12 @@
  *   - `dialogue()`  utterance interiors only, one '\n' separator unit between utterances.
  *
  * FIX SAFETY (a silent-data-loss class of bug — a fix once deleted the markup between two clean
- * characters): a replacement {@link FixSpec} can only name ONE {@link Piece}, and a piece is by
- * construction a contiguous source slice, so a replacement spanning elided markup is impossible to
- * express. Inserts name an explicit source offset and are zero-width. An erase names whole blank
- * lines, and the engine verifies its span holds nothing but line terminators. The only other
- * runtime check is the view-scan adapter's same-piece test (rules/adapt.ts).
+ * characters, and an insert once landed inside a ruby): a replacement {@link FixSpec} names ONE
+ * {@link Piece}, a contiguous source slice by construction, so it cannot span elided markup; an
+ * insert names a prose UNIT and a side, and the engine resolves the offset through the piece's
+ * outer extents, past the markup wrapping that unit; an erase names whole blank lines, which the
+ * engine verifies hold nothing but line terminators. The view-scan adapter adds the same-piece
+ * test and refuses to delete a whole ruby base (rules/adapt.ts).
  *
  * Relative imports only (native test loader); vscode-free.
  */
@@ -38,6 +39,17 @@ export interface Piece {
   readonly srcStart: number;
   /** Utterance nesting depth: 0 = 地の文 (top-level 「」『』 corners included), ≥1 = inside. */
   readonly depth: number;
+  /** Where an insert BEFORE `text.charAt(0)` goes: before the ｜ of an explicit ruby and any
+   *  opening markup (［＃傍点］, ［＃縦中横］, ［＃ここから太字］…) wrapping the piece; `srcStart`
+   *  when nothing does. */
+  readonly outerStart: number;
+  /** Where an insert AFTER the last character goes: past a ruby's 《reading》 and any closing or
+   *  postfix markup (［＃傍点終わり］, ［＃「…」に傍点］…) wrapping the piece; `srcStart +
+   *  text.length` when nothing does. */
+  readonly outerEnd: number;
+  /** True when a ruby reading follows the piece (its tail is the base), so deleting the whole
+   *  piece would strand the 《reading》 as literal text. */
+  readonly rubyBase: boolean;
 }
 
 /** One ruby reading (the 《…》 interior) on its line; `srcStart` is the reading's first unit. */
@@ -98,8 +110,10 @@ export interface SrcSpan {
 
 /**
  * An auto-fix, in the only three safe shapes: replace a range INSIDE one piece (cannot span elided
- * markup by construction), insert at an explicit source offset (zero-width), or erase whole blank
- * lines (a span the engine checks holds nothing but line terminators).
+ * markup by construction), insert before or after one prose UNIT (zero-width; the engine resolves
+ * the offset past the markup wrapping the unit, so it can never land inside a ruby or a span), or
+ * erase whole blank lines (a span the engine checks holds nothing but line terminators). A
+ * synthetic unit (`piece: null`) can never anchor an insert.
  */
 export type FixSpec =
   | {
@@ -111,7 +125,7 @@ export type FixSpec =
     };
     readonly text: string;
   }
-  | { readonly insertAt: number; readonly text: string }
+  | { readonly insert: ProseUnit; readonly side: 'before' | 'after'; readonly text: string }
   | { readonly erase: SrcSpan };
 
 /** What a rule instance is handed: its resolved options and the report sink. `message` overrides

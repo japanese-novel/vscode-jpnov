@@ -10,9 +10,11 @@
  *
  * Fix materialization is the only place a {@link FixSpec} becomes an LSP range: a `replace` names
  * one PIECE (contiguous source by construction — a fix can never overwrite elided markup), an
- * `insertAt` is a zero-width source offset (an inserted 。/　 lands before its neighbour and never
- * eats a newline), and an `erase` covers whole blank lines and is checked to hold nothing but line
- * terminators. Out-of-piece arithmetic or an erase over content is a programming error and throws.
+ * insert names a prose UNIT and a side (zero-width; the offset is resolved through the piece's
+ * outer extents, past a ruby's reading or a closing annotation, and never eats a newline), and an
+ * `erase` covers whole blank lines and is checked to hold nothing but line terminators.
+ * Out-of-piece arithmetic, an insert on a synthetic unit, or an erase over content is a
+ * programming error and throws.
  *
  * A `raw` rule can restate a prose rule's finding over the same characters (an unencodable
  * character that is ALSO decomposed, invisible, …). The prose rule is the more specific one and
@@ -32,7 +34,7 @@ import type { LocalizableMessage } from '../../shared/protocol.ts';
 import { diagnostic } from '../diagnostics.ts';
 import { RULE_IMPL } from './modules.ts';
 import type { PreScan } from './prescan.ts';
-import type { FixSpec, LineRule, SrcSpan } from './types.ts';
+import type { FixSpec, LineRule, ProseUnit, SrcSpan } from './types.ts';
 import { walkLines } from './walker.ts';
 
 /** A single auto-fix edit, already mapped to SOURCE coordinates. */
@@ -59,11 +61,24 @@ function rangeKey(r: Range): string {
   return [r.start.line, r.start.character, r.end.line, r.end.character].join(':');
 }
 
-/** Materializes a {@link FixSpec} into source coordinates (see the module header for why the two
+/** The source offset an insert anchored on `unit` resolves to: inside a piece the neighbour is
+ *  source-adjacent; at an edge the piece's outer extent skips the markup wrapping it. */
+function insertOffset(unit: ProseUnit, side: 'before' | 'after'): number {
+  const piece = unit.piece;
+  if (piece === null) {
+    throw new Error(`lint fix anchors an insert on a synthetic unit at ${String(unit.src)}`);
+  }
+  if (side === 'before') {
+    return unit.indexInPiece > 0 ? unit.src : piece.outerStart;
+  }
+  return unit.indexInPiece + 1 < piece.text.length ? unit.src + 1 : piece.outerEnd;
+}
+
+/** Materializes a {@link FixSpec} into source coordinates (see the module header for why the three
  *  shapes are the only safe ones). */
 function materializeFix(spec: FixSpec, doc: TextDocument): LintFix {
-  if ('insertAt' in spec) {
-    const pos = doc.positionAt(spec.insertAt);
+  if ('insert' in spec) {
+    const pos = doc.positionAt(insertOffset(spec.insert, spec.side));
     return { range: { start: pos, end: pos }, newText: spec.text };
   }
   if ('erase' in spec) {

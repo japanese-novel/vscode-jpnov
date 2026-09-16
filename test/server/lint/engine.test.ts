@@ -14,6 +14,7 @@ import { computeLintFindings } from '../../../src/server/lint/engine.ts';
 import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
 import { selectRules } from '../../../src/shared/lint/select.ts';
 import type { RawLintConfigWire } from '../../../src/shared/protocol.ts';
+import { applyLintFixes } from '../helpers.ts';
 
 interface Hit {
   readonly code: string;
@@ -39,21 +40,10 @@ function lint(src: string, raw: RawLintConfigWire): { code: string; text: string
   return lintAll(src, raw).map(({ code, text }) => ({ code, text }));
 }
 
-/** Apply every fix (right-to-left so offsets stay valid) and return the resulting source — the real
- *  "does the fix corrupt the text?" check (no deleted chars, no eaten newlines). */
+/** The source after every fix is applied — the real "does the fix corrupt the text?" check (no
+ *  deleted chars, no eaten newlines). */
 function applied(src: string, raw: RawLintConfigWire): string {
-  const doc = TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
-  const findings = computeLintFindings(src, selectRules(raw), doc);
-  const edits = findings
-    .flatMap((f) =>
-      f.fix ? [{ s: doc.offsetAt(f.fix.range.start), e: doc.offsetAt(f.fix.range.end), t: f.fix.newText }] : [],
-    )
-    .sort((a, b) => b.s - a.s);
-  let out = src;
-  for (const ed of edits) {
-    out = out.slice(0, ed.s) + ed.t + out.slice(ed.e);
-  }
-  return out;
+  return applyLintFixes(src, raw).out;
 }
 
 /** The ダッシュ rule on its shipped default (HORIZONTAL BAR ―). */
@@ -285,10 +275,11 @@ test('endPeriod skips a line that ends inside a multi-line utterance', () => {
   assert.deepEqual(lint('「あの\nね」', PERIOD), []);
 });
 
-test('endPeriod flags a trailing-annotation line at its last prose character', () => {
+test('endPeriod flags a trailing-annotation line at its last prose character; the 。 follows the annotation', () => {
   assert.deepEqual(lintAll('好き［＃「好き」に傍点］', PERIOD), [
     { code: 'lint.narration.endPeriod', text: 'き', fix: { text: '', newText: '。' } },
   ]);
+  assert.equal(applied('好き［＃「好き」に傍点］', PERIOD), '好き［＃「好き」に傍点］。');
 });
 
 const CLOSING: RawLintConfigWire = { 'jpnov.lint.dialogue.closingPunct': true };
@@ -382,6 +373,112 @@ test('ellipsis: an odd … run gains one; surrogates become ……', () => {
   assert.deepEqual(lint('　中黒・並び。', ELLIPSIS), []); // a single 中黒 is prose
   assert.equal(applied('　二点‥だ。', ELLIPSIS), '　二点‥‥だ。'); // ‥ pairs like …
   assert.deepEqual(lint('　二点‥‥だ。', ELLIPSIS), []);
+});
+
+// --- fix placement (#72): an insert lands outside the markup wrapping its anchor ---
+
+test('endPeriod appends 。 after a ruby reading, a closing annotation, and a postfix', () => {
+  assert.equal(applied('　彼は山田《やまだ》', PERIOD), '　彼は山田《やまだ》。');
+  assert.equal(applied('　彼は｜山田《やまだ》', PERIOD), '　彼は｜山田《やまだ》。');
+  assert.equal(applied('　今年は［＃縦中横］12［＃縦中横終わり］', PERIOD), '　今年は［＃縦中横］12［＃縦中横終わり］。');
+  assert.equal(applied('　彼は山田［＃「山田」に傍点］', PERIOD), '　彼は山田［＃「山田」に傍点］。');
+  assert.equal(
+    applied('［＃丸傍点］青空文庫で読書しよう［＃丸傍点終わり］', PERIOD),
+    '［＃丸傍点］青空文庫で読書しよう［＃丸傍点終わり］。',
+  );
+  // a value field renders as text, so the 。 follows the rendered value
+  assert.equal(
+    applied('　本文［＃ここに「タイトル」の値を表示］', PERIOD),
+    '　本文［＃ここに「タイトル」の値を表示］。',
+  );
+  assert.equal(applied('　彼は山田《やまだ》\r\n次。', PERIOD), '　彼は山田《やまだ》。\r\n次。');
+});
+
+test('endPeriod only adds: a trailing 、 stays and gains the 。', () => {
+  assert.deepEqual(lintAll('　彼は言った、', PERIOD), [
+    { code: 'lint.narration.endPeriod', text: '、', fix: { text: '', newText: '。' } },
+  ]);
+  assert.equal(applied('　彼は言った、', PERIOD), '　彼は言った、。');
+});
+
+test('indent inserts the 字下げ before a ｜ or an opening annotation, never inside', () => {
+  assert.equal(applied('｜大人《おとな》は笑った。', INDENT), '　｜大人《おとな》は笑った。');
+  assert.equal(applied('大人《おとな》は笑った。', INDENT), '　大人《おとな》は笑った。');
+  assert.equal(applied('［＃縦中横］12［＃縦中横終わり］年が過ぎた。', INDENT), '　［＃縦中横］12［＃縦中横終わり］年が過ぎた。');
+  assert.equal(applied('［＃傍点］本文だ。［＃傍点終わり］', INDENT), '　［＃傍点］本文だ。［＃傍点終わり］');
+  assert.equal(applied('［＃傍点］青空文庫［＃傍点終わり］で読書しよう。', INDENT), '　［＃傍点］青空文庫［＃傍点終わり］で読書しよう。');
+  // a postfix between the opener and its prose does not end the span; a value field is not an opener
+  assert.equal(
+    applied('［＃太字］［＃「z」に傍点］本文だ。［＃太字終わり］', INDENT),
+    '　［＃太字］［＃「z」に傍点］本文だ。［＃太字終わり］',
+  );
+  assert.equal(
+    applied('［＃ここに「タイトル」の値を表示］本文だ。', INDENT),
+    '［＃ここに「タイトル」の値を表示］　本文だ。',
+  );
+  // a dangling span end of another channel does not end the pending opener either
+  assert.equal(applied('［＃傍点］［＃太字終わり］本文だ。', INDENT), '　［＃傍点］［＃太字終わり］本文だ。');
+});
+
+test('exclamationSpace inserts the 　 after the closing annotation of its mark, before an opener', () => {
+  assert.equal(
+    applied('「［＃傍点］すごい！［＃傍点終わり］そして」', EXCL_SPACE),
+    '「［＃傍点］すごい！［＃傍点終わり］　そして」',
+  );
+  assert.equal(
+    applied('　すごい！［＃「すごい！」に傍点］そして。', EXCL_SPACE),
+    '　すごい！［＃「すごい！」に傍点］　そして。',
+  );
+  assert.equal(
+    applied('　すごい！［＃ここから太字］そして。［＃ここで太字終わり］', EXCL_SPACE),
+    '　すごい！　［＃ここから太字］そして。［＃ここで太字終わり］',
+  );
+  // overlapping channels: the 　 leaves the 傍点 span and stays inside the 太字 one
+  assert.equal(
+    applied('［＃傍点］すごい！［＃太字］［＃傍点終わり］そして［＃太字終わり］', EXCL_SPACE),
+    '［＃傍点］すごい！［＃太字］［＃傍点終わり］　そして［＃太字終わり］',
+  );
+});
+
+test('exclamationSpace warns on a half-width space after the mark but offers no fix', () => {
+  assert.deepEqual(lintAll('「すごい！ そして」', EXCL_SPACE), [
+    { code: 'lint.common.exclamationSpace', text: '！' }, // no fix: a 　 next to it would double the gap
+  ]);
+  assert.equal(applied('「すごい！ そして」', EXCL_SPACE), '「すごい！ そして」');
+  assert.deepEqual(lint('「すごい！　そして」', EXCL_SPACE), []);
+});
+
+test('ellipsis parity doubles the last leader in place, so it stays inside its span', () => {
+  assert.deepEqual(lintAll('　沈黙…だ。', ELLIPSIS), [
+    { code: 'lint.common.ellipsis.parity', text: '…', fix: { text: '…', newText: '……' } },
+  ]);
+  assert.equal(applied('［＃傍点］あ…［＃傍点終わり］だ。', ELLIPSIS), '［＃傍点］あ……［＃傍点終わり］だ。');
+  assert.equal(applied('　沈黙……［＃太字］…［＃太字終わり］だ。', ELLIPSIS), '　沈黙……［＃太字］……［＃太字終わり］だ。');
+});
+
+test('two fixes on one line end never share an offset: ellipsis replaces, endPeriod inserts after it', () => {
+  const both = { ...ELLIPSIS, ...PERIOD };
+  assert.equal(lintAll('　沈黙…', both).filter((h) => h.fix?.text === '').length, 1);
+  assert.equal(applied('　沈黙…', both), '　沈黙……。');
+  assert.equal(applied('　驚いた！山田《やまだ》', { ...EXCL_SPACE, ...PERIOD }), '　驚いた！　山田《やまだ》。');
+});
+
+test('a fix never deletes a whole ruby base; a span may be emptied', () => {
+  assert.deepEqual(lintAll('「そうだ｜。《まる》」', CLOSING), [
+    { code: 'lint.dialogue.closingPunct', text: '。' }, // the warning stays, the fix is dropped
+  ]);
+  assert.equal(applied('「そうだ｜だ。《まる》」', CLOSING), '「そうだ｜だ《まる》」'); // shrinking is fine
+  assert.equal(applied('「そうだ［＃傍点］。［＃傍点終わり］」', CLOSING), '「そうだ［＃傍点］［＃傍点終わり］」');
+  const ZW = { 'jpnov.lint.common.noZeroWidth': true };
+  assert.equal(applied('　あ［＃傍点］\u200b［＃傍点終わり］い。', ZW), '　あ［＃傍点］［＃傍点終わり］い。');
+  assert.equal(applied('「。［＃「z」に傍点］」', CLOSING), '「［＃「z」に傍点］」');
+});
+
+test('two fixes at one offset apply like LSP: the insert survives the neighbouring delete/replace', () => {
+  const both = { ...PERIOD, 'jpnov.lint.common.noTrailingSpace': true };
+  assert.equal(applied('　彼は山田《やまだ》　', both), '　彼は山田《やまだ》。');
+  const excl = { ...EXCL_SPACE, 'jpnov.lint.common.noHankakuKana': true };
+  assert.equal(applied('　すごい！ｶﾞだ。', excl), '　すごい！　ガだ。');
 });
 
 const DIGITS: RawLintConfigWire = { 'jpnov.lint.common.arabicDigits': 2 };

@@ -66,7 +66,9 @@ function isListLine(view: ProseView): boolean {
   return view.text.charAt(k) === '・';
 }
 
-/** 行頭字下げ: a 地の文 line must open with 　 / an opening bracket, or carry a ［＃字下げ］. */
+/** 行頭字下げ: a 地の文 line must open with 　 / an opening bracket, or carry a ［＃字下げ］. The
+ *  fix inserts the 　 before the first prose unit's markup (a ｜, a ［＃縦中横］) and after a
+ *  line-head ［＃０字下げ］, which must stay at the head. */
 export function indentRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
@@ -82,14 +84,14 @@ export function indentRule(ctx: RuleContext): LineRule {
       if (isDecoration(v) || isListLine(v)) {
         return;
       }
-      ctx.report(viewSpan(v, 0, 1), { fix: { insertAt: first.src, text: '　' } });
+      ctx.report(viewSpan(v, 0, 1), { fix: { insert: first, side: 'before', text: '　' } });
     },
   };
 }
 
 /** 地の文は句点で終わる: the line's last prose character must be a terminal (or the line ends
- *  inside a multi-line utterance). The fix inserts 。 AFTER that character — zero-width, so it
- *  can never eat the newline. */
+ *  inside a multi-line utterance). The fix inserts 。 after that character and the markup wrapping
+ *  it (a ruby's reading, ［＃…終わり］); it only adds, so a trailing 、 stays. */
 export function endPeriodRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
@@ -111,7 +113,7 @@ export function endPeriodRule(ctx: RuleContext): LineRule {
       if (unit === undefined) {
         return;
       }
-      ctx.report(viewSpan(v, k, k + 1), { fix: { insertAt: unit.src + 1, text: '。' } });
+      ctx.report(viewSpan(v, k, k + 1), { fix: { insert: unit, side: 'after', text: '。' } });
     },
   };
 }
@@ -167,7 +169,8 @@ function eachMarkRun(
   }
 }
 
-/** ！？の直後は全角スペース: report the run's last mark when prose continues without one. */
+/** ！？の直後は全角スペース: report the run's last mark when prose continues without one; after a
+ *  half-width space (or a tab) the report carries no fix. */
 export function exclamationSpaceRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
@@ -176,13 +179,19 @@ export function exclamationSpaceRule(ctx: RuleContext): LineRule {
         if (!anyFull && b - a < 2) {
           return; // a lone half-width mark is not the sentence-ender form
         }
-        if (b >= v.text.length || AFTER_MARKS.has(v.text.charAt(b))) {
+        const next = v.text.charAt(b);
+        if (b >= v.text.length || AFTER_MARKS.has(next)) {
           return;
         }
         const last = v.units[b - 1];
-        if (last !== undefined) {
-          ctx.report(viewSpan(v, b - 1, b), { fix: { insertAt: last.src + 1, text: '　' } });
+        if (last === undefined) {
+          return;
         }
+        if (isSpace(next)) {
+          ctx.report(viewSpan(v, b - 1, b));
+          return;
+        }
+        ctx.report(viewSpan(v, b - 1, b), { fix: { insert: last, side: 'after', text: '　' } });
       });
     },
   };
@@ -220,8 +229,8 @@ export function exclamationRunRule(ctx: RuleContext): LineRule {
   };
 }
 
-/** 三点リーダー: an odd … run (`.parity`, fix appends one) and the surrogate runs 。。/、、/・・
- *  (fix replaces the run with ……). */
+/** 三点リーダー: an odd … run (`.parity`, fix doubles the run's last leader in place) and the
+ *  surrogate runs 。。/、、/・・ (fix replaces the run with ……). */
 export function ellipsisRule(ctx: RuleContext): LineRule {
   const flagRun = (v: ProseView, a: number, b: number): void => {
     const fix = viewFix(v, a, b, '……');
@@ -239,10 +248,10 @@ export function ellipsisRule(ctx: RuleContext): LineRule {
             i += 1;
           }
           if ((i - a) % 2 === 1) {
-            const last = v.units[i - 1];
+            const fix = viewFix(v, i - 1, i, ch + ch);
             ctx.report(viewSpan(v, a, i), {
               message: { code: 'lint.common.ellipsis.parity' },
-              ...(last === undefined ? {} : { fix: { insertAt: last.src + 1, text: ch } }),
+              ...(fix === undefined ? {} : { fix }),
             });
           }
           continue;

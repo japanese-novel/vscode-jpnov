@@ -10,8 +10,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { Connection } from 'vscode-languageserver/node';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { selectRules } from '../../src/shared/lint/select.ts';
+import { computeLintFindings } from '../../src/server/lint/engine.ts';
+import type { RawLintConfigWire } from '../../src/shared/protocol.ts';
 import { createHighlightStore } from '../../src/server/highlight/vocabulary.ts';
 import type { ServerContext } from '../../src/server/context.ts';
 import { createWorkspaceRoots } from '../../src/server/roots.ts';
@@ -104,4 +107,28 @@ export async function writeUnder(dir: string, rel: string, content: string): Pro
   await mkdir(join(full, '..'), { recursive: true });
   await writeFile(full, content, 'utf-8');
   return full;
+}
+
+/** One lint-fix edit in absolute source offsets (`s === e` is an insert). */
+export interface LintEdit {
+  readonly s: number;
+  readonly e: number;
+  readonly t: string;
+}
+
+/** Lints `src` under `raw` and applies every fix right-to-left (at one offset the wider edit first,
+ *  so an insert there survives as under LSP `applyEdits`), returning the result and its edits. */
+export function applyLintFixes(src: string, raw: RawLintConfigWire): { out: string; edits: LintEdit[] } {
+  const doc = TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
+  const findings = computeLintFindings(src, selectRules(raw), doc);
+  const edits = findings
+    .flatMap((f) =>
+      f.fix ? [{ s: doc.offsetAt(f.fix.range.start), e: doc.offsetAt(f.fix.range.end), t: f.fix.newText }] : [],
+    )
+    .sort((a, b) => b.s - a.s || b.e - a.e);
+  let out = src;
+  for (const ed of edits) {
+    out = out.slice(0, ed.s) + ed.t + out.slice(ed.e);
+  }
+  return { out, edits };
 }
