@@ -85,10 +85,8 @@ function joinRel(parent: string, name: string): string {
  * Three fixed exclusions, deliberately NOT configurable ("your output folder, dot-folders,
  * and node_modules are never scanned"): dot-DIRECTORIES (dot-files still match), any
  * `node_modules` at any depth, and the resolved output dir. The outDir comparison happens in
- * DECODED fs-path space — `resolveContained` returns a re-encoded URL href while dirents are
- * raw bytes, so URI-string equality would miss any non-ASCII outDir (e.g. `出力`); running
- * both sides through `fileURLToPath` sidesteps every percent-encoding mismatch (and the walk
- * needs the fs path for `readdir` anyway). Symlinked dirents report neither file nor
+ * DECODED fs-path space (the walk needs the fs path for `readdir` anyway), so it never
+ * depends on percent-encoding. Symlinked dirents report neither file nor
  * directory under `withFileTypes`, so links are never followed (no cycle risk). Results are
  * sorted by `fileRel` for deterministic output and stable collision reporting.
  */
@@ -144,6 +142,15 @@ async function readBookFiles(rootUri: string, lines: readonly ParsedLine[]): Pro
     files.push({ name: pl.value, src: await readEntry(rootUri, pl.value) });
   }
   return { files };
+}
+
+/** The bytes of one discovered book, or null when it cannot be read (vanished mid-request) — never a throw. */
+async function readBookBytes(uri: string): Promise<Buffer | null> {
+  try {
+    return await readFile(fileURLToPath(uri));
+  } catch {
+    return null;
+  }
 }
 
 /** Reads one root-relative entry to UTF-8 text; throws a {@link LocalizedError} per failure mode. */
@@ -284,7 +291,7 @@ async function* buildRoot(
     if (selection.books && !selection.books.has(fl.uri)) {
       continue;
     }
-    const bytes = await readFile(fileURLToPath(fl.uri)).catch(() => null as Buffer | null);
+    const bytes = await readBookBytes(fl.uri);
     if (bytes === null) {
       // Disappeared mid-build; skip silently rather than error on a non-existent file.
       continue;
@@ -422,7 +429,7 @@ export async function handleListBooks(params: ListBooksParams): Promise<ListBook
   const perRoot = await Promise.all(targetRoots(params.projectDirs).map(async (target) => {
     const jpbooks = await discoverJpbooks(target.rootUri, target.outDirUri);
     return Promise.all(jpbooks.map(async (fl): Promise<BookEntry> => {
-      const bytes = await readFile(fileURLToPath(fl.uri)).catch(() => null as Buffer | null);
+      const bytes = await readBookBytes(fl.uri);
       const title = bytes === null ? undefined : parseJpbook(UTF8.decode(bytes)).meta.title;
       return {
         uri: fl.uri,

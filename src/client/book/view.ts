@@ -260,10 +260,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   /**
    * Post-create hand-off from `jpbook.createFile`: focus the view and open the new book's
-   * detail. The detail key must match the server's enumeration, which composes URIs by
-   * plain string concatenation (`childUri`) — `Uri.joinPath().toString()` percent-encodes
-   * non-ASCII names and would never match a Japanese title — so the key is composed the
-   * same way here, with a normalization-insensitive re-find as the fallback (NFD volumes).
+   * detail. The detail key is the file's `Uri` string, which the server's enumeration composes
+   * the same way (`childUri`); a normalization-insensitive re-find is the fallback for volumes
+   * that store names as NFD.
    */
   async revealNewBook(folder: vscode.Uri, fileName: string): Promise<void> {
     // `<viewId>.focus` resolves a never-shown webview; the ready handshake then re-pulls
@@ -273,7 +272,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const rootUri = folderUri.endsWith('/') ? folderUri.slice(0, -1) : folderUri;
     // Set BEFORE refreshing: whichever refresh lands first (this one, the watcher's
     // onDidCreate, or the post-start fill) re-pushes the open detail once enumerated.
-    this.openDetailUri = `${rootUri}/${fileName}`;
+    this.openDetailUri = chapterUri(rootUri, fileName).toString();
     await this.refresh();
     if (this.entryOf(this.openDetailUri) === undefined) {
       const entry = this.books.find(

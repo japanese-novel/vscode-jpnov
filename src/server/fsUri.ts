@@ -5,17 +5,20 @@
  *
  * Scheme handling is deliberately a prefix test, not URL parsing: the server only ever
  * distinguishes `file:` (real disk via `node:fs`) from "anything else" (virtual fs over the
- * client bridge), and every URI here is already-encoded by the LSP/vscode layer.
+ * client bridge). Root URIs arrive already encoded from the LSP/vscode layer; the names this
+ * module appends to them are raw (dirents, output paths) and get that same encoding.
  */
+import { encodeRelPath } from '#/shared/uri.ts';
 
 /** True iff `uri` is on the `file:` scheme (the only scheme the server reads via `node:fs`). */
 export function isFileScheme(uri: string): boolean {
   return uri.startsWith('file:');
 }
 
-/** Joins a directory URI and a child name into a child URI (no double slash). */
-export function childUri(dirUri: string, name: string): string {
-  return dirUri.endsWith('/') ? `${dirUri}${name}` : `${dirUri}/${name}`;
+/** Joins a directory URI and a raw relative path (a dirent name, `part1/vol2.txt`) into a percent-encoded child URI. */
+export function childUri(dirUri: string, rel: string): string {
+  const encoded = encodeRelPath(rel);
+  return dirUri.endsWith('/') ? `${dirUri}${encoded}` : `${dirUri}/${encoded}`;
 }
 
 /** Strips a single trailing slash so root URIs compare/hash consistently. */
