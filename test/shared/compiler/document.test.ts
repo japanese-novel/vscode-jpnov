@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BuildChrome } from '../../../src/shared/compiler/chrome.ts';
 import { chapterGlue, concatBookText, MANUSCRIPT_SHEET, renderBook, type BookInput } from '../../../src/shared/compiler/document.ts';
-import { FOLIO_BAND, HEADER_BAND, SIDE_PAD } from '../../../src/shared/compiler/geometry.ts';
+import { FOOTER_BAND, HEADER_BAND, SIDE_PAD } from '../../../src/shared/compiler/geometry.ts';
 import { indentAnnotation } from '../../../src/shared/compiler/tokenizer.ts';
 
 // Band totals come from the tunable geometry constants — never write them out as literals.
 const HTOP_RE = new RegExp(String.raw`:root\{[^}]*--htop:` + String(HEADER_BAND) + '[;}]');
-const FOLIO_PAD_RE = new RegExp(
-  String.raw`\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) ` + String(SIDE_PAD) + 'em ' + String(FOLIO_BAND) + 'em ' + String(SIDE_PAD) + 'em',
+const FOOTER_PAD_RE = new RegExp(
+  String.raw`\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) ` + String(SIDE_PAD) + 'em ' + String(FOOTER_BAND) + 'em ' + String(SIDE_PAD) + 'em',
 );
 
 const book = (over: Pick<BookInput, 'files' | 'divider'>): BookInput => ({ ...over });
@@ -17,8 +17,8 @@ const book = (over: Pick<BookInput, 'files' | 'divider'>): BookInput => ({ ...ov
 const OFF: BuildChrome = {
   lineNumbers: false,
   edgeLine: 'none',
-  pageNumber: 'none',
-  pageNumberFormat: '{page} / {totalPage}',
+  footerAlign: 'none',
+  footer: '［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］',
   header: '',
 };
 
@@ -347,27 +347,27 @@ test('renderBook: a 字下げ column carries the indent class + its .indent-N ru
 /** Three one-line pages: display pages 1, 2, 3. */
 const THREE_PAGES = '一\n二\n三';
 
-test('folio parity: rightLeft puts odd pages bottom-right, even bottom-left', () => {
+test('footer parity: rightLeft puts odd pages bottom-right, even bottom-left', () => {
   const body = bodyOf(
     render(THREE_PAGES, {
       linesPerPage: 1,
-      chrome: { pageNumber: 'rightLeft' },
+      chrome: { footerAlign: 'rightLeft' },
     }),
   );
-  assert.match(body, /data-page="0">[^]*?<div class="pn r">1 \/ 3<\/div>/);
-  assert.match(body, /data-page="1">[^]*?<div class="pn l">2 \/ 3<\/div>/);
-  assert.match(body, /data-page="2">[^]*?<div class="pn r">3 \/ 3<\/div>/);
+  assert.match(body, /data-page="0">[^]*?<div class="ft r">1 \/ 3<\/div>/);
+  assert.match(body, /data-page="1">[^]*?<div class="ft l">2 \/ 3<\/div>/);
+  assert.match(body, /data-page="2">[^]*?<div class="ft r">3 \/ 3<\/div>/);
   // Furniture comes AFTER the lines, so line adjacency is untouched.
-  assert.match(body, /<div class="line" data-line="0">一<\/div><\/div><div class="pn r">/);
+  assert.match(body, /<div class="line" data-line="0">一<\/div><\/div><div class="ft r">/);
 });
 
-test('folio positions: all five enum values place (or omit) the number correctly', () => {
-  const sides = (pos: BuildChrome['pageNumber']): (string | null)[] => {
+test('footer positions: all five enum values place (or omit) the number correctly', () => {
+  const sides = (pos: BuildChrome['footerAlign']): (string | null)[] => {
     const body = bodyOf(
-      render('一\n二', { linesPerPage: 1, chrome: { pageNumber: pos } }),
+      render('一\n二', { linesPerPage: 1, chrome: { footerAlign: pos } }),
     );
     return [0, 1].map((i) => {
-      const m = new RegExp(`data-page="${String(i)}">[^]*?<div class="pn (r|l)">`).exec(body);
+      const m = new RegExp(`data-page="${String(i)}">[^]*?<div class="ft (r|l)">`).exec(body);
       return m?.[1] ?? null;
     });
   };
@@ -378,30 +378,62 @@ test('folio positions: all five enum values place (or omit) the number correctly
   assert.deepEqual(sides('none'), [null, null]);
 });
 
-test('folio template: escaped before substitution; unknown variables stay literal', () => {
+test('footer: markup around a value is escaped; a name the page lacks prints as itself', () => {
   const escaped = render('本文', {
-    chrome: { pageNumber: 'right', pageNumberFormat: '<b>{page}</b>' },
+    chrome: { footerAlign: 'right', footer: '<b>［＃ここに「ページ番号」の値を表示］</b>' },
   });
-  assert.match(escaped, /<div class="pn r">&lt;b&gt;1&lt;\/b&gt;<\/div>/);
+  assert.match(escaped, /<div class="ft r">&lt;b&gt;1&lt;\/b&gt;<\/div>/);
   const unknown = render('本文', {
-    chrome: { pageNumber: 'right', pageNumberFormat: 'p{page}/{foo}' },
+    chrome: { footerAlign: 'right', footer: 'p［＃ここに「ページ番号」の値を表示］/［＃ここに「foo」の値を表示］' },
   });
-  assert.match(unknown, /<div class="pn r">p1\/\{foo\}<\/div>/);
+  assert.match(unknown, /<div class="ft r">p1\/foo<\/div>/);
 });
 
-test('folio blank-template suppression: a blank template drops the folio, keeps its band', () => {
-  for (const tpl of ['', '   ']) {
+test('footer blank suppression: a blank footer drops the footer, keeps its band', () => {
+  for (const footer of ['', '   ']) {
     const html = render('本文', {
-      chrome: { pageNumber: 'rightLeft', pageNumberFormat: tpl },
+      chrome: { footerAlign: 'rightLeft', footer },
     });
-    assert.doesNotMatch(html, /class="pn/);
-    assert.match(html, FOLIO_PAD_RE); // element goes, band stays reserved
+    assert.doesNotMatch(html, /class="ft/);
+    assert.match(html, FOOTER_PAD_RE); // element goes, band stays reserved
   }
-  // "{page}" renders non-blank, so it is NOT suppressed; literal spaces are kept as-is.
+  // A non-blank footer is NOT suppressed; literal spaces are kept as-is.
   const kept = render('本文', {
-    chrome: { pageNumber: 'left', pageNumberFormat: ' {page} ' },
+    chrome: { footerAlign: 'left', footer: ' ［＃ここに「ページ番号」の値を表示］ ' },
   });
-  assert.match(kept, /<div class="pn l"> 1 <\/div>/);
+  assert.match(kept, /<div class="ft l"> 1 <\/div>/);
+});
+
+test('header and footer: タイトル／ペンネーム／ページ番号／総ページ数 fill from the book and the page', () => {
+  const body = bodyOf(
+    renderBooks(
+      [{ files: [{ name: 'a.jpnov', src: '一\n二' }], title: '作品名', author: 'ペンネーム' }],
+      {
+        linesPerPage: 1,
+        chrome: {
+          footerAlign: 'right',
+          header: '［＃ここに「タイトル」の値を表示］　［＃ここに「ペンネーム」の値を表示］',
+          footer: '［＃ここに「ページ番号」の値を表示］／［＃ここに「総ページ数」の値を表示］',
+        },
+      },
+    ),
+  );
+  const sheets = body.split(/(?=<div class="page)/).slice(1);
+  assert.match(sheets[0] ?? '', /<div class="hd">作品名　ペンネーム<\/div><div class="ft r">1／2<\/div>/);
+  assert.match(sheets[1] ?? '', /<div class="hd">作品名　ペンネーム<\/div><div class="ft r">2／2<\/div>/);
+});
+
+test('header and footer: a book without title and author fills them blank', () => {
+  const body = bodyOf(
+    render('本文', {
+      chrome: {
+        footerAlign: 'right',
+        header: '［＃ここに「タイトル」の値を表示］',
+        footer: '［＃ここに「ペンネーム」の値を表示］',
+      },
+    }),
+  );
+  assert.match(body, /<div class="hd"><\/div><div class="ft r"><\/div>/);
 });
 
 test('header: centered furniture div, escaped, absent (with its band) when empty', () => {
@@ -456,25 +488,27 @@ const withCover = (
   meta: { title?: string; author?: string } = {},
 ): BookInput => ({
   files: body,
-  cover: { files, title: meta.title ?? '題', author: meta.author ?? '著' },
+  title: meta.title ?? '題',
+  author: meta.author ?? '著',
+  cover: { files },
 });
 
 test('cover: front pages precede the body, unnumbered and furniture-free', () => {
   const body = bodyOf(
     renderBooks(
       [withCover([{ name: 'c.jpnov', src: '表紙' }], [{ name: 'a.jpnov', src: '一\n二' }])],
-      { linesPerPage: 1, chrome: { pageNumber: 'rightLeft', header: '柱' } },
+      { linesPerPage: 1, chrome: { footerAlign: 'rightLeft', header: '柱' } },
     ),
   );
   const sheets = body.split(/(?=<div class="page)/).slice(1);
   assert.equal(sheets.length, 3);
-  // The cover sheet: its own class, no header, no folio.
+  // The cover sheet: its own class, no header, no footer.
   assert.ok(sheets[0]?.startsWith('<div class="page cover" data-page="0">'));
-  assert.ok(!sheets[0]?.includes('class="pn') && !sheets[0]?.includes('class="hd'));
+  assert.ok(!sheets[0]?.includes('class="ft') && !sheets[0]?.includes('class="hd'));
   assert.match(sheets[0] ?? '', /<div class="line" data-line="0">表紙<\/div>/);
   // The body still starts at page 1 of 2 — the cover is not counted, and page 1 stays odd.
-  assert.match(sheets[1] ?? '', /<div class="hd">柱<\/div><div class="pn r">1 \/ 2<\/div>/);
-  assert.match(sheets[2] ?? '', /<div class="hd">柱<\/div><div class="pn l">2 \/ 2<\/div>/);
+  assert.match(sheets[1] ?? '', /<div class="hd">柱<\/div><div class="ft r">1 \/ 2<\/div>/);
+  assert.match(sheets[2] ?? '', /<div class="hd">柱<\/div><div class="ft l">2 \/ 2<\/div>/);
 });
 
 test('cover: each cover file starts a fresh page', () => {
@@ -503,7 +537,7 @@ test('cover: the template annotations substitute the book values; 総ページ�
           { title: '作品名', author: 'ペンネーム' },
         ),
       ],
-      { linesPerPage: 1, chrome: { pageNumber: 'right' } },
+      { linesPerPage: 1, chrome: { footerAlign: 'right' } },
     ),
   );
   const bodyPages = (body.match(/<div class="page" data-page=/g) ?? []).length;
@@ -515,11 +549,20 @@ test('cover: the template annotations substitute the book values; 総ページ�
     body,
     new RegExp(`<div class="line indent-7" data-line="2">全<span class="tcy">${String(bodyPages)}</span>ページ</div>`),
   );
-  // …which is exactly what the folio's {totalPage} reports.
-  assert.match(body, new RegExp(`<div class="pn r">1 / ${String(bodyPages)}</div>`));
+  // …which is exactly what the footer's 総ページ数 reports.
+  assert.match(body, new RegExp(`<div class="ft r">1 / ${String(bodyPages)}</div>`));
 });
 
-test('cover: a value annotation in the BODY keeps the bookless placeholders', () => {
+test('cover: ページ番号 has no value on a cover page, so the name prints', () => {
+  const body = bodyOf(
+    renderBooks([
+      withCover([{ name: 'c.jpnov', src: '［＃ここに「ページ番号」の値を表示］' }], [{ name: 'a.jpnov', src: '本文' }]),
+    ]),
+  );
+  assert.match(body, /<div class="line" data-line="0">ページ番号<\/div>/);
+});
+
+test('cover: a value annotation in the BODY prints its name (body chapters take no values)', () => {
   const body = bodyOf(
     renderBooks([
       withCover(
@@ -533,14 +576,14 @@ test('cover: a value annotation in the BODY keeps the bookless placeholders', ()
   assert.doesNotMatch(body, /実際のタイトル/);
 });
 
-test('cover: covers interleave per book and the folio numbers the bodies continuously', () => {
+test('cover: covers interleave per book and the footer numbers the bodies continuously', () => {
   const body = bodyOf(
     renderBooks(
       [
         withCover([{ name: 'c1.jpnov', src: '表紙一' }], [{ name: 'a.jpnov', src: '一' }]),
         withCover([{ name: 'c2.jpnov', src: '表紙二' }], [{ name: 'b.jpnov', src: '二' }]),
       ],
-      { chrome: { pageNumber: 'right' } },
+      { chrome: { footerAlign: 'right' } },
     ),
   );
   const sheets = body.split(/(?=<div class="page)/).slice(1);
@@ -553,12 +596,12 @@ test('cover: covers interleave per book and the folio numbers the bodies continu
       '<div class="page" data-page="3">',
     ],
   );
-  assert.match(sheets[1] ?? '', /<div class="pn r">1 \/ 2<\/div>/);
-  assert.match(sheets[3] ?? '', /<div class="pn r">2 \/ 2<\/div>/);
+  assert.match(sheets[1] ?? '', /<div class="ft r">1 \/ 2<\/div>/);
+  assert.match(sheets[3] ?? '', /<div class="ft r">2 \/ 2<\/div>/);
 });
 
 test('cover: line numbers are exempted in CSS, since the counter matches .page like any sheet', () => {
-  // The header and folio are withheld elements; the line number is a counter that
+  // The header and footer are withheld elements; the line number is a counter that
   // `class="page cover"` still matches, so only a rule can withhold it.
   const on = renderBooks(
     [withCover([{ name: 'c.jpnov', src: '表紙' }], [{ name: 'a.jpnov', src: '本文' }])],
@@ -575,7 +618,7 @@ test('cover: line numbers are exempted in CSS, since the counter matches .page l
 });
 
 test('cover: the sheet geometry and its reserved bands are cover-independent', () => {
-  const opts = { chrome: { pageNumber: 'right' as const, header: '柱' } };
+  const opts = { chrome: { footerAlign: 'right' as const, header: '柱' } };
   const body = [{ name: 'a.jpnov', src: '本文' }];
   const covered = renderBooks([withCover([{ name: 'c.jpnov', src: '表紙' }], body)], opts);
   const plain = renderBooks([{ files: body }], opts);
@@ -583,14 +626,14 @@ test('cover: the sheet geometry and its reserved bands are cover-independent', (
   const styleOf = (html: string): string => html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
   assert.equal(styleOf(covered), styleOf(plain));
   assert.match(covered, HTOP_RE);
-  assert.match(covered, FOLIO_PAD_RE);
+  assert.match(covered, FOOTER_PAD_RE);
   assert.doesNotMatch(covered, /\.cover\{/); // structural class only — no rule of its own
 });
 
 test('cover: an empty cover file list renders exactly the cover-less document', () => {
   const files = [{ name: 'a.jpnov', src: '本文' }];
   const plain = renderBooks([{ files }]);
-  assert.equal(renderBooks([{ files, cover: { files: [], title: 't', author: 'a' } }]), plain);
+  assert.equal(renderBooks([{ files, title: 't', author: 'a', cover: { files: [] } }]), plain);
   assert.doesNotMatch(plain, /class="page cover"/);
 });
 
@@ -604,7 +647,7 @@ test('cover: covers reach the on-demand CSS sink like any other content', () => 
 test('cover: a book with covers and no chapters renders the covers, page count 0', () => {
   const body = bodyOf(
     renderBooks([withCover([{ name: 'c.jpnov', src: COVER_SRC }], [], { title: '題', author: '著' })], {
-      chrome: { pageNumber: 'right', header: '柱' },
+      chrome: { footerAlign: 'right', header: '柱' },
     }),
   );
   const sheets = body.split(/(?=<div class="page)/).slice(1);
@@ -619,7 +662,9 @@ test('cover: an unset author leaves its column blank, indent and neighbours inta
     renderBooks([
       {
         files: [{ name: 'a.jpnov', src: '本文' }],
-        cover: { files: [{ name: 'c.jpnov', src: COVER_SRC }], title: '題', author: '' },
+        title: '題',
+        author: '',
+        cover: { files: [{ name: 'c.jpnov', src: COVER_SRC }] },
       },
     ]),
   );
@@ -638,14 +683,14 @@ test('per-book pagination: an empty book adds no blank sheet and never breaks th
         { files: [] },
         { files: [{ name: 'b.jpnov', src: '二' }] },
       ],
-      { chrome: { pageNumber: 'right' } },
+      { chrome: { footerAlign: 'right' } },
     ),
   );
   assert.equal(
     body,
     '<div class="book">' +
-      '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一</div></div><div class="pn r">1 / 2</div></div>' +
-      '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="0">二</div></div><div class="pn r">2 / 2</div></div>' +
+      '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">一</div></div><div class="ft r">1 / 2</div></div>' +
+      '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="0">二</div></div><div class="ft r">2 / 2</div></div>' +
       '</div>',
   );
 });
@@ -662,19 +707,19 @@ test('per-book pagination: a book opening with ［＃改ページ］ still start
   assert.match(body, /data-page="1"><div class="grid"><div class="line" data-line="1">二<\/div>/);
 });
 
-test('cover: the folio side follows the BODY page, whatever the cover count', () => {
+test('cover: the footer side follows the BODY page, whatever the cover count', () => {
   // Product ruling: front pages never shift the body's numbering.
   for (const count of [0, 1, 2, 3]) {
     const files = Array.from({ length: count }, (_, i) => ({ name: `c${String(i)}.jpnov`, src: `表紙${String(i)}` }));
     const body = [{ name: 'a.jpnov', src: '一\n二' }];
     const book: BookInput = count === 0
       ? { files: body }
-      : { files: body, cover: { files, title: '題', author: '著' } };
-    const out = bodyOf(renderBooks([book], { linesPerPage: 1, chrome: { pageNumber: 'rightLeft' } }));
+      : { files: body, title: '題', author: '著', cover: { files } };
+    const out = bodyOf(renderBooks([book], { linesPerPage: 1, chrome: { footerAlign: 'rightLeft' } }));
     const sheets = out.split(/(?=<div class="page)/).slice(1);
     assert.equal(sheets.length, count + 2, `${String(count)} covers + 2 body pages`);
-    assert.match(sheets[count] ?? '', /<div class="pn r">1 \/ 2<\/div>/, `${String(count)} covers: body page 1 stays right`);
-    assert.match(sheets[count + 1] ?? '', /<div class="pn l">2 \/ 2<\/div>/, `${String(count)} covers: body page 2 stays left`);
+    assert.match(sheets[count] ?? '', /<div class="ft r">1 \/ 2<\/div>/, `${String(count)} covers: body page 1 stays right`);
+    assert.match(sheets[count + 1] ?? '', /<div class="ft l">2 \/ 2<\/div>/, `${String(count)} covers: body page 2 stays left`);
   }
 });
 
@@ -691,7 +736,9 @@ const repeat = (n: number, text: string): string => Array.from({ length: n }, ()
 const counted = (files: readonly { name: string; src: string }[], divider?: string): BookInput => ({
   files,
   divider,
-  cover: { files: [{ name: 'c.jpnov', src: COUNTS_SRC }], title: '題', author: '著' },
+  title: '題',
+  author: '著',
+  cover: { files: [{ name: 'c.jpnov', src: COUNTS_SRC }] },
 });
 
 /** The two substituted counts on the COUNTS_SRC cover, plus the output's body page count. */
@@ -741,19 +788,30 @@ test('cover: ［＃改ページ］ starts a new sheet, and the count sums every 
     counted([{ name: 'a.jpnov', src: 'あ' }]),
     counted([{ name: 'b.jpnov', src: 'い' }]),
   ]));
-  // Two one-line bodies: two sheets, reported on both covers (like 総ページ数 and the folio).
+  // Two one-line bodies: two sheets, reported on both covers (like 総ページ数 and the footer).
   assert.equal((body.match(/<div class="line" data-line="1">2枚<\/div>/g) ?? []).length, 2);
 });
 
-test('cover: 原稿用紙換算枚数 in a BODY chapter keeps the bookless placeholder', () => {
+test('cover: 原稿用紙換算枚数 in a BODY chapter prints its name', () => {
   const body = bodyOf(renderBooks([counted([{ name: 'a.jpnov', src: SHEETS_SRC }])]));
-  assert.match(body, /<div class="line" data-line="0">NaN枚<\/div>/);
+  assert.match(body, /<div class="line" data-line="0">原稿用紙換算枚数枚<\/div>/);
 });
 
-test('cover: the sheet count runs only when a cover asks for it, once per render', () => {
+test('footer: 原稿用紙換算枚数 fills from the same count the cover reports', () => {
+  const n = MANUSCRIPT_SHEET.linesPerPage * 2 + 5;
+  const body = bodyOf(
+    renderBooks([counted([{ name: 'a.jpnov', src: repeat(n, 'あ') }])], { chrome: { footerAlign: 'right', footer: SHEETS_SRC } }),
+  );
+  const expected = String(Math.ceil(n / MANUSCRIPT_SHEET.linesPerPage));
+  assert.match(body, new RegExp(`<div class="line" data-line="1">${expected}枚</div>`));
+  assert.match(body, new RegExp(`<div class="ft r">${expected}枚</div>`));
+});
+
+test('cover: the sheet count runs only when a cover or the furniture asks for it, once per render', () => {
   // renderBook reads `file.src` once per row build: the configured grid always, the
-  // MANUSCRIPT_SHEET re-flow only for a cover naming 原稿用紙換算枚数 — and once for all covers.
-  const readsFor = (covers: readonly string[]): number => {
+  // MANUSCRIPT_SHEET re-flow only for a cover (or the header / footer) naming 原稿用紙換算枚数 —
+  // and once for all of them.
+  const readsFor = (covers: readonly string[], chrome: Partial<BuildChrome> = {}): number => {
     let reads = 0;
     const chapter = {
       name: 'a.jpnov',
@@ -762,11 +820,14 @@ test('cover: the sheet count runs only when a cover asks for it, once per render
         return 'あ';
       },
     };
-    renderBooks([withCover(covers.map((src, i) => ({ name: `c${String(i)}.jpnov`, src })), [chapter])]);
+    renderBooks([withCover(covers.map((src, i) => ({ name: `c${String(i)}.jpnov`, src })), [chapter])], { chrome });
     return reads;
   };
   assert.equal(readsFor(['表紙']), 1);
   assert.equal(readsFor([COVER_SRC]), 1); // 総ページ数 rides the configured pagination
   assert.equal(readsFor([SHEETS_SRC]), 2);
   assert.equal(readsFor([SHEETS_SRC, COUNTS_SRC]), 2);
+  assert.equal(readsFor(['表紙'], { footerAlign: 'right', footer: SHEETS_SRC }), 2);
+  assert.equal(readsFor(['表紙'], { header: SHEETS_SRC }), 2);
+  assert.equal(readsFor([SHEETS_SRC], { header: SHEETS_SRC, footer: SHEETS_SRC }), 2);
 });

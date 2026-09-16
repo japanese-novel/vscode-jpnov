@@ -1,6 +1,6 @@
 /* Page header — included when header ≠ ''. Centered in the always-reserved top band, flush
-   against the paper margin (top:0, the mirror of .pn's bottom:0 — the MARGIN_MM white
-   stays furniture-free), in smaller-than-body type. line-height:1 (as on .pn and
+   against the paper margin (top:0, the mirror of .ft's bottom:0 — the MARGIN_MM white
+   stays furniture-free), in smaller-than-body type. line-height:1 (as on .ft and
    .line::before) keeps the furniture box its glyph height — an inherited --pitch line box
    would graze the frame. PHYSICAL top/left/right (horizontal-tb inside vertical-rl);
    ink #000 literal (print, not themed). */

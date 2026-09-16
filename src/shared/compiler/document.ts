@@ -4,7 +4,7 @@ import type { BuildChrome } from './chrome.ts';
 import { emrProbe, stylesheet } from './css.ts';
 import type { PaperOrientation, PaperSize } from './geometry.ts';
 import { buildRows, paginate, pagesToHtml, type DisplayLine, type RenderPage, type Row } from './layout.ts';
-import { indentAnnotation, splitLines, tokenize, VALUE_FIELD_PLACEHOLDERS, type ValueField } from './tokenizer.ts';
+import { indentAnnotation, splitLines, tokenize, VALUE_NAMES, type Token } from './tokenizer.ts';
 
 /** 400字詰め原稿用紙 (20 字 × 20 行): the grid ［＃ここに「原稿用紙換算枚数」の値を表示］
  *  re-flows the body on. Tests derive from this, never write 20. */
@@ -19,15 +19,18 @@ export interface BookInput {
    */
   readonly divider?: string | undefined;
   /**
+   * タイトル／ペンネーム for ［＃ここに「…」の値を表示］ on cover pages and in the page furniture,
+   * pre-resolved by the caller (the title fallback is the EPUB dc:title rule); absent = ''.
+   * The counts (総ページ数, 原稿用紙換算枚数, ページ番号) derive from the render itself.
+   */
+  readonly title?: string | undefined;
+  readonly author?: string | undefined;
+  /**
    * The `cover` sources, rendered by the html build as unnumbered front pages (txt and EPUB
-   * never see them). `title`/`author` are the ［＃ここに「…」の値を表示］ substitutions,
-   * pre-resolved by the caller; the two counts (総ページ数, 原稿用紙換算枚数) derive from the
-   * body inside {@link renderBook}. Absent/empty = no cover pages.
+   * never see them). Absent/empty = no cover pages.
    */
   readonly cover?: {
     readonly files: readonly { readonly name: string; readonly src: string }[];
-    readonly title: string;
-    readonly author: string;
   } | undefined;
 }
 
@@ -171,9 +174,10 @@ function glueRows(glue: string, dash: DashMode): Row[] {
  * `linesPerPage`; `chrome` adds the page furniture. Each book concatenates its `files[]` with
  * {@link chapterGlue} between chapters and starts on a fresh page. Cover files render BEFORE
  * the body as unnumbered, furniture-free pages and compile AFTER the bodies are paginated, so
- * ［＃ここに「総ページ数」の値を表示］ shows the body page count — the same count as the
- * folio's `{totalPage}` — and ［＃ここに「原稿用紙換算枚数」の値を表示］ the same bodies
- * re-flowed on {@link MANUSCRIPT_SHEET}, computed only when a cover asks for it. All options
+ * ［＃ここに「総ページ数」の値を表示］ shows the body page count — the same count the footer's
+ * 総ページ数 reports — and ［＃ここに「原稿用紙換算枚数」の値を表示］ the same bodies re-flowed
+ * on {@link MANUSCRIPT_SHEET}, computed only when a cover or the page furniture asks for it.
+ * The header and footer fill from the same values plus the page's own ページ番号. All options
  * are required and pre-resolved (the settings resolver is the only default layer). Pure +
  * vscode-free.
  */
@@ -213,7 +217,7 @@ export function renderBook(opts: {
   const totalBody = bodies.reduce((n, b) => n + b.pages.length, 0);
 
   // 原稿用紙換算枚数: the bodies re-flowed on MANUSCRIPT_SHEET, the divider uncentred — computed
-  // on the first cover that asks, once per render.
+  // on the first cover (or the furniture) that asks, once per render.
   let sheets: number | undefined;
   const totalSheets = (): number => {
     sheets ??= bodies.reduce((n, b) => {
@@ -222,22 +226,25 @@ export function renderBook(opts: {
     }, 0);
     return sheets;
   };
+  const asksSheets = (tokens: readonly Token[]): boolean =>
+    tokens.some((t) => t.kind === 'valueField' && t.name === VALUE_NAMES.sheets);
+  const furnitureAsksSheets = asksSheets(tokenize(opts.chrome.header)) || asksSheets(tokenize(opts.chrome.footer));
 
-  const coverPagesOf = (book: BookInput): DisplayLine[][] => {
-    const cover = book.cover;
-    if (cover === undefined || cover.files.length === 0) {
-      return [];
+  // One book's ［＃ここに「…」の値を表示］ substitutions — the cover compile's, and the furniture's
+  // base (pagesToHtml adds the page's own numbers).
+  const valuesOf = (book: BookInput, wantsSheets: boolean): ReadonlyMap<string, string> => {
+    const values = new Map<string, string>([
+      [VALUE_NAMES.title, book.title ?? ''],
+      [VALUE_NAMES.author, book.author ?? ''],
+      [VALUE_NAMES.totalPages, String(totalBody)],
+    ]);
+    if (wantsSheets) {
+      values.set(VALUE_NAMES.sheets, String(totalSheets()));
     }
-    const tokenLists = cover.files.map((file) => tokenize(applyAutoTcy(file.src, opts.autoTcy)));
-    const wantsSheets = tokenLists.some((tokens) =>
-      tokens.some((t) => t.kind === 'valueField' && t.field === 'sheets'),
-    );
-    const values: Readonly<Record<ValueField, string>> = {
-      title: cover.title,
-      author: cover.author,
-      totalPages: String(totalBody),
-      sheets: wantsSheets ? String(totalSheets()) : VALUE_FIELD_PLACEHOLDERS.sheets,
-    };
+    return values;
+  };
+
+  const coverPagesOf = (tokenLists: readonly (readonly Token[])[], values: ReadonlyMap<string, string>): DisplayLine[][] => {
     const rows = tokenLists.flatMap((tokens, i): Row[] => {
       const r = buildRows(tokens, { dash: opts.dash, values });
       return i > 0 ? [{ kind: 'pagebreak' }, ...r] : r; // each cover file starts on a fresh page
@@ -245,19 +252,22 @@ export function renderBook(opts: {
     return paginate(rows, opts.charsPerLine, opts.linesPerPage, opts.kinsoku);
   };
 
-  const pages = bodies.flatMap(({ book, pages: bodyPages }): RenderPage[] => [
-    ...coverPagesOf(book).map((lines): RenderPage => ({ lines, cover: true })),
-    ...bodyPages.map((lines): RenderPage => ({ lines })),
-  ]);
+  const pages = bodies.flatMap(({ book, pages: bodyPages }): RenderPage[] => {
+    const coverTokens = (book.cover?.files ?? []).map((file) => tokenize(applyAutoTcy(file.src, opts.autoTcy)));
+    const values = valuesOf(book, furnitureAsksSheets || coverTokens.some(asksSheets));
+    return [
+      ...coverPagesOf(coverTokens, values).map((lines): RenderPage => ({ lines, cover: true })),
+      ...bodyPages.map((lines): RenderPage => ({ lines, values })),
+    ];
+  });
 
-  // Blank-template normalization (single source): a template that is blank after trim
-  // means "no folio", folded into the one `pageNumber === 'none'` gate so the
-  // `.pn` DOM element and its CSS rule always agree. Only the suppression check trims —
-  // a rendered non-blank template keeps the author's literal spaces.
+  // Blank-footer normalization (single source): a footer that is blank after trim means
+  // "no footer", folded into the one `footerAlign === 'none'` gate so the `.ft` DOM element
+  // and its CSS rule always agree. Only the suppression check trims — a rendered non-blank
+  // footer keeps the author's literal spaces.
   const chrome: BuildChrome = {
     ...opts.chrome,
-    pageNumber:
-      opts.chrome.pageNumberFormat.trim() === '' ? 'none' : opts.chrome.pageNumber,
+    footerAlign: opts.chrome.footer.trim() === '' ? 'none' : opts.chrome.footerAlign,
   };
 
   // Emit the body first so the CSS carries ONLY the classes used (on-demand).

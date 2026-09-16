@@ -37,7 +37,7 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'jpbook.metaNotKeyValue': ['just text'],
   'jpbook.metaUnknownKey': ['publisher', FRONT_MATTER_KEYS.join(', ')],
   'jpbook.metaDuplicateKey': ['title'],
-  'jpbook.metaBadEnum': ['pageNumber', 'middle', 'right, left, rightLeft, leftRight, none'],
+  'jpbook.metaBadEnum': ['footerAlign', 'middle', 'right, left, rightLeft, leftRight, none'],
   'jpbook.metaUnterminated': [],
   'jpbook.coverItemWithoutKey': ['- cover.jpnov'],
   'jpbook.coverNeedsList': ['cover: 表紙.jpnov'],

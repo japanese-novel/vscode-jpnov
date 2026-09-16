@@ -1,5 +1,5 @@
 /**
- * Guards the deliberate DOUBLE HOME of the sheet geometry: FOLIO_BAND / SIDE_PAD /
+ * Guards the deliberate DOUBLE HOME of the sheet geometry: FOOTER_BAND / SIDE_PAD /
  * EDGE_INSET live in geometry.ts (`@page` cannot read `var()` portably; each constant's
  * role is documented there) AND as plain literals in the authored `styles/*.css` fragments. If either side moves
  * alone, this fails loudly (see geometry.ts's module header). The line pitch is NOT double-homed:
@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   EDGE_INSET,
-  FOLIO_BAND,
+  FOOTER_BAND,
   SIDE_PAD,
 } from '../../../src/shared/compiler/geometry.ts';
 
@@ -62,14 +62,14 @@ test('the .css geometry literals equal the geometry.ts constants (paper-fit doub
   const buildBase = read('build.base.css');
 
   // The sheet's physical band padding shorthand: top --htop (the header/line-number bands),
-  // right SIDE_PAD, bottom FOLIO_BAND (the always-reserved folio band), left SIDE_PAD.
+  // right SIDE_PAD, bottom FOOTER_BAND (the always-reserved footer band), left SIDE_PAD.
   const pad = /\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) ([\d.]+)em ([\d.]+)em ([\d.]+)em[;}]/.exec(buildBase);
-  assert.ok(pad !== null, '.page{padding:calc(var(--htop)*1em) <side>em <folio>em <side>em} not found');
-  assert.equal(Number.parseFloat(pad[2] ?? ''), FOLIO_BAND);
+  assert.ok(pad !== null, '.page{padding:calc(var(--htop)*1em) <side>em <footer>em <side>em} not found');
+  assert.equal(Number.parseFloat(pad[2] ?? ''), FOOTER_BAND);
   // …and its one DERIVED literal: the outset frame's bottom inset in build.edge.css is
-  // FOLIO_BAND − EDGE_INSET; a change to either constant could silently leave it behind —
+  // FOOTER_BAND − EDGE_INSET; a change to either constant could silently leave it behind —
   // guard it here.
-  assert.equal(cssValue(read('build.edge.css'), '.page::before', 'bottom'), FOLIO_BAND - EDGE_INSET);
+  assert.equal(cssValue(read('build.edge.css'), '.page::before', 'bottom'), FOOTER_BAND - EDGE_INSET);
 
   // Print margin: the vertical sides pinned to ZERO — the paper inset rides the TS-emitted
   // border (geometry.ts fitPaper), so any vertical print margin would push the border box
@@ -79,18 +79,18 @@ test('the .css geometry literals equal the geometry.ts constants (paper-fit doub
 
   // SIDE_PAD: the sheet's physical left/right padding (fitPaper's block-axis sheet size), the
   // outset frame's side insets (flush with the grid's side columns), and its one derived
-  // literal — the folio corners at SIDE_PAD + EDGE_INSET (just inside the frame line).
+  // literal — the footer corners at SIDE_PAD + EDGE_INSET (just inside the frame line).
   assert.equal(Number.parseFloat(pad[1] ?? ''), SIDE_PAD);
   assert.equal(Number.parseFloat(pad[3] ?? ''), SIDE_PAD);
   assert.equal(cssValue(read('build.edge.css'), '.page::before', 'left'), SIDE_PAD);
   assert.equal(cssValue(read('build.edge.css'), '.page::before', 'right'), SIDE_PAD);
-  assert.equal(cssValue(read('build.folio.css'), '.pn.r', 'right'), SIDE_PAD + EDGE_INSET);
-  assert.equal(cssValue(read('build.folio.css'), '.pn.l', 'left'), SIDE_PAD + EDGE_INSET);
+  assert.equal(cssValue(read('build.footer.css'), '.ft.r', 'right'), SIDE_PAD + EDGE_INSET);
+  assert.equal(cssValue(read('build.footer.css'), '.ft.l', 'left'), SIDE_PAD + EDGE_INSET);
 });
 
 test('the EDGE_INSET fragment sites all derive from the constant (reserve double-home guard)', () => {
   // Fragments write the String(n) canonical form ('0.7', not '.70'). Same-value literals
-  // that are NOT this constant stay out: .pn{font-size:0.7em} and layout.ts's ruby-hang
+  // that are NOT this constant stay out: .ft{font-size:0.7em} and layout.ts's ruby-hang
   // tolerance.
   assert.equal(cssValue(read('preview.base.css'), '.segment', 'padding-inline'), EDGE_INSET);
   const calcSites: readonly (readonly [file: string, needle: string])[] = [

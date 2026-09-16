@@ -229,7 +229,7 @@ export function buildSemanticTokens(
         const open = 'ここに「'.length;
         const close = '」の値を表示'.length;
         mark(ds, open, 'marker'); // ここに「 (demoted, like the block scaffolding)
-        mark(ds + open, raw - ANNOT_OPEN - open - close - ONE, 'directive'); // タイトル/ペンネーム/総ページ数/原稿用紙換算枚数
+        mark(ds + open, raw - ANNOT_OPEN - open - close - ONE, 'directive'); // the name
         mark(ds + raw - ANNOT_OPEN - close - ONE, close, 'marker'); // 」の値を表示 (demoted)
         mark(last, ONE, 'marker'); // ］
         break;

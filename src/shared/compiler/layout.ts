@@ -15,10 +15,10 @@
  */
 import { DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../chars.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
-import type { BuildChrome, PageNumberPosition } from './chrome.ts';
+import type { BuildChrome, FooterAlign } from './chrome.ts';
 import { resolveStyle } from './emphasis.ts';
 import { escapeComment, escapeHtml } from './escape.ts';
-import { splitLines, tokenize, VALUE_FIELD_PLACEHOLDERS, type HeadingLevel, type Token, type ValueField } from './tokenizer.ts';
+import { splitLines, tokenize, VALUE_NAMES, type HeadingLevel, type Token } from './tokenizer.ts';
 
 /**
  * One laid-out glyph group: a char (1 cell), a ruby unit (base char count, atomic), or a
@@ -347,16 +347,17 @@ function applyPostfix(
  * source character — omitted = no translation (structural probes, the issue scan). The optional
  * `opts.issues` sink collects the token indices of unresolved corner-target postfixes — the
  * render's own failure list, mapped back to source spans by {@link findPostfixTargetIssues} so
- * the Warnings can never disagree with what was applied. `opts.values` supplies the real
- * ［＃ここに「…」の値を表示］ substitutions (the html build's cover compile); omitted = the
- * fixed placeholders — so `Unit.text` carries the SUBSTITUTED characters for these units.
+ * the Warnings can never disagree with what was applied. `opts.values` supplies the
+ * ［＃ここに「…」の値を表示］ substitutions by name (the html build's cover compile); a name it
+ * lacks, or an omitted map, renders the name itself ({@link valueOf}) — so `Unit.text`
+ * carries the SUBSTITUTED characters for these units.
  */
 export function buildRows(
   tokens: readonly Token[],
   opts?: {
     readonly issues?: number[];
     readonly dash?: DashMode;
-    readonly values?: Readonly<Record<ValueField, string>>;
+    readonly values?: ReadonlyMap<string, string>;
   },
 ): Row[] {
   const issues = opts?.issues;
@@ -624,7 +625,7 @@ export function buildRows(
       case 'valueField': {
         // Per-char units, so 禁則/分離禁止/dash translation apply as to typed text. Values are
         // never re-tokenized (a 《 or ［＃ in a title stays literal) and carry no line break.
-        const substituted = (opts?.values ?? VALUE_FIELD_PLACEHOLDERS)[token.field];
+        const substituted = valueOf(token.name, opts?.values);
         if (tcyBuf !== null) {
           tcyBuf += substituted;
           break;
@@ -643,6 +644,15 @@ export function buildRows(
   flushTcy(); // an open ［＃縦中横］ at end of input closes with its line
   endLine(true);
   return rows;
+}
+
+/**
+ * The text ［＃ここに「name」の値を表示］ renders: the compile's value for `name`, else the name
+ * itself. A Map, never an object: the name comes from the DOCUMENT, where `toString` would
+ * hit Object.prototype.
+ */
+export function valueOf(name: string, values: ReadonlyMap<string, string> | undefined): string {
+  return values?.get(name) ?? name;
 }
 
 /** An unresolved corner-target postfix as absolute source offsets, with its target text. */
@@ -1134,8 +1144,8 @@ function emitLine(line: DisplayLine, used?: Set<string>, anchor = true, head = '
   return `<div class="line${indentClass}${headingClass}${emrClass}"${dataLine}>${head}${html}</div>`;
 }
 
-/** The folio's physical side on page `pi` (0-based), or null for no folio. */
-function folioSide(pos: PageNumberPosition, pi: number): 'r' | 'l' | null {
+/** The footer's physical side on page `pi` (0-based), or null for no footer. */
+function footerSide(pos: FooterAlign, pi: number): 'r' | 'l' | null {
   if (pos === 'none') {
     return null;
   }
@@ -1152,35 +1162,48 @@ function folioSide(pos: PageNumberPosition, pi: number): 'r' | 'l' | null {
   }
 }
 
-/** One page's absolutely-positioned furniture (header + folio), emitted after its lines. */
-function pageFurniture(chrome: BuildChrome, pi: number, totalPage: number): string {
+/**
+ * A header or footer line as HTML. Only ［＃ここに「…」の値を表示］ is interpreted ({@link valueOf});
+ * every other token — prose, ruby, any other annotation — prints as its source characters:
+ * the furniture is a horizontal line outside the vertical engine, so none of its units apply.
+ */
+function furnitureHtml(text: string, values: ReadonlyMap<string, string>): string {
+  return tokenize(text)
+    .map((t) => escapeHtml(t.kind === 'valueField' ? valueOf(t.name, values) : t.raw))
+    .join('');
+}
+
+/**
+ * One page's absolutely-positioned furniture (header + footer), emitted after its lines. The
+ * page's own numbers join the book values under {@link VALUE_NAMES}. A blank footer never
+ * reaches here (renderBook normalizes it to footerAlign 'none').
+ */
+function pageFurniture(chrome: BuildChrome, page: RenderPage, pi: number, totalPage: number): string {
+  const values = new Map(page.values);
+  values.set(VALUE_NAMES.page, String(pi + 1));
+  values.set(VALUE_NAMES.totalPages, String(totalPage));
   let out = '';
   if (chrome.header !== '') {
-    out += `<div class="hd">${escapeHtml(chrome.header)}</div>`;
+    out += `<div class="hd">${furnitureHtml(chrome.header, values)}</div>`;
   }
-  const side = folioSide(chrome.pageNumber, pi);
+  const side = footerSide(chrome.footerAlign, pi);
   if (side !== null) {
-    // Escape the author's template FIRST, then substitute the plain-integer counts —
-    // `{`/`}` survive escaping, so the placeholders live through it, while any markup in
-    // the template is neutralized. Unknown `{foo}` stays literal. A blank template never
-    // reaches here (renderBook normalizes it to pageNumber 'none').
-    const text = escapeHtml(chrome.pageNumberFormat)
-      .replaceAll('{page}', String(pi + 1))
-      .replaceAll('{totalPage}', String(totalPage));
-    out += `<div class="pn ${side}">${text}</div>`;
+    out += `<div class="ft ${side}">${furnitureHtml(chrome.footer, values)}</div>`;
   }
   return out;
 }
 
 /**
- * One output sheet. `cover: true` marks an unnumbered front page: no header, folio or line
- * numbers, and outside the folio's `{page}`/`{totalPage}` counts. The grid and its reserved
+ * One output sheet. `cover: true` marks an unnumbered front page: no header, footer or line
+ * numbers, and outside the footer's ページ番号／総ページ数 counts. The grid and its reserved
  * bands are unchanged. Only the first two are withheld here — the line number is a CSS
  * counter matching `.page`, so its exemption lives in `build.ln.css`; 罫線/枠 stays on.
+ * `values` are the book's ［＃ここに「…」の値を表示］ substitutions for the page furniture.
  */
 export interface RenderPage {
   readonly lines: readonly DisplayLine[];
   readonly cover?: true;
+  readonly values?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -1190,7 +1213,7 @@ export interface RenderPage {
  * vertical-rl box (build.base.css). When a `used` sink is passed, every emphasis
  * class emitted is recorded into it so the caller can emit only those rules (on-demand CSS)
  * — the structural `cover` class stays out of the sink. `data-page` is the sequential DOM
- * ordinal over ALL pages; the folio number and its {@link folioSide} parity count BODY pages
+ * ordinal over ALL pages; the footer's page number and its {@link footerSide} parity count BODY pages
  * only, so cover sheets never shift where body page 1 lands.
  */
 export function pagesToHtml(
@@ -1203,7 +1226,7 @@ export function pagesToHtml(
   const body = pages
     .map((page, di) => {
       const lines = page.lines.map((line) => emitLine(line, used)).join('');
-      const furniture = page.cover === true ? '' : pageFurniture(chrome, bodyPi++, totalPage);
+      const furniture = page.cover === true ? '' : pageFurniture(chrome, page, bodyPi++, totalPage);
       const cls = page.cover === true ? 'page cover' : 'page';
       return `<div class="${cls}" data-page="${String(di)}"><div class="grid">${lines}</div>${furniture}</div>`;
     })

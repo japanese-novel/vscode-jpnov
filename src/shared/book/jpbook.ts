@@ -12,8 +12,8 @@
  * "a backslash-free relative `.jpnov` path"; the server (`src/server/jpbook.ts`) resolves it
  * through {@link resolveContained} and stats it before trusting it.
  */
-import type { BuildChrome, PageNumberPosition } from '../compiler/chrome.ts';
-import { PAGE_NUMBER_POSITIONS } from '../compiler/chrome.ts';
+import type { BuildChrome, FooterAlign } from '../compiler/chrome.ts';
+import { FOOTER_ALIGNS } from '../compiler/chrome.ts';
 import { indentAnnotation, tokenize } from '../compiler/tokenizer.ts';
 import { BUILD_CHROME_DEFAULT } from '../config/settings.ts';
 import type { LocalizableMessage } from '../protocol.ts';
@@ -94,7 +94,7 @@ export function isEntryList(v: unknown): v is EntryList {
  * {@link composeBookChrome} for page furniture, or at the assembly seam
  * (`renderBook`/`concatBookText`) for BODY content like `divider`, which is never chrome.
  */
-export const META_KEYS = ['title', 'author', 'header', 'pageNumber', 'pageNumberFormat', 'divider'] as const;
+export const META_KEYS = ['title', 'author', 'header', 'footer', 'footerAlign', 'divider'] as const;
 export type MetaKey = (typeof META_KEYS)[number];
 
 /** The list-valued front-page key — parsed as line kinds, never a {@link JpbookMeta} field. */
@@ -163,9 +163,15 @@ export interface JpbookMeta {
   readonly title?: string;
   /** ペンネーム — display metadata (the EPUB package's dc:creator); never affects the output path. */
   readonly author?: string;
+  /** Header line, filled like `footer`; absent = none. */
   readonly header?: string;
-  readonly pageNumber?: PageNumberPosition;
-  readonly pageNumberFormat?: string;
+  /**
+   * Footer line: `.jpnov` notation whose ［＃ここに「…」の値を表示］ fields fill from the book and
+   * the page ({@link BuildChrome.footer}); absent = the product default, '' = no footer.
+   */
+  readonly footer?: string;
+  /** Footer placement; absent = the product default. */
+  readonly footerAlign?: FooterAlign;
   /**
    * Chapter-divider line inserted between chapters that do not open with a 見出し. A line of
    * `.jpnov` notation: a bare mark is centred at build time; a ［＃○字下げ］ prefix positions
@@ -274,13 +280,13 @@ export function parseJpbook(text: string): ParsedJpbook {
     }
     // metaKeyOf returned a key, so the line has a colon: colonIndex is non-negative here.
     const val = value.slice(colonIndex(value) + 1).trim();
-    if (metaKey === 'pageNumber') {
-      if (!(PAGE_NUMBER_POSITIONS as readonly string[]).includes(val)) {
+    if (metaKey === 'footerAlign') {
+      if (!(FOOTER_ALIGNS as readonly string[]).includes(val)) {
         return {
-          warning: { code: 'jpbook.metaBadEnum', args: [key, val, PAGE_NUMBER_POSITIONS.join(', ')] },
+          warning: { code: 'jpbook.metaBadEnum', args: [key, val, FOOTER_ALIGNS.join(', ')] },
         };
       }
-      meta.pageNumber = val as PageNumberPosition;
+      meta.footerAlign = val as FooterAlign;
     } else {
       meta[metaKey] = val;
     }
@@ -377,7 +383,7 @@ export function metaRegionOf(
 
 /**
  * Composes one book's resolved {@link BuildChrome}: the proofing chrome (line numbers /
- * edge rules) comes from the workspace SETTINGS base, the page furniture (ヘッダー/ノンブル)
+ * edge rules) comes from the workspace SETTINGS base, the page furniture (header / footer)
  * from the book's OWN front matter, defaults filling any absent key. This is the single
  * seam where "how I proof" (settings) meets "what this book is" (`.jpbook`).
  */
@@ -388,8 +394,8 @@ export function composeBookChrome(
   return {
     lineNumbers: base.lineNumbers,
     edgeLine: base.edgeLine,
-    pageNumber: meta.pageNumber ?? BUILD_CHROME_DEFAULT.pageNumber,
-    pageNumberFormat: meta.pageNumberFormat ?? BUILD_CHROME_DEFAULT.pageNumberFormat,
+    footerAlign: meta.footerAlign ?? BUILD_CHROME_DEFAULT.footerAlign,
+    footer: meta.footer ?? BUILD_CHROME_DEFAULT.footer,
     header: meta.header ?? BUILD_CHROME_DEFAULT.header,
   };
 }
@@ -501,7 +507,7 @@ export function completeEntryLine(
 /**
  * Computes completions for a FRONT-MATTER line: metadata keys while the cursor is before
  * any colon (inserted as `key: `), and value proposals after it — the enum members for
- * `pageNumber`, the preset marks for `divider`. Both filter by case-insensitive prefix.
+ * `footerAlign`, the preset marks for `divider`. Both filter by case-insensitive prefix.
  * Pure and fs-free.
  */
 export function completeMetaLine(linePrefix: string): JpbookCompletion[] {
@@ -524,7 +530,7 @@ export function completeMetaLine(linePrefix: string): JpbookCompletion[] {
 
   const key = linePrefix.slice(keyStart, sep).trim();
   const values: readonly string[] | null =
-    key === 'pageNumber' ? PAGE_NUMBER_POSITIONS : key === 'divider' ? DIVIDER_PRESETS : null;
+    key === 'footerAlign' ? FOOTER_ALIGNS : key === 'divider' ? DIVIDER_PRESETS : null;
   if (values === null) {
     return [];
   }

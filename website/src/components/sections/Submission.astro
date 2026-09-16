@@ -6,8 +6,8 @@ const JPBOOK = `---
 title: 作品名
 author: ペンネーム
 header: 作品名　一
-pageNumber: right
-pageNumberFormat: {page} / {totalPage}
+footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
+footerAlign: right
 cover:
   - 表紙.jpnov
 ---
@@ -36,6 +36,7 @@ cover:
         ))}
       </tbody>
     </table>
+    <p class="jp-note">ヘッダーとフッターにも同じ注記が書けます。そこでは「ページ番号」も使えます。</p>
     <p class="jp-note">原稿用紙換算枚数は、本文を 400 字詰め原稿用紙（縦書き 20 字 × 20 行）に組み直したときの枚数です。</p>
   </div>
 </section>

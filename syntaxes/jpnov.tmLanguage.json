@@ -20,8 +20,8 @@
           }
         },
         {
-          "comment": "Value display ［＃ここに「タイトル/ペンネーム/総ページ数/原稿用紙換算枚数」の値を表示］ — only the field name is a directive; the structural ここに「 and 」の値を表示 demote to comment (mirrors the semantic layer emitting `marker` over each). The name alternation is checked against src/shared/compiler/tokenizer.ts VALUE_FIELD_BY_NAME by grammar-sync (canonical length-desc order); an unknown name falls through to the generic comment rule, exactly like the tokenizer.",
-          "match": "(［＃)(ここに「)(原稿用紙換算枚数|ペンネーム|総ページ数|タイトル)(」の値を表示)(］)",
+          "comment": "Value display ［＃ここに「名前」の値を表示］ — only the name is a directive; the structural ここに「 and 」の値を表示 demote to comment (mirrors the semantic layer emitting `marker` over each). Any non-empty name up to the first ］ matches — the tokenizer's rule exactly (an unknown name renders as itself); an empty pair falls through to the generic comment rule. grammar-sync pins this rule.",
+          "match": "(［＃)(ここに「)([^］]+)(」の値を表示)(］)",
           "captures": {
             "1": { "name": "comment.block.annotation.jpnov" },
             "2": { "name": "comment.other.annotation.jpnov" },

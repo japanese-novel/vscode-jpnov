@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { styleVariantsByChannel } from '../../../src/shared/compiler/emphasis.ts';
-import { HEADING_LITERALS, VALUE_FIELD_BY_NAME } from '../../../src/shared/compiler/tokenizer.ts';
+import { HEADING_LITERALS } from '../../../src/shared/compiler/tokenizer.ts';
 import { COVER_ITEM_MARKS } from '../../../src/shared/book/jpbook.ts';
 
 const canonical = (vs: readonly string[]): string =>
@@ -115,11 +115,10 @@ test('見出し span/block fixed-literal rules exist, ordered (END before START)
   assert.ok((at[2] ?? 0) < (at[3] ?? 0), '見出し span END must precede START (終わり suffix)');
 });
 
-test('value display fixed-literal rule exists before the generic rule (canonical order)', () => {
-  // The field names live in tokenizer.ts VALUE_FIELD_BY_NAME; the alternation is derived,
-  // never hand-edited (same contract as the emphasis variants).
-  const needle = canonical([...VALUE_FIELD_BY_NAME.keys()]);
-  const rule = `(［＃)(ここに「)(${needle})(」の値を表示)(］)`;
+test('value display rule takes any non-empty name up to ］, before the generic rule', () => {
+  // The tokenizer accepts any non-empty name (an unknown one renders as itself), so the grammar
+  // carries no name list: `[^］]+` is bounded exactly like the tokenizer's inner slice.
+  const rule = '(［＃)(ここに「)([^］]+)(」の値を表示)(］)';
   const value = matches.findIndex((m) => m === rule);
   const generic = matches.findIndex((m) => m === '(［＃)([^］]*)(］)');
   assert.ok(generic >= 0, 'generic comment rule not found');

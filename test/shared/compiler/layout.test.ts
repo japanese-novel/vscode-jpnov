@@ -11,11 +11,7 @@ import {
   type DisplayLine,
   type RenderPage,
 } from '../../../src/shared/compiler/layout.ts';
-import {
-  tokenize,
-  VALUE_FIELD_PLACEHOLDERS,
-  type ValueField,
-} from '../../../src/shared/compiler/tokenizer.ts';
+import { tokenize, VALUE_NAMES, valueAnnotation } from '../../../src/shared/compiler/tokenizer.ts';
 import { DASH_GLYPH } from '../../../src/shared/chars.ts';
 
 /** Paginated lines as BODY pages (the cover-less shape every plain-book test wants). */
@@ -25,8 +21,8 @@ const sheets = (ps: readonly DisplayLine[][]): RenderPage[] => ps.map((lines) =>
 const OFF: BuildChrome = {
   lineNumbers: false,
   edgeLine: 'none',
-  pageNumber: 'none',
-  pageNumberFormat: '{page} / {totalPage}',
+  footerAlign: 'none',
+  footer: '［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］',
   header: '',
 };
 
@@ -987,36 +983,37 @@ test('block 太字: the directive lines vanish and the body lines carry the b cl
 // --------------------------------------------------------------- 値の表示 (value substitution)
 
 /** Every unit's text across the rows, concatenated — what the layout measured. */
-const unitText = (src: string, values?: Readonly<Record<ValueField, string>>): string =>
+const unitText = (src: string, values?: ReadonlyMap<string, string>): string =>
   buildRows(tokenize(src), values === undefined ? undefined : { values })
     .flatMap((row) => (row.kind === 'line' ? row.units : []))
     .map((u) => u.text)
     .join('');
 
-const REAL: Readonly<Record<ValueField, string>> = {
-  title: '作品名',
-  author: 'ペンネーム',
-  totalPages: '215',
-  sheets: '58',
-};
+/** A cover compile's values: the book's four, no page number. */
+const REAL: ReadonlyMap<string, string> = new Map([
+  [VALUE_NAMES.title, '作品名'],
+  [VALUE_NAMES.author, 'ペンネーム'],
+  [VALUE_NAMES.totalPages, '215'],
+  [VALUE_NAMES.sheets, '58'],
+]);
 
-test('値の表示: a bookless compile substitutes the fixed placeholders', () => {
-  assert.equal(unitText('［＃ここに「タイトル」の値を表示］'), VALUE_FIELD_PLACEHOLDERS.title);
-  assert.equal(unitText('［＃ここに「ペンネーム」の値を表示］'), VALUE_FIELD_PLACEHOLDERS.author);
-  assert.equal(unitText('［＃ここに「総ページ数」の値を表示］'), VALUE_FIELD_PLACEHOLDERS.totalPages);
-  assert.equal(unitText('［＃ここに「原稿用紙換算枚数」の値を表示］'), VALUE_FIELD_PLACEHOLDERS.sheets);
+test('値の表示: a compile without values renders every name as itself', () => {
+  for (const name of [...Object.values(VALUE_NAMES), '13', '発行日']) {
+    assert.equal(unitText(valueAnnotation(name)), name);
+  }
 });
 
-test('値の表示: opts.values substitutes the real values, an empty one emitting nothing', () => {
-  assert.equal(unitText('［＃ここに「タイトル」の値を表示］', REAL), REAL.title);
-  assert.equal(unitText('全［＃ここに「総ページ数」の値を表示］ページ', REAL), `全${REAL.totalPages}ページ`);
-  assert.equal(unitText('［＃ここに「ペンネーム」の値を表示］', { ...REAL, author: '' }), '');
+test('値の表示: opts.values substitutes by name; a name it lacks stays a name; an empty value emits nothing', () => {
+  assert.equal(unitText('［＃ここに「タイトル」の値を表示］', REAL), '作品名');
+  assert.equal(unitText('全［＃ここに「総ページ数」の値を表示］ページ', REAL), '全215ページ');
+  assert.equal(unitText('［＃ここに「ページ番号」の値を表示］', REAL), VALUE_NAMES.page); // a cover has no page
+  assert.equal(unitText('［＃ここに「ペンネーム」の値を表示］', new Map([[VALUE_NAMES.author, '']])), '');
 });
 
 test('値の表示: substituted text is per-char units — it measures and wraps like prose', () => {
   const rows = buildRows(tokenize('［＃ここに「タイトル」の値を表示］'), { values: REAL });
   const units = rows.flatMap((row) => (row.kind === 'line' ? row.units : []));
-  assert.equal(units.length, Array.from(REAL.title).length);
+  assert.equal(units.length, Array.from('作品名').length);
   assert.ok(units.every((u) => u.cells === 1));
   // cpl 2 splits the 3-character title across two display lines, like any typed run.
   assert.equal(
@@ -1027,7 +1024,7 @@ test('値の表示: substituted text is per-char units — it measures and wraps
 
 test('値の表示: the configured dash inside a value translates like typed prose', () => {
   const rows = buildRows(tokenize('［＃ここに「タイトル」の値を表示］'), {
-    values: { ...REAL, title: '光―闇' },
+    values: new Map([[VALUE_NAMES.title, '光―闇']]),
     dash: 'horizontalBar',
   });
   const units = rows.flatMap((row) => (row.kind === 'line' ? row.units : []));
@@ -1042,9 +1039,11 @@ test('値の表示: a value inside ［＃縦中横］ joins the combined cell', 
   const units = rows.flatMap((row) => (row.kind === 'line' ? row.units : []));
   const tcy = units.filter((u) => u.cssClass === 'tcy');
   assert.equal(tcy.length, 1);
-  assert.equal(tcy[0]?.text, REAL.totalPages);
-  assert.equal(tcy[0].cells, 1); // combined cells are always one cell wide
-  assert.equal(tcy[0].html, `<span class="tcy">${REAL.totalPages}</span>`);
+  const combined = tcy[0];
+  assert.ok(combined);
+  assert.equal(combined.text, '215');
+  assert.equal(combined.cells, 1); // combined cells are always one cell wide
+  assert.equal(combined.html, '<span class="tcy">215</span>');
 });
 
 // --------------------------------------------------------------- cover pages
@@ -1053,8 +1052,8 @@ test('値の表示: a value inside ［＃縦中横］ joins the combined cell', 
 const FURNISHED: BuildChrome = {
   lineNumbers: false,
   edgeLine: 'none',
-  pageNumber: 'rightLeft',
-  pageNumberFormat: '{page} / {totalPage}',
+  footerAlign: 'rightLeft',
+  footer: '［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］',
   header: '柱',
 };
 
@@ -1063,7 +1062,7 @@ const page1 = (src: string): DisplayLine[] => pages(src)[0] ?? [];
 /** The emitted body split into per-page markup. */
 const sheetsOf = (out: string): string[] => out.split(/(?=<div class="page)/).slice(1);
 
-test('cover pages: the cover class, no furniture, and a folio that counts BODY pages only', () => {
+test('cover pages: the cover class, no furniture, and a footer that counts BODY pages only', () => {
   const out = pagesToHtml(
     [
       { lines: page1('表紙'), cover: true },
@@ -1081,12 +1080,12 @@ test('cover pages: the cover class, no furniture, and a folio that counts BODY p
   assert.ok(parts[1]?.startsWith('<div class="page cover" data-page="1">'));
   assert.ok(parts[2]?.startsWith('<div class="page" data-page="2">'));
   assert.ok(parts[3]?.startsWith('<div class="page" data-page="3">'));
-  // …while the folio numbers the body alone, page 1 first and odd (so 'rightLeft' starts right).
+  // …while the footer numbers the body alone, page 1 first and odd (so 'rightLeft' starts right).
   for (const cover of [parts[0], parts[1]]) {
-    assert.ok(cover !== undefined && !cover.includes('class="pn') && !cover.includes('class="hd'));
+    assert.ok(cover !== undefined && !cover.includes('class="ft') && !cover.includes('class="hd'));
   }
-  assert.match(parts[2] ?? '', /<div class="hd">柱<\/div><div class="pn r">1 \/ 2<\/div>/);
-  assert.match(parts[3] ?? '', /<div class="hd">柱<\/div><div class="pn l">2 \/ 2<\/div>/);
+  assert.match(parts[2] ?? '', /<div class="hd">柱<\/div><div class="ft r">1 \/ 2<\/div>/);
+  assert.match(parts[3] ?? '', /<div class="hd">柱<\/div><div class="ft l">2 \/ 2<\/div>/);
 });
 
 test('cover pages: a cover-less document emits exactly what it always did', () => {
@@ -1096,11 +1095,60 @@ test('cover pages: a cover-less document emits exactly what it always did', () =
     pagesToHtml(sheets(plain), undefined, FURNISHED),
     '<div class="book">' +
       '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">前</div>' +
-      '</div><div class="hd">柱</div><div class="pn r">1 / 2</div></div>' +
+      '</div><div class="hd">柱</div><div class="ft r">1 / 2</div></div>' +
       '<div class="page" data-page="1"><div class="grid"><div class="line" data-line="2">後</div>' +
-      '</div><div class="hd">柱</div><div class="pn l">2 / 2</div></div>' +
+      '</div><div class="hd">柱</div><div class="ft l">2 / 2</div></div>' +
       '</div>',
   );
+});
+
+// --------------------------------------------------------------- page furniture (header / footer)
+
+test('furniture: header and footer fill ［＃ここに「…」の値を表示］ from the page values plus its numbers', () => {
+  const values = new Map([[VALUE_NAMES.title, '作品名'], [VALUE_NAMES.author, 'ペンネーム']]);
+  const chrome: BuildChrome = {
+    ...FURNISHED,
+    footerAlign: 'right',
+    header: `${valueAnnotation(VALUE_NAMES.title)}　${valueAnnotation(VALUE_NAMES.page)}`,
+    footer: `${valueAnnotation(VALUE_NAMES.author)}　${valueAnnotation(VALUE_NAMES.page)}／${valueAnnotation(VALUE_NAMES.totalPages)}`,
+  };
+  const out = pagesToHtml([{ lines: page1('一'), values }, { lines: page1('二'), values }], undefined, chrome);
+  const parts = sheetsOf(out);
+  assert.match(parts[0] ?? '', /<div class="hd">作品名　1<\/div><div class="ft r">ペンネーム　1／2<\/div>/);
+  assert.match(parts[1] ?? '', /<div class="hd">作品名　2<\/div><div class="ft r">ペンネーム　2／2<\/div>/);
+});
+
+test('furniture: a name the page lacks prints as itself; a page without values prints every name', () => {
+  const chrome: BuildChrome = {
+    ...FURNISHED,
+    footerAlign: 'right',
+    header: valueAnnotation('発行日'),
+    footer: valueAnnotation(VALUE_NAMES.title),
+  };
+  const out = pagesToHtml([{ lines: page1('一') }], undefined, chrome);
+  assert.match(out, /<div class="hd">発行日<\/div><div class="ft r">タイトル<\/div>/);
+});
+
+test('furniture: only the value annotation is interpreted — other annotations, ruby and markup print as typed', () => {
+  const chrome: BuildChrome = {
+    ...FURNISHED,
+    footerAlign: 'right',
+    header: '作品名《さくひんめい》［＃「作品名」に傍点］',
+    footer: '<b>［＃縦中横］１２［＃縦中横終わり］</b>',
+  };
+  const used = new Set<string>();
+  const out = pagesToHtml([{ lines: page1('一') }], used, chrome);
+  assert.match(out, /<div class="hd">作品名《さくひんめい》［＃「作品名」に傍点］<\/div>/);
+  assert.match(out, /<div class="ft r">&lt;b&gt;［＃縦中横］１２［＃縦中横終わり］&lt;\/b&gt;<\/div>/);
+  assert.doesNotMatch(out, /<ruby|class="tcy"|emph-/);
+  assert.deepEqual([...used], []); // the furniture sinks no on-demand class
+});
+
+test('furniture: a substituted value is escaped, never re-tokenized', () => {
+  const values = new Map([[VALUE_NAMES.title, '<i>《x》']]);
+  const chrome: BuildChrome = { ...FURNISHED, footerAlign: 'none', header: valueAnnotation(VALUE_NAMES.title) };
+  const out = pagesToHtml([{ lines: page1('一'), values }], undefined, chrome);
+  assert.match(out, /<div class="hd">&lt;i&gt;《x》<\/div>/);
 });
 
 test('値の表示: a postfix after a value field is left unjudged (the scan is bookless)', () => {

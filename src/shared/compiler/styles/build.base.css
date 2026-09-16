@@ -9,7 +9,7 @@ body{margin:0;}
    horizontal-tb block and only the .grid inside flows vertical-rl: a vertical-rl root prints
    blank in WebKit (sheets laid out into negative x) and a vertical-rl sheet splits onto two
    papers in Chromium (orthogonal near-page-size block). Bands are physical padding outside the
-   grid — top --htop em, bottom 2em = FOLIO_BAND, sides 1.5em = SIDE_PAD (geometry.ts, guarded by
+   grid — top --htop em, bottom 2em = FOOTER_BAND, sides 1.5em = SIDE_PAD (geometry.ts, guarded by
    styles-codegen.test.ts); overflow clips on the padding box, where the furniture anchors. */
 .page{line-height:var(--pitch);width:calc(var(--lpp)*var(--pitch)*1em);height:calc(var(--cpl)*1em);padding:calc(var(--htop)*1em) 1.5em 2em 1.5em;position:relative;margin:2.5em auto;background:#fff;box-sizing:content-box;overflow:hidden;break-after:page;page-break-after:always;break-inside:avoid;}
 

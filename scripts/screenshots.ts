@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderBook } from '../src/shared/compiler/document.ts';
 import { renderPreview } from '../src/shared/compiler/preview.ts';
+import { BUILD_CHROME_DEFAULT } from '../src/shared/config/settings.ts';
 
 const OUT = fileURLToPath(new URL('../.scratch/shots/', import.meta.url));
 const IMAGES = fileURLToPath(new URL('../docs/images/', import.meta.url));
@@ -47,9 +48,9 @@ const bookOpts = {
   paperSize: 'a4',
   paperOrientation: 'auto',
 } as const;
-const folio = {
-  pageNumber: 'right',
-  pageNumberFormat: '{page} / {totalPage}',
+const furniture = {
+  footerAlign: 'right',
+  footer: BUILD_CHROME_DEFAULT.footer,
   header: '吾輩は猫である',
 } as const;
 
@@ -103,7 +104,7 @@ const shots: Shot[] = [
     html: renderBook({
       books: [{ files: [{ name: 'wagahai.jpnov', src: NEKO }] }],
       ...bookOpts,
-      chrome: { lineNumbers: false, edgeLine: 'none', ...folio },
+      chrome: { lineNumbers: false, edgeLine: 'none', ...furniture },
     }),
     rasterSize: 2245,
     mat: 40,
@@ -115,7 +116,7 @@ const shots: Shot[] = [
       books: [{ files: [{ name: 'wagahai.jpnov', src: NEKO }] }],
       ...bookOpts,
       linePitch: 2, // 罫線あり — 既定 1.5 では罫線がルビを横切る
-      chrome: { lineNumbers: true, edgeLine: 'red', ...folio },
+      chrome: { lineNumbers: true, edgeLine: 'red', ...furniture },
     }),
     rasterSize: 2245,
     mat: 40,

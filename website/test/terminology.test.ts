@@ -7,7 +7,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
 
-import { VALUE_FIELD_BY_NAME } from '../../src/shared/compiler/tokenizer.ts';
+import { VALUE_NAMES } from '../../src/shared/compiler/tokenizer.ts';
 import { UI } from '../src/copy/ui.ts';
 import { readRootText, sitePath } from '../scripts/root.ts';
 
@@ -59,7 +59,7 @@ test('every UI label the copy types is a string the extension ships', () => {
 });
 
 test('every 「…」 in the copy is a product label or a known name', async () => {
-  const allowed = new Set([...Object.values(UI), ...PRODUCT_STRINGS, ...QUOTED_NAMES, ...VALUE_FIELD_BY_NAME.keys()]);
+  const allowed = new Set([...Object.values(UI), ...PRODUCT_STRINGS, ...QUOTED_NAMES, ...Object.values(VALUE_NAMES)]);
   const bad: string[] = [];
   const copy = [...await files(sitePath('src/components/sections'), /\.astro$/), ...await files(sitePath('src/pages'), /\.astro$/), sitePath('src/stage/beats.ts')];
   for (const { path, text } of await texts(copy)) {

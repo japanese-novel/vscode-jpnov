@@ -367,10 +367,10 @@ test('build honors the kinsoku mode from the settings snapshot (禁則)', async 
   // 禁則 rides the request's settings snapshot (same source as the preview). At width 16 a
   // naive wrap ends column 1 on the opening 「 (cell 16); 追い出し pushes it down →
   // 15×あ | 「い」. Proves settings.kinsoku reaches renderBook alongside charsPerLine.
-  // (The folio is suppressed through the book's OWN front matter, not settings.)
+  // (The footer is suppressed through the book's OWN front matter, not settings.)
   const { ctx } = boot();
   const head = 'あ'.repeat(15);
-  await writeUnder(ws.dir, 'vol1/index.jpbook', '---\npageNumber: none\n---\nvol1/a.jpnov');
+  await writeUnder(ws.dir, 'vol1/index.jpbook', '---\nfooterAlign: none\n---\nvol1/a.jpnov');
   await writeUnder(ws.dir, 'vol1/a.jpnov', `${head}「い」`);
 
   const result = await handleBuild(ctx, {
@@ -640,7 +640,7 @@ test('one batch build renders a DIFFERENT header per volume, each from its own f
   await using ws = await makeTmpWorkspace();
   const { ctx } = boot();
   await writeUnder(ws.dir, 'vol1.jpbook', '---\nheader: 作品名　一\n---\nch/a.jpnov');
-  await writeUnder(ws.dir, 'vol2.jpbook', '---\nheader: 作品名　二\npageNumber: none\n---\nch/b.jpnov');
+  await writeUnder(ws.dir, 'vol2.jpbook', '---\nheader: 作品名　二\nfooterAlign: none\n---\nch/b.jpnov');
   await writeUnder(ws.dir, 'ch/a.jpnov', 'いち');
   await writeUnder(ws.dir, 'ch/b.jpnov', 'に');
 
@@ -659,9 +659,9 @@ test('one batch build renders a DIFFERENT header per volume, each from its own f
   assert.ok(vol1.content.includes('<div class="hd">作品名　一</div>'), 'vol1 carries its own header');
   assert.ok(vol2.content.includes('<div class="hd">作品名　二</div>'), 'vol2 carries its own header');
   assert.ok(!vol1.content.includes('作品名　二'), 'no cross-contamination');
-  // The settings snapshot carries no furniture: vol1 gets the default folio, vol2 opted out.
-  assert.match(vol1.content, /<div class="pn [rl]">/);
-  assert.ok(!/<div class="pn [rl]">/.test(vol2.content), 'pageNumber: none suppresses the folio');
+  // The settings snapshot carries no furniture: vol1 gets the default footer, vol2 opted out.
+  assert.match(vol1.content, /<div class="ft [rl]">/);
+  assert.ok(!/<div class="ft [rl]">/.test(vol2.content), 'footerAlign: none suppresses the footer');
 });
 
 test('front matter never leaks into the artifacts: body starts at the first chapter', async () => {
@@ -798,7 +798,7 @@ test('build: covers render as unnumbered front pages carrying the book values (h
 
   const result: BuildResult = await handleBuild(ctx, {
     format: 'html',
-    settings: { ...SETTINGS, pageNumber: 'right', pageNumberFormat: '{page} / {totalPage}' } as HtmlSettings,
+    settings: SETTINGS,
     projectDirs: projectsFor(ws.uri),
   });
   assert.equal(result.ok, true);
@@ -814,11 +814,34 @@ test('build: covers render as unnumbered front pages carrying the book values (h
   assert.ok(sheets[0]?.includes('ペンネーム'));
   assert.ok(sheets[0]?.includes('全<span class="tcy">2</span>ページ'));
   assert.ok(sheets[0]?.includes('換算<span class="tcy">3</span>枚'));
-  // Neither cover carries the book's header or a folio; the body starts at page 1.
+  // Neither cover carries the book's header or a footer; the body starts at page 1.
   for (const cover of [sheets[0], sheets[1]]) {
-    assert.ok(cover !== undefined && !cover.includes('class="hd') && !cover.includes('class="pn'));
+    assert.ok(cover !== undefined && !cover.includes('class="hd') && !cover.includes('class="ft'));
   }
-  assert.match(sheets[2] ?? '', /<div class="hd">柱<\/div><div class="pn r">1 \/ 2<\/div>/);
+  assert.match(sheets[2] ?? '', /<div class="hd">柱<\/div><div class="ft r">1 \/ 2<\/div>/);
+});
+
+test('build: the header and footer take the value annotations, filled per page', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, 'vol1.jpbook', [
+    '---',
+    'title: 作品名',
+    'author: ペンネーム',
+    'header: ［＃ここに「タイトル」の値を表示］',
+    'footer: ［＃ここに「ペンネーム」の値を表示］　［＃ここに「ページ番号」の値を表示］',
+    '---',
+    'a.jpnov',
+  ].join('\n'));
+  await writeUnder(ws.dir, 'a.jpnov', '本文。');
+
+  const html = (await handleBuild(ctx, {
+    format: 'html',
+    settings: SETTINGS,
+    projectDirs: projectsFor(ws.uri),
+  })).artifacts[0];
+  assert.ok(html?.kind === 'html');
+  assert.match(html.content, /<div class="hd">作品名<\/div><div class="ft r">ペンネーム　1<\/div>/);
 });
 
 test('build: a title-less book falls back to the outRel STEM, exactly like the EPUB title', async () => {

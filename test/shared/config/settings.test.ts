@@ -162,8 +162,8 @@ test('the wire settings carry NO page furniture — that is jpbook front-matter 
   // output is EXACTLY the wire fields of each shape, whatever a stale or hostile sender ships.
   const PREVIEW_WIRE_KEYS = ['autoTcy', 'charsPerLine', 'dash', 'edgeLine', 'fontFamily', 'kinsoku', 'lineNumbers', 'linePitch', 'linesPerPage'];
   const HTML_WIRE_KEYS = [...PREVIEW_WIRE_KEYS, 'paperOrientation', 'paperSize'].sort();
-  const resolved = resolveHtmlSettings(badHtml({ header: '柱', pageNumber: 'none' }));
+  const resolved = resolveHtmlSettings(badHtml({ header: '柱', footerAlign: 'none' }));
   assert.deepEqual(Object.keys(resolved).sort(), HTML_WIRE_KEYS);
-  const resolvedPreview = resolvePreviewSettings(badPreview({ header: '柱', pageNumber: 'none' }));
+  const resolvedPreview = resolvePreviewSettings(badPreview({ header: '柱', footerAlign: 'none' }));
   assert.deepEqual(Object.keys(resolvedPreview).sort(), PREVIEW_WIRE_KEYS);
 });

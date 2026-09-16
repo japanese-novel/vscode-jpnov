@@ -6,8 +6,8 @@ import {
   findUnpairedBlocks,
   splitLines,
   tokenize,
-  VALUE_FIELD_BY_NAME,
-  VALUE_FIELD_PLACEHOLDERS,
+  VALUE_NAMES,
+  valueAnnotation,
   type Token,
 } from '../../../src/shared/compiler/tokenizer.ts';
 import { buildRows } from '../../../src/shared/compiler/layout.ts';
@@ -430,23 +430,24 @@ test('縦中横 postfix requires the は connector (like 太字/斜体)', () => 
 
 // --------------------------------------------------------------- 値の表示
 
-test('値の表示 tokenizes each field name; an unknown name greys out like any typo', () => {
-  for (const [name, field] of VALUE_FIELD_BY_NAME) {
-    const raw = `［＃ここに「${name}」の値を表示］`;
-    assert.deepEqual(tokenize(raw), [{ kind: 'valueField', raw, field }]);
+test('値の表示 tokenizes ANY non-empty name, which rides the token; an empty pair greys out', () => {
+  for (const name of [...Object.values(VALUE_NAMES), '発行日', '13', 'a」b']) {
+    const raw = valueAnnotation(name);
+    assert.deepEqual(tokenize(raw), [{ kind: 'valueField', raw, name }]);
   }
-  assert.deepEqual(kinds(tokenize('［＃ここに「発行日」の値を表示］')), ['comment']);
+  assert.deepEqual(kinds(tokenize('［＃ここに「」の値を表示］')), ['comment']); // empty pair
   assert.deepEqual(kinds(tokenize('［＃ここに「タイトル」の値］')), ['comment']); // truncated tail
   assert.deepEqual(kinds(tokenize('［＃ここにタイトルの値を表示］')), ['comment']); // no corner quotes
 });
 
-test('値の表示: an Object.prototype name is just an unknown name, never a field', () => {
+test('値の表示: an Object.prototype name is a name like any other, never a lookup hazard', () => {
   // The name comes from the document: a plain object lookup would resolve these through the
   // prototype chain and hand the layout a function to substitute.
   for (const name of ['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__']) {
-    const raw = `［＃ここに「${name}」の値を表示］`;
-    assert.deepEqual(tokenize(raw), [{ kind: 'comment', raw, inner: raw.slice(2, -1) }]);
-    assert.doesNotThrow(() => buildRows(tokenize(raw)));
+    const raw = valueAnnotation(name);
+    assert.deepEqual(tokenize(raw), [{ kind: 'valueField', raw, name }]);
+    const units = buildRows(tokenize(raw)).flatMap((r) => (r.kind === 'line' ? r.units : []));
+    assert.equal(units.map((u) => u.text).join(''), name);
     assert.doesNotThrow(() => findTcyIssues(`［＃縦中横］${raw}［＃縦中横終わり］`));
   }
 });
@@ -457,19 +458,19 @@ test('値の表示 is not line-head gated and keeps its neighbours as text', () 
   ]);
 });
 
-test('findTcyIssues counts a value field at its BOOKLESS placeholder length', () => {
+test('findTcyIssues counts a value field at its NAME length (what a bookless compile renders)', () => {
   // Relational, so the too-long threshold stays a private tuning value: a span holding a value
-  // field must be judged exactly as one holding that field's placeholder typed out.
+  // field must be judged exactly as one holding that name typed out.
   const spanned = (content: string): string => `［＃縦中横］${content}［＃縦中横終わり］`;
-  for (const [name, field] of VALUE_FIELD_BY_NAME) {
-    const asField = findTcyIssues(spanned(`［＃ここに「${name}」の値を表示］`)).map((i) => i.kind);
-    const asTyped = findTcyIssues(spanned(VALUE_FIELD_PLACEHOLDERS[field])).map((i) => i.kind);
-    assert.deepEqual(asField, asTyped, `${name} must be accounted like its typed stand-in`);
+  for (const name of [...Object.values(VALUE_NAMES), '13', '発行日']) {
+    const asField = findTcyIssues(spanned(valueAnnotation(name))).map((i) => i.kind);
+    const asTyped = findTcyIssues(spanned(name)).map((i) => i.kind);
+    assert.deepEqual(asField, asTyped, `${name} must be accounted like its typed name`);
   }
   // Two fields in one span accumulate, exactly as two typed runs would.
   assert.deepEqual(
-    findTcyIssues(spanned('［＃ここに「タイトル」の値を表示］［＃ここに「ペンネーム」の値を表示］')).map((i) => i.kind),
-    findTcyIssues(spanned(VALUE_FIELD_PLACEHOLDERS.title + VALUE_FIELD_PLACEHOLDERS.author)).map((i) => i.kind),
+    findTcyIssues(spanned(valueAnnotation('12') + valueAnnotation('34'))).map((i) => i.kind),
+    findTcyIssues(spanned('1234')).map((i) => i.kind),
   );
 });
 
