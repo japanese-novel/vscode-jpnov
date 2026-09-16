@@ -1,9 +1,10 @@
 /**
- * E2E for the Books panel's focus restore across host-driven rebuilds (#78): the REAL webview
- * bundle runs in a headless Chromium against a stub host that answers every message synchronously
- * in the provider's order. Each scenario focuses a control, acts (Enter on a focused button is a
- * click) and reports where focus landed after the rebuild. Skips without a discoverable browser
- * unless `JPNOV_E2E_REQUIRE_BROWSER=1` (CI).
+ * E2E for the Books panel's focus restore across host-driven rebuilds (#78) and its row verbs
+ * against a stale list (#77): the REAL webview bundle runs in a headless Chromium against a stub
+ * host that answers every message synchronously in the provider's order, or, when held, only on
+ * release (the DOM lagging the host as across the real round trip). Each scenario focuses a
+ * control, acts (Enter on a focused button is a click) and reports where focus landed after the
+ * rebuild. Skips without a discoverable browser unless `JPNOV_E2E_REQUIRE_BROWSER=1` (CI).
  */
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,17 +56,37 @@ const entry = (list: EntryList, part: 'open' | 'up' | 'down' | 'rm', name: strin
 /**
  * The stub host, installed before the bundle loads: `acquireVsCodeApi().postMessage` lands in
  * `host.on`, which answers synchronously through a MessageEvent on `window` (the bundle listens
- * there). Payloads are copied, as postMessage's structured clone would.
+ * there), or between \`hold()\` and \`release()\` only once released. Payloads are copied, as
+ * postMessage's structured clone would. A row verb counts only when it names a row the book still
+ * has (version + path on that line, as the host checks) and is answered like the host: a detail
+ * re-push, then after an edit the watcher's list + detail.
  */
 const HOST_SCRIPT = `
 const FIX = ${JSON.stringify(FIX)};
 const U = (n) => FIX.root + '/' + n;
-const send = (data) => window.dispatchEvent(new MessageEvent('message', { data }));
+const send = (data) => {
+  if (host.held !== null) {
+    host.held.push(data);
+    return;
+  }
+  window.dispatchEvent(new MessageEvent('message', { data }));
+};
 const host = {
   groups: [],
   details: new Map(),
   open: null,
   posted: [],
+  held: null,
+  hold() {
+    this.held = [];
+  },
+  release() {
+    const queued = this.held;
+    this.held = null;
+    for (const data of queued) {
+      send(data);
+    }
+  },
   // A fresh workspace: \`groups\` = book names per root (default one root, A B C), \`checked\`
   // = ticked book names (default A and C). Ends on the list screen with nothing focused.
   reset(spec = {}) {
@@ -77,6 +98,7 @@ const host = {
     }));
     this.details = new Map(names.flat().map((n) => [U(n), {
       title: n,
+      version: 1,
       chapters: [...FIX.chapters],
       covers: [FIX.cover],
       meta: [{ key: 'title', label: 'title', value: '作品名', note: '' }],
@@ -97,11 +119,19 @@ const host = {
   },
   detail() {
     const d = this.details.get(this.open);
-    const vms = (list) => list.map((n, i) => ({ line: i + 3, name: n, folder: '', fileUri: U(n), missing: false }));
+    const vms = (list) => list.map((n, i) => ({ line: i + 3, path: n, name: n, folder: '', fileUri: U(n), missing: false }));
     send({
-      type: 'detail', uri: this.open, title: d.title,
+      type: 'detail', uri: this.open, title: d.title, version: d.version,
       chapters: vms(d.chapters), covers: vms(d.covers), meta: d.meta.map((m) => ({ ...m })),
     });
+  },
+  // A row verb's outcome: the prompt re-push always; the save → watcher round trip only after an edit.
+  answer(edited) {
+    this.detail();
+    if (edited) {
+      this.state();
+      this.detail();
+    }
   },
   // Mirrors view.ts refresh(): a vanished open book closes the detail first, then the list re-pushes.
   removeBook(n) {
@@ -118,7 +148,9 @@ const host = {
   },
   // An external edit of the open book: the watcher re-pushes the list, then the detail.
   repush(mutate) {
-    mutate(this.details.get(this.open));
+    const d = this.details.get(this.open);
+    mutate(d);
+    d.version += 1;
     this.state();
     this.detail();
   },
@@ -151,19 +183,30 @@ const host = {
         this.state();
         break;
       case 'moveEntry': {
-        const list = this.details.get(m.uri)[m.list];
+        const d = this.details.get(m.uri);
+        const list = d[m.list];
         const i = m.line - 3;
-        const [e] = list.splice(i, 1);
-        list.splice(i + m.dir, 0, e);
-        this.state();
-        this.detail();
+        const fresh = m.version === d.version && list[i] === m.path;
+        if (fresh) {
+          const [e] = list.splice(i, 1);
+          list.splice(i + m.dir, 0, e);
+          d.version += 1;
+        }
+        this.answer(fresh);
         break;
       }
-      case 'removeEntry':
-        this.details.get(m.uri)[m.list].splice(m.line - 3, 1);
-        this.state();
-        this.detail();
+      case 'removeEntry': {
+        const d = this.details.get(m.uri);
+        const list = d[m.list];
+        const i = m.line - 3;
+        const fresh = m.version === d.version && list[i] === m.path;
+        if (fresh) {
+          list.splice(i, 1);
+          d.version += 1;
+        }
+        this.answer(fresh);
         break;
+      }
       default:
         break; // build / openFile / addEntries / createEntry / editMeta / …: recorded only
     }
@@ -176,7 +219,8 @@ window.acquireVsCodeApi = () => ({ postMessage: (m) => host.on(m), getState: () 
 /**
  * The scenarios, run synchronously at parse time (\`--dump-dom\` serializes at load). \`step\`
  * focuses the keyed control, acts (default: click), and records the landing key plus the
- * open book's chapter order and the messages the bundle posted meanwhile.
+ * open book's chapter order, the messages the bundle posted meanwhile, and how many rows are
+ * marked pending (a verb posted, the host's re-push not yet rendered).
  */
 const SCENARIO_SCRIPT = `<script>
 (() => {
@@ -212,6 +256,7 @@ const SCENARIO_SCRIPT = `<script>
     results.push({
       name, pre, landed: landing(), chapters: host.chapters(),
       posted: host.posted.slice(from).map((m) => m.type),
+      pending: document.querySelectorAll('.entry.pending').length,
     });
   }
   const K = (list, part, n) => list + ':' + part + ':' + U(n);
@@ -274,6 +319,21 @@ const SCENARIO_SCRIPT = `<script>
   step('D9a', 'infohead');
   step('D9b', 'meta:title', () => host.repush(() => {}));
 
+  // #77: with the pushes held, the list is stale after the first click; a second click on the removed
+  // row (D11) or its neighbour (D12) names a row the book no longer has at that version — swallowed.
+  host.reset();
+  open(B);
+  host.hold();
+  step('D11a', K('chapters', 'rm', '02.jpnov'));
+  step('D11b', K('chapters', 'rm', '02.jpnov'));
+  step('D11c', K('chapters', 'rm', '02.jpnov'), () => host.release());
+  host.reset();
+  open(B);
+  host.hold();
+  step('D12a', K('chapters', 'rm', '02.jpnov'));
+  step('D12b', K('chapters', 'rm', '03.jpnov'));
+  step('D12c', K('chapters', 'rm', '03.jpnov'), () => host.release());
+
   document.documentElement.setAttribute('${MARKER}', JSON.stringify(results));
 })();
 </script>`;
@@ -285,12 +345,15 @@ interface StepResult {
   readonly landed: string | null;
   readonly chapters: readonly string[] | null;
   readonly posted: readonly string[];
+  /** Rows dimmed as pending once the step is done (none after a synchronous rebuild). */
+  readonly pending: number;
 }
 
 interface Expected {
   readonly landed: string | null;
   readonly chapters?: readonly string[];
   readonly posted?: readonly string[];
+  readonly pending?: number;
 }
 
 const { B, C } = FIX.books;
@@ -324,6 +387,14 @@ const EXPECT: Readonly<Record<string, Expected>> = {
   D8: { landed: entry('chapters', 'open', C3), chapters: [C3] },
   D9a: { landed: 'infohead', posted: [] },
   D9b: { landed: 'meta:title' },
+  // Held pushes: the click dims its row and the DOM stays; the stale second click is posted but
+  // changes nothing; release rebuilds the list — the removed row's focus falls through to its neighbour.
+  D11a: { landed: entry('chapters', 'rm', C2), chapters: [C1, C3], posted: ['removeEntry'], pending: 1 },
+  D11b: { landed: entry('chapters', 'rm', C2), chapters: [C1, C3], posted: ['removeEntry'], pending: 1 },
+  D11c: { landed: entry('chapters', 'open', C3), chapters: [C1, C3], posted: [], pending: 0 },
+  D12a: { landed: entry('chapters', 'rm', C2), chapters: [C1, C3], posted: ['removeEntry'], pending: 1 },
+  D12b: { landed: entry('chapters', 'rm', C3), chapters: [C1, C3], posted: ['removeEntry'], pending: 2 },
+  D12c: { landed: entry('chapters', 'rm', C3), chapters: [C1, C3], posted: [], pending: 0 },
 };
 
 /** The page as the host serves it: the `__INIT` bootstrap (every label reads as its own key — the
@@ -362,6 +433,9 @@ test('focus lands on a safe neighbour after every host-driven rebuild (#78)', BR
     }
     if (want.posted !== undefined && JSON.stringify(r.posted) !== JSON.stringify(want.posted)) {
       wrong.push(`${r.name}: posted ${JSON.stringify(r.posted)}, expected ${JSON.stringify(want.posted)}`);
+    }
+    if (want.pending !== undefined && r.pending !== want.pending) {
+      wrong.push(`${r.name}: ${String(r.pending)} pending row(s), expected ${String(want.pending)}`);
     }
   }
   assert.deepEqual(wrong, [], wrong.join('\n'));

@@ -8,6 +8,7 @@ import {
   metaRows,
   moveEntryTo,
   removeEntry,
+  resolveEntry,
   upsertMeta,
 } from '../../../src/shared/book/edits.ts';
 import { META_KEYS, parseJpbook, type EntryList } from '../../../src/shared/book/jpbook.ts';
@@ -359,6 +360,33 @@ test('moveEntryTo returns null for no-ops and for lines of the other list', () =
   assert.equal(moveEntryTo(text, 'covers', 7, 2), null); // a chapter as the mover
   assert.equal(moveEntryTo(text, 'covers', 2, 7), null); // a chapter as the target
   assert.equal(moveEntryTo(text, 'chapters', 2, null), null); // a cover under the chapter list
+});
+
+// --- resolveEntry (the panel row → live line check) --------------------------------------
+
+test('resolveEntry accepts a row only where its list still has that path on that line', () => {
+  const lines = parseJpbook('---\ncover:\n  - c.jpnov\n－d.jpnov\n---\na.jpnov\nb.jpnov\n').lines;
+  assert.equal(resolveEntry(lines, 'chapters', { line: 5, path: 'a.jpnov' }), 5);
+  assert.equal(resolveEntry(lines, 'chapters', { line: 6, path: 'a.jpnov' }), null); // the row slid
+  assert.equal(resolveEntry(lines, 'covers', { line: 5, path: 'a.jpnov' }), null); // a chapter is not a cover
+  // A cover row is named by its path alone, whatever the item's marker.
+  assert.equal(resolveEntry(lines, 'covers', { line: 2, path: 'c.jpnov' }), 2);
+  assert.equal(resolveEntry(lines, 'covers', { line: 2, path: '- c.jpnov' }), null);
+  assert.equal(resolveEntry(lines, 'covers', { line: 3, path: 'd.jpnov' }), 3);
+  assert.equal(resolveEntry(lines, 'chapters', { line: 0, path: '---' }), null);
+  assert.equal(resolveEntry(lines, 'chapters', { line: 99, path: 'a.jpnov' }), null);
+});
+
+test('resolveEntry never re-anchors by path: a duplicate listing is two rows, each its own line', () => {
+  const lines = parseJpbook('a.jpnov\na.jpnov\nb.jpnov\n').lines;
+  assert.equal(resolveEntry(lines, 'chapters', { line: 1, path: 'a.jpnov' }), 1);
+  // Row 2 held a.jpnov before an edit; b.jpnov is there now — the surviving copy at line 1 is not "it".
+  assert.equal(resolveEntry(lines, 'chapters', { line: 2, path: 'a.jpnov' }), null);
+});
+
+test('resolveEntry compares the listed path, not the raw line (CRLF and surrounding whitespace)', () => {
+  const lines = parseJpbook('a.jpnov\r\n  b.jpnov  \r\n').lines;
+  assert.equal(resolveEntry(lines, 'chapters', { line: 1, path: 'b.jpnov' }), 1);
 });
 
 test('entryLines and listedEntries project each list on its own', () => {

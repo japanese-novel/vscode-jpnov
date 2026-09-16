@@ -500,15 +500,17 @@ test('openDetail posts covers and chapters (missing flagged) and the metadata ro
   const detail = firstDetail(view) as {
     uri: string;
     title: string;
-    chapters: { name: string; folder: string; missing: boolean; line: number }[];
-    covers: { name: string; folder: string; missing: boolean; line: number }[];
+    version: number;
+    chapters: { name: string; folder: string; missing: boolean; line: number; path: string }[];
+    covers: { name: string; folder: string; missing: boolean; line: number; path: string }[];
     meta: { key: string; value: string; note: string }[];
   };
   assert.equal(detail.uri, bookUri);
+  assert.equal(detail.version, 1); // the document version the rows were parsed from
   // Cover rows carry the item's path (marker stripped) and line; a file may sit in both lists.
   assert.deepEqual(
-    detail.covers.map((c) => [c.line, c.folder, c.name, c.missing]),
-    [[3, '', '表紙.jpnov', true], [4, 'sub', 'ch2.jpnov', true]],
+    detail.covers.map((c) => [c.line, c.path, c.folder, c.name, c.missing]),
+    [[3, '表紙.jpnov', '', '表紙.jpnov', true], [4, 'sub/ch2.jpnov', 'sub', 'ch2.jpnov', true]],
   );
   assert.equal(detail.chapters.length, 2);
   const ch1 = detail.chapters.find((c) => c.name === 'ch1.jpnov');
@@ -519,6 +521,7 @@ test('openDetail posts covers and chapters (missing flagged) and the metadata ro
   assert.equal(ch2.missing, true);
   assert.equal(ch2.folder, 'sub');
   assert.equal(ch2.line, 7);
+  assert.equal(ch2.path, 'sub/ch2.jpnov');
   assert.equal(detail.meta.length, 6);
   // A set value carries no status note; the note is separate from the value (rendered by the label).
   const titleRow = detail.meta.find((m) => m.key === 'title');
@@ -560,13 +563,23 @@ test('an unknown metaKey is ignored (no dispatch)', async () => {
   assert.equal(state.executedCommands.find((c) => c.command === 'jpbook.editMeta'), undefined);
 });
 
-test('entry actions dispatch the matching jpbook command carrying the list and line', async () => {
+/** The number of `detail` pushes so far — every row verb (remove / move / drop) is answered with one. */
+function detailCount(view: { webview: { posted: unknown[] } }): number {
+  return posts(view).filter((m) => m.type === 'detail').length;
+}
+
+test('entry actions dispatch the matching jpbook command naming the row, and re-push the detail', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', '---\ncover:\n  - x.jpnov\n---\ny.jpnov\n'));
   const { view } = await setup([entry(root, 'a')]);
-  view.webview.receive({ type: 'moveEntry', uri: bookUri, list: 'covers', line: 4, dir: -1 });
-  view.webview.receive({ type: 'moveEntry', uri: bookUri, list: 'covers', line: 4, dir: 1 });
-  view.webview.receive({ type: 'removeEntry', uri: bookUri, list: 'covers', line: 4 });
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  const before = detailCount(view);
+  const row = { uri: bookUri, list: 'covers', line: 2, path: 'x.jpnov', version: 1 };
+  view.webview.receive({ type: 'moveEntry', ...row, dir: -1 });
+  view.webview.receive({ type: 'moveEntry', ...row, dir: 1 });
+  view.webview.receive({ type: 'removeEntry', ...row });
   view.webview.receive({ type: 'addEntries', uri: bookUri, list: 'covers' });
   view.webview.receive({ type: 'createEntry', uri: bookUri, list: 'chapters' });
   await tick();
@@ -578,11 +591,17 @@ test('entry actions dispatch the matching jpbook command carrying the list and l
   assert.ok(cmds.includes('jpbook.createFile'));
   const rm = state.executedCommands.find((c) => c.command === 'jpbook.removeEntry');
   assert.ok(rm);
-  const node = rm.args[0] as { kind: string; list: string; line: number; entry: { uri: string } };
+  const node = rm.args[0] as {
+    kind: string; list: string; line: number; path: string; version: number; entry: { uri: string };
+  };
   assert.equal(node.kind, 'entry');
   assert.equal(node.list, 'covers');
-  assert.equal(node.line, 4);
+  assert.equal(node.line, 2);
+  assert.equal(node.path, 'x.jpnov');
+  assert.equal(node.version, 1);
   assert.equal(node.entry.uri, bookUri);
+  // The three row verbs — not the list verbs — were each answered with a detail re-push.
+  assert.equal(detailCount(view), before + 3);
   const create = state.executedCommands.find((c) => c.command === 'jpbook.createFile');
   assert.ok(create);
   const listArg = create.args[0] as { kind: string; list: string; entry: { uri: string } };
@@ -594,31 +613,107 @@ test('entry actions dispatch the matching jpbook command carrying the list and l
   assert.equal((add.args[0] as { list: string }).list, 'covers');
 });
 
-test('an unknown list is ignored (no dispatch)', async () => {
+test('an unknown list or a half-named row is ignored (no dispatch)', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
   const { view } = await setup([entry(root, 'a')]);
-  view.webview.receive({ type: 'removeEntry', uri: bookUri, list: 'bogus', line: 4 });
+  view.webview.receive({ type: 'removeEntry', uri: bookUri, list: 'bogus', line: 4, path: 'x.jpnov', version: 1 });
+  view.webview.receive({ type: 'removeEntry', uri: bookUri, list: 'covers', line: 4 }); // no path / version
+  view.webview.receive({ type: 'moveEntry', uri: bookUri, list: 'covers', line: 4, path: 'x.jpnov', dir: 1 });
   view.webview.receive({ type: 'addEntries', uri: bookUri, list: 1 });
   await tick();
   assert.deepEqual(state.executedCommands.filter((c) => c.command.startsWith('jpbook.')), []);
 });
 
-test('moveEntryTo (drag-and-drop) plans against the named list only', async () => {
+test('moveEntryTo (drag-and-drop) plans against the named list only, for rows the text still has', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
   state.textDocuments.push(doc(bookUri, 'jpbook', '---\ncover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\ny.jpnov\n'));
   const { view } = await setup([entry(root, 'a')]);
-  view.webview.receive({ type: 'moveEntryTo', uri: bookUri, list: 'covers', line: 3, before: 2 });
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
   await tick();
+  // Every drop — planned or not — is answered with a detail re-push (the panel's DOM lags the edit).
+  const drop = async (m: Record<string, unknown>): Promise<void> => {
+    const n = detailCount(view);
+    view.webview.receive({ type: 'moveEntryTo', uri: bookUri, list: 'covers', version: 1, ...m });
+    await tick();
+    assert.equal(detailCount(view), n + 1);
+  };
+  await drop({ line: 3, path: 'b.jpnov', before: 2, beforePath: 'a.jpnov' });
   assert.deepEqual(state.appliedEdits, [
     { uri: bookUri, range: [3, 0, 4, 0], newText: '' },
     { uri: bookUri, range: [2, 0, 2, 0], newText: '  - b.jpnov\n' },
   ]);
-  // The same lines under the other list name are not that list's entries: nothing is planned.
-  view.webview.receive({ type: 'moveEntryTo', uri: bookUri, list: 'chapters', line: 3, before: 2 });
+  state.appliedEdits.length = 0;
+  // Both target fields null = after the list's last entry.
+  await drop({ line: 2, path: 'a.jpnov', before: null, beforePath: null });
+  assert.deepEqual(state.appliedEdits, [
+    { uri: bookUri, range: [2, 0, 3, 0], newText: '' },
+    { uri: bookUri, range: [3, 11, 3, 11], newText: '\n  - a.jpnov' },
+  ]);
+  state.appliedEdits.length = 0;
+  // Nothing is planned for: the other list's name over the same lines; a moved-on version; a moved row
+  // or target that no longer lists that path (a lost target is never "the end"); a half-named target.
+  await drop({ list: 'chapters', line: 3, path: 'b.jpnov', before: 2, beforePath: 'a.jpnov' });
+  await drop({ line: 3, path: 'b.jpnov', before: 2, beforePath: 'a.jpnov', version: 2 });
+  await drop({ line: 3, path: 'a.jpnov', before: 2, beforePath: 'a.jpnov' });
+  await drop({ line: 3, path: 'b.jpnov', before: 2, beforePath: 'b.jpnov' });
+  await drop({ line: 3, path: 'b.jpnov', before: 2, beforePath: null });
+  assert.deepEqual(state.appliedEdits, []);
+});
+
+test('row verbs run one at a time, each answered by a detail re-push before the next starts (#77)', async () => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', 'x.jpnov\ny.jpnov\n'));
+  const { view } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
   await tick();
-  assert.equal(state.appliedEdits.length, 2);
+  const base = detailCount(view);
+  const log: string[] = [];
+  const pushesSeen: number[] = [];
+  state.registeredCommands.set('jpbook.removeEntry', async () => {
+    log.push('start');
+    pushesSeen.push(detailCount(view) - base);
+    await tick();
+    log.push('end');
+  });
+  // A double-click: both messages name the same row, the second while the first is still running.
+  const row = { type: 'removeEntry', uri: bookUri, list: 'chapters', line: 0, path: 'x.jpnov', version: 1 };
+  view.webview.receive(row);
+  view.webview.receive(row);
+  for (let i = 0; i < 10 && log.length < 4; i++) {
+    await tick();
+  }
+  assert.deepEqual(log, ['start', 'end', 'start', 'end']);
+  assert.deepEqual(pushesSeen, [0, 1]); // the second verb saw the first's re-push
+  assert.equal(detailCount(view), base + 2);
+});
+
+test('a row verb that fails neither wedges the chain nor skips its re-push', async () => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', 'x.jpnov\ny.jpnov\n'));
+  const { view } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  const base = detailCount(view);
+  const log: string[] = [];
+  state.registeredCommands.set('jpbook.removeEntry', () => {
+    if (log.length === 0) {
+      log.push('first failed');
+      return Promise.reject(new Error('boom'));
+    }
+    log.push('second ran');
+    return Promise.resolve();
+  });
+  const row = { type: 'removeEntry', uri: bookUri, list: 'chapters', line: 0, path: 'x.jpnov', version: 1 };
+  view.webview.receive(row);
+  view.webview.receive(row);
+  await tick();
+  await tick();
+  assert.deepEqual(log, ['first failed', 'second ran']);
+  assert.equal(detailCount(view), base + 2);
 });
 
 test('openFile opens the given uri', async () => {

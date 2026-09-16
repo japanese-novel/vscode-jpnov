@@ -82,7 +82,8 @@ let screen: 'list' | 'detail' = 'list';
 let lastDetailUri: string | null = null;
 let infoOpen = false;
 let coverOpen = false; // folds like Book Info, except on entry to a book whose cover list shows an error
-let drag: { readonly list: EntryList; readonly line: number } | null = null;
+/** The row being dragged: its identity for the drop message, and its element to mark pending. */
+let drag: { readonly list: EntryList; readonly line: number; readonly path: string; readonly row: HTMLElement } | null = null;
 let detailWanted = false; // true while the detail screen is intended (user click, or an adopted host reveal)
 
 /** The attributes/handlers this panel sets; keys mirror the DOM attribute names, so a grep for
@@ -277,14 +278,10 @@ function applyControls(): void {
   }
 }
 // The entry after the given one in the current detail's list (null if it is the last) — DnD target.
-function nextLine(list: EntryList, line: number): number | null {
+function nextEntry(list: EntryList, line: number): EntryVM | null {
   const entries = detail?.[list] ?? [];
-  for (let i = 0; i < entries.length; i++) {
-    if (entries[i]?.line === line) {
-      return i + 1 < entries.length ? entries[i + 1]?.line ?? null : null;
-    }
-  }
-  return null;
+  const i = entries.findIndex((e) => e.line === line);
+  return i < 0 ? null : entries[i + 1] ?? null;
 }
 function clearDrop(): void {
   for (const el of app.querySelectorAll('.drop-before, .drop-after')) {
@@ -528,7 +525,15 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
   // into its place, else the previous, else the list header's add button.
   const openOf = (n: EntryVM | undefined): string | undefined => (n === undefined ? undefined : fk(list, 'open', n.fileUri));
   const vanished = [openOf(entries[idx + 1]), openOf(entries[idx - 1]), list + ':add'];
-  const row = h('div', { class: 'row entry' + (e.missing ? ' missing' : '') },
+  const row = h('div', { class: 'row entry' + (e.missing ? ' missing' : '') });
+  // A row verb names the row as rendered (line, path, the detail's version) and dims the row until
+  // the host's re-push rebuilds the list; the host ignores a row the text no longer has.
+  const ref = { line: e.line, path: e.path, version: d.version };
+  const verb = (m: BooksOutbound): (() => void) => () => {
+    row.classList.add('pending');
+    post(m);
+  };
+  row.append(
     grip,
     h('button', {
       class: 'emain',
@@ -546,17 +551,17 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
     // Focus keys use the entry's fileUri (stable across a move) so keyboard focus follows the row.
     // An arrow disabled at the list's edge hands focus to the other arrow, then the row — never to Remove.
     h('div', { class: 'acts' },
-      iconBtn('up', L.moveUp, poster({ type: 'moveEntry', uri: d.uri, list, line: e.line, dir: -1 }),
+      iconBtn('up', L.moveUp, verb({ type: 'moveEntry', uri: d.uri, list, ...ref, dir: -1 }),
         { 'data-fk': key('up'), fallback: [key('down'), key('open'), ...vanished], disabled: idx === 0 }),
-      iconBtn('down', L.moveDown, poster({ type: 'moveEntry', uri: d.uri, list, line: e.line, dir: 1 }),
+      iconBtn('down', L.moveDown, verb({ type: 'moveEntry', uri: d.uri, list, ...ref, dir: 1 }),
         { 'data-fk': key('down'), fallback: [key('up'), key('open'), ...vanished], disabled: idx === entries.length - 1 }),
-      iconBtn('close', L.remove, poster({ type: 'removeEntry', uri: d.uri, list, line: e.line }),
+      iconBtn('close', L.remove, verb({ type: 'removeEntry', uri: d.uri, list, ...ref }),
         { 'data-fk': key('rm'), fallback: vanished })));
 
   // Drag wiring attaches after construction — the handlers mutate `row` from both elements.
   grip.draggable = true;
   grip.addEventListener('dragstart', (ev: DragEvent) => {
-    drag = { list, line: e.line };
+    drag = { list, line: e.line, path: e.path, row };
     ev.dataTransfer?.setData('text/plain', '');
     if (ev.dataTransfer) {
       ev.dataTransfer.effectAllowed = 'move';
@@ -594,7 +599,13 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
     const r = row.getBoundingClientRect();
     const after = (ev.clientY - r.top) > r.height / 2;
     row.classList.remove('drop-before', 'drop-after');
-    post({ type: 'moveEntryTo', uri: d.uri, list, line: drag.line, before: after ? nextLine(list, e.line) : e.line });
+    // The dragged row stays dimmed until the host's re-push lands it in its new place.
+    const target = after ? nextEntry(list, e.line) : e;
+    drag.row.classList.add('pending');
+    post({
+      type: 'moveEntryTo', uri: d.uri, list, line: drag.line, path: drag.path, version: d.version,
+      before: target === null ? null : target.line, beforePath: target === null ? null : target.path,
+    });
     drag = null;
   });
   return row;

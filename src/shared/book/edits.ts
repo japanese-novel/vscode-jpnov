@@ -103,9 +103,14 @@ function insertMetaBlock(lines: readonly ParsedLine[], eol: string, block: strin
   return appendAtEnd(lines, eol, block);
 }
 
+/** The path an entry line lists (a cover item's marker excluded) — what the panel rows show and dedupe by. */
+export function entryKeyOf(pl: ParsedLine): string {
+  return entryPathOf(pl)?.value ?? pl.value;
+}
+
 /** Paths already in `list` (a cover item's path excludes its marker) — the set GUI adds dedupe against. */
 export function listedEntries(lines: readonly ParsedLine[], list: EntryList): Set<string> {
-  return new Set(lines.filter(isEntryOf(list)).map((pl) => entryPathOf(pl)?.value ?? pl.value));
+  return new Set(lines.filter(isEntryOf(list)).map(entryKeyOf));
 }
 
 /**
@@ -143,6 +148,22 @@ export function appendEntries(text: string, list: EntryList, rels: readonly stri
 function entryAt(lines: readonly ParsedLine[], list: EntryList, line: number): ParsedLine | null {
   const pl = lines[line];
   return pl !== undefined && isEntryOf(list)(pl) ? pl : null;
+}
+
+/** A panel row as it was rendered: its document line and the path written there. */
+export interface EntryRef {
+  readonly line: number;
+  readonly path: string;
+}
+
+/**
+ * The row's line in the CURRENT text, or null when `line` no longer holds an entry of `list`
+ * with that path. Exact only — never re-anchored by path (a file may be listed twice, and a
+ * removed row's neighbour slides into its line). Callers pair it with a document-version check.
+ */
+export function resolveEntry(lines: readonly ParsedLine[], list: EntryList, ref: EntryRef): number | null {
+  const pl = entryAt(lines, list, ref.line);
+  return pl !== null && entryKeyOf(pl) === ref.path ? ref.line : null;
 }
 
 /**

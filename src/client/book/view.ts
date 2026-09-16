@@ -24,9 +24,8 @@ import {
   type ListBooksResult,
 } from '#/shared/protocol.ts';
 
-import { entryLines, metaRows, moveEntryTo } from '#/shared/book/edits.ts';
+import { entryKeyOf, entryLines, metaRows, moveEntryTo, resolveEntry, type EntryRef } from '#/shared/book/edits.ts';
 import {
-  entryPathOf,
   isEntryList,
   META_KEYS,
   parseJpbook,
@@ -65,6 +64,17 @@ function bookTitle(entry: BookEntry): string {
   return entry.title ?? splitRelPath(entry.outRel).name;
 }
 
+/** A row as a webview verb names it: the rendered line + path, and the detail's document version. */
+type RowRef = EntryRef & { readonly version: number };
+
+/** The row a webview entry verb names, or null unless `line`, `path` and `version` are all present. */
+function rowRefOf(msg: Readonly<Record<string, unknown>>): RowRef | null {
+  const { line, path, version } = msg;
+  return typeof line === 'number' && typeof path === 'string' && typeof version === 'number'
+    ? { line, path, version }
+    : null;
+}
+
 export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   /** The view id (matches `contributes.views.jpnov[].id` in package.json). */
   static readonly viewId = 'jpnov.books';
@@ -96,6 +106,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private repostTimer: ReturnType<typeof setTimeout> | undefined;
   /** The contributed view title captured at resolve, restored when the detail closes. */
   private defaultTitle: string | undefined;
+  /** Serializes the row verbs (remove / move / drop), see `runEntryVerb`. */
+  private entryChain: Promise<void> = Promise.resolve();
 
   constructor(client: LanguageClient, extensionUri: vscode.Uri) {
     this.client = client;
@@ -375,13 +387,14 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.dispatchList('jpbook.createFile', msg.uri, msg.list);
         break;
       case 'removeEntry':
-        await this.dispatchEntry('jpbook.removeEntry', msg.uri, msg.list, msg.line);
+        await this.runEntryVerb(msg.uri, () => this.dispatchEntry('jpbook.removeEntry', msg.uri, msg.list, rowRefOf(msg)));
         break;
       case 'moveEntry':
-        await this.dispatchEntry(msg.dir === -1 ? 'jpbook.moveEntryUp' : 'jpbook.moveEntryDown', msg.uri, msg.list, msg.line);
+        await this.runEntryVerb(msg.uri, () =>
+          this.dispatchEntry(msg.dir === -1 ? 'jpbook.moveEntryUp' : 'jpbook.moveEntryDown', msg.uri, msg.list, rowRefOf(msg)));
         break;
       case 'moveEntryTo':
-        await this.dispatchMoveTo(msg.uri, msg.list, msg.line, msg.before);
+        await this.runEntryVerb(msg.uri, () => this.dispatchMoveTo(msg.uri, msg.list, rowRefOf(msg), msg.before, msg.beforePath));
         break;
       case 'welcome':
         this.dispatchWelcome(msg.action);
@@ -416,34 +429,79 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await vscode.commands.executeCommand(command, node);
   }
 
-  /** Dispatch an entry command (remove / move) with a synthesized node — `manage.ts` keys off `line`. */
-  private async dispatchEntry(command: string, uri: unknown, list: unknown, line: unknown): Promise<void> {
+  /**
+   * Runs a row verb (remove / move / drop) after the ones before it, then re-pushes the open detail
+   * whether or not anything changed: each verb plans against the text the previous one left, and
+   * the panel re-syncs at once instead of after the save → watcher → listBooks round trip. A
+   * failed verb never wedges the chain.
+   */
+  private runEntryVerb(uri: unknown, verb: () => Promise<void>): Promise<void> {
+    const run = async (): Promise<void> => {
+      try {
+        await verb();
+      } catch {
+        // already reported at the command boundary
+      }
+      if (typeof uri === 'string' && uri === this.openDetailUri) {
+        await this.postDetail(uri);
+      }
+    };
+    this.entryChain = this.entryChain.then(run, run);
+    return this.entryChain;
+  }
+
+  /** Dispatch an entry command (remove / move) with a synthesized node — `manage.ts` checks the row against the live text. */
+  private async dispatchEntry(command: string, uri: unknown, list: unknown, ref: RowRef | null): Promise<void> {
     const entry = this.entryOf(uri);
-    if (entry === undefined || !isEntryList(list) || typeof line !== 'number') {
+    if (entry === undefined || !isEntryList(list) || ref === null) {
       return;
     }
-    const node: BookNode = { kind: 'entry', list, entry, line };
+    const node: BookNode = { kind: 'entry', list, entry, ...ref };
     await vscode.commands.executeCommand(command, node);
   }
 
   /**
-   * Drag-and-drop reorder: move the entry at `line` to sit before `before` (null = end of its
-   * list), reusing the same pure planner + save path as the up/down buttons. A no-op move
-   * plans nothing.
+   * Drag-and-drop reorder: move the row `ref` to sit before the row `before`/`beforePath` (both
+   * null = end of its list), through the same planner + save path as the up/down buttons. Both
+   * rows must still be where the panel showed them (version + resolveEntry); otherwise, as for a
+   * no-op move, nothing is planned — never a fallback to the end of the list.
    */
-  private async dispatchMoveTo(uri: unknown, list: unknown, line: unknown, before: unknown): Promise<void> {
+  private async dispatchMoveTo(
+    uri: unknown,
+    list: unknown,
+    ref: RowRef | null,
+    before: unknown,
+    beforePath: unknown,
+  ): Promise<void> {
     const entry = this.entryOf(uri);
-    if (entry === undefined || !isEntryList(list) || typeof line !== 'number') {
+    if (entry === undefined || !isEntryList(list) || ref === null) {
       return;
     }
-    const beforeLine = typeof before === 'number' ? before : null;
+    let target: EntryRef | null;
+    if (before === null && beforePath === null) {
+      target = null;
+    } else if (typeof before === 'number' && typeof beforePath === 'string') {
+      target = { line: before, path: beforePath };
+    } else {
+      return;
+    }
     let doc: vscode.TextDocument;
     try {
       doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(entry.uri));
     } catch {
       return;
     }
-    const edits = moveEntryTo(doc.getText(), list, line, beforeLine);
+    if (doc.version !== ref.version) {
+      return;
+    }
+    const text = doc.getText();
+    const lines = parseJpbook(text).lines;
+    const from = resolveEntry(lines, list, ref);
+    const beforeLine = target === null ? null : resolveEntry(lines, list, target);
+    if (from === null || (target !== null && beforeLine === null)) {
+      return;
+    }
+    const edits = moveEntryTo(text, list, from, beforeLine);
     if (edits !== null) {
       await applyBookEdits(doc.uri, edits);
     }
@@ -504,9 +562,11 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     let text: string;
+    let version: number;
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(uri));
       text = doc.getText();
+      version = doc.version;
     } catch {
       return;
     }
@@ -529,6 +589,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       type: 'detail',
       uri,
       title: bookTitle(entry),
+      version,
       chapters,
       covers,
       meta,
@@ -537,14 +598,15 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     void view.webview.postMessage(message);
   }
 
-  /** One list's rows: root-relative path split into name/folder, file URI, fs.stat-backed missing flag. */
+  /** One list's rows: the listed path (the row's identity, split into name/folder for display), file
+   *  URI, fs.stat-backed missing flag. */
   private async entryVMs(entry: BookEntry, lines: readonly ParsedLine[], list: EntryList): Promise<EntryVM[]> {
     return Promise.all(
       entryLines(lines, list).map(async (line): Promise<EntryVM> => {
         const pl = lines[line];
-        const rel = pl === undefined ? '' : (entryPathOf(pl)?.value ?? '');
-        const { name, dir } = splitRelPath(rel);
-        const target = chapterUri(entry.rootUri, rel);
+        const path = pl === undefined ? '' : entryKeyOf(pl);
+        const { name, dir } = splitRelPath(path);
+        const target = chapterUri(entry.rootUri, path);
         let missing = false;
         try {
           const st = await vscode.workspace.fs.stat(target);
@@ -552,7 +614,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         } catch {
           missing = true;
         }
-        return { line, name, folder: dir, fileUri: target.toString(), missing };
+        return { line, path, name, folder: dir, fileUri: target.toString(), missing };
       }),
     );
   }

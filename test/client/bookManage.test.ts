@@ -225,29 +225,44 @@ test('createFile for a cover in a book without front matter creates the block at
   assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [0, 0, 0, 0], newText: '---\ncover:\n  - cover.jpnov\n---\n' }]);
 });
 
+/** Runs a row command with a node naming the row as the panel rendered it (`version` = the document's, 1). */
+async function runEntry(command: string, list: List, line: number, path: string, version = 1): Promise<void> {
+  const handler = state.registeredCommands.get(command);
+  assert.ok(handler, `${command} must be registered`);
+  await handler({ kind: 'entry', list, line, path, version, entry: ENTRY });
+  assert.deepEqual(state.errorMessages, []);
+}
+
 test('removeEntry / moveEntryUp / moveEntryDown plan edits inside the named list only', async () => {
-  const run = async (command: string, list: List, line: number): Promise<void> => {
-    const handler = state.registeredCommands.get(command);
-    assert.ok(handler, `${command} must be registered`);
-    await handler({ kind: 'entry', list, line, entry: ENTRY });
-    assert.deepEqual(state.errorMessages, []);
-  };
   // The mock records edits without rewriting the document, so every run sees this text.
   seed('---\ncover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
 
-  await run('jpbook.removeEntry', 'covers', 2);
+  await runEntry('jpbook.removeEntry', 'covers', 2, 'a.jpnov');
   assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 0, 3, 0], newText: '' }]);
   state.appliedEdits.length = 0;
 
-  await run('jpbook.moveEntryDown', 'covers', 2);
+  await runEntry('jpbook.moveEntryDown', 'covers', 2, 'a.jpnov');
   assert.deepEqual(state.appliedEdits, [
     { uri: BOOK, range: [2, 0, 3, 0], newText: '' },
     { uri: BOOK, range: [3, 11, 3, 11], newText: '\n  - a.jpnov' },
   ]);
   state.appliedEdits.length = 0;
 
-  await run('jpbook.moveEntryUp', 'covers', 2); // already first
-  await run('jpbook.removeEntry', 'chapters', 2); // a cover line is not a chapter
-  await run('jpbook.moveEntryDown', 'chapters', 2);
+  await runEntry('jpbook.moveEntryUp', 'covers', 2, 'a.jpnov'); // already first
+  await runEntry('jpbook.removeEntry', 'chapters', 2, 'a.jpnov'); // a cover line is not a chapter
+  await runEntry('jpbook.moveEntryDown', 'chapters', 2, 'a.jpnov');
+  assert.deepEqual(state.appliedEdits, []);
+});
+
+test('a row the panel rendered before the text changed plans nothing (#77)', async () => {
+  seed('---\ncover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
+
+  // The text moved past the version the row came from (an earlier verb, an unsaved edit).
+  await runEntry('jpbook.removeEntry', 'covers', 2, 'a.jpnov', 2);
+  await runEntry('jpbook.moveEntryDown', 'covers', 2, 'a.jpnov', 0);
+  // Same version, but the line no longer lists the row's path (a neighbour slid in).
+  await runEntry('jpbook.removeEntry', 'covers', 3, 'a.jpnov');
+  await runEntry('jpbook.moveEntryDown', 'covers', 2, 'b.jpnov');
+  await runEntry('jpbook.moveEntryUp', 'covers', 3, 'a.jpnov');
   assert.deepEqual(state.appliedEdits, []);
 });
