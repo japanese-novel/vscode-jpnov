@@ -171,7 +171,7 @@ test('禁則 cascade: forbidden chars reflow and no line overflows cpl', () => {
 });
 
 test('禁則 exception: a lone forbidden char as the whole row is left as-is', () => {
-  // The source row is a single 。 — the > start guard refuses to empty the line.
+  // The source row is a single 。 — with no real unit before it there is nothing to break.
   assert.deepEqual(klines('。', 1), ['。']);
   assert.deepEqual(klines('「', 1), ['「']);
 });
@@ -205,6 +205,27 @@ test('禁則 predicate: a 縦中横 約物 cell participates in 行頭禁則 who
 test('禁則: 〝 must not end a line, 〟 must not start one', () => {
   assert.deepEqual(klines('ああ〝い〟', 3), ['ああ', '〝い〟']);
   assert.deepEqual(klines('ああ〟', 2), ['あ', 'あ〟']);
+});
+
+test('禁則: 追い出し looks through zero-width units to the next real unit (issue #74)', () => {
+  // cpl 3: the ママ注記 is a zero-width comment between い and 」. Naive 「あい | 」 leaves 」
+  // at line start; pull い down past the comment: 「あ | い」.
+  assert.deepEqual(klines('「あい［＃「あ」に「ママ」の注記］」', 3), ['「あ', 'い」']);
+  assert.deepEqual(klines('「あい［＃「あ」に「ママ」の注記］」', 3, 'relaxed'), ['「あ', 'い」']);
+  assert.deepEqual(klines('ああ［＃謎の注記］」', 2), ['あ', 'あ」']);
+});
+
+test('禁則: the no-empty guard keeps the first REAL unit, not a leading comment', () => {
+  // cpl 2, comment at the row head: 。」 cascades down to あ | 。」 as without the comment,
+  // never to a comment-only column.
+  assert.deepEqual(klines('［＃謎の注記］あ。」', 2), ['あ', '。」']);
+});
+
+test('分離禁止: an over-wide run after a leading comment still gets its own column', () => {
+  // cpl 2: strict binds ……… into one 3-cell unit that overflows on its own column; the
+  // comment before it gets no column of its own.
+  assert.deepEqual(klines('［＃謎の注記］………', 2), ['………']);
+  assert.deepEqual(klines('［＃謎の注記］………あ', 2), ['………', 'あ']);
 });
 
 test('分離禁止: a dash pair crosses the wrap whole (mixed codepoints bind too)', () => {
@@ -269,7 +290,7 @@ test('ぶら下げ: the hung unit is zero cells and the column stays at budget',
 
 test('ぶら下げ: a following 行頭禁則 char cancels the hang — 追い出し instead', () => {
   // 。」: hanging 。 would leave 」 heading the next line → give up, 追い出し (the head
-  // violation left at the > start+1 guard is the same degrade as today's cascade).
+  // violation left at the no-empty guard is the same degrade as today's cascade).
   assert.deepEqual(klines('文。」', 2), ['文', '。」']);
   // 。。: the first 。 cannot hang (the second would head a line); the second one hangs.
   assert.deepEqual(klines('ああ。。', 2), ['あ', 'あ。⟪。⟫']);
