@@ -166,6 +166,29 @@ test('completeJpbook handles "./", absolute "/", and digit-leading names', async
   assert.equal((await completeLine(ws.uri, '/etc', 4)).length, 0);
 });
 
+test('diagnoseJpbook and completeJpbook take # and % in names literally (issue #76)', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, '第1巻#改稿.jpnov', 'x');
+  await writeUnder(ws.dir, '50%.jpnov', 'x');
+  await writeUnder(ws.dir, 'sub#1/b(1).jpnov', 'x');
+
+  // Existing files pass; a missing one spelled with the same characters is flagged.
+  assert.deepEqual(await diagnoseJpbook(ws.uri, parseJpbook('第1巻#改稿.jpnov\n50%.jpnov\nsub#1/b(1).jpnov')), []);
+  const missing = await diagnoseJpbook(ws.uri, parseJpbook('x#y.jpnov'));
+  assert.deepEqual(missing.map((d) => (d.data as { code: string }).code), ['jpbook.fileNotFound']);
+
+  // Completion lists the on-disk names and drills into a directory with # in its name…
+  assert.deepEqual((await completeLine(ws.uri, '第', 1)).map((i) => i.label), ['第1巻#改稿.jpnov']);
+  assert.deepEqual((await completeLine(ws.uri, 'sub#1/', 6)).map((i) => i.label), ['b(1).jpnov']);
+  // …and the "whole line already names a file" suppression sees the % file too.
+  assert.deepEqual(await completeLine(ws.uri, '50%.jpnov', 9), []);
+});
+
+test("documentLinksForJpbook targets are percent-encoded like the client's Uri strings", () => {
+  const links = documentLinksForJpbook('file:///proj', parseJpbook('b#c.jpnov\n50%.jpnov'));
+  assert.deepEqual(links.map((l) => l.target), ['file:///proj/b%23c.jpnov', 'file:///proj/50%25.jpnov']);
+});
+
 test('documentLinksForJpbook links every valid chapter line (existence not required); meta lines never link', () => {
   // Pure URI resolution — no fs needed, so a literal root URI suffices.
   const parsed = parseJpbook('---\ntitle: link.jpnov\n---\nsrc/vol1/chapter1.jpnov\nmissing.jpnov\n\nnote.md');

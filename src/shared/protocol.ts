@@ -219,7 +219,7 @@ export interface BuildParams {
 
 /** The output-location field every {@link BuildArtifact} member carries. */
 interface BuildArtifactBase {
-  /** Workspace-relative-or-absolute output path string; the CLIENT writes it. */
+  /** Absolute URI of the output file (percent-encoded like the client's `Uri` strings); the CLIENT writes it. */
   readonly path: string;
 }
 

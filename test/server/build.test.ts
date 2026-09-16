@@ -5,6 +5,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CancellationToken } from 'vscode-languageserver/node';
 
 import { handleBuild, handleListBooks } from '../../src/server/build.ts';
@@ -614,9 +616,8 @@ test('discovery skips dot-folders, node_modules, and the resolved outDir', async
 });
 
 test('a non-ASCII outDir (出力) is still excluded from discovery', async () => {
-  // The regression pin for the percent-encoding trap: resolveContained returns a
-  // re-encoded URL href, while the walk compares in decoded fs-path space — a URI-string
-  // comparison would NEVER match 出力 and books inside the output dir would build again.
+  // The walk compares the outDir in decoded fs-path space, so a non-ASCII name matches
+  // regardless of percent-encoding.
   await using ws = await makeTmpWorkspace();
   const { ctx } = boot();
   await writeUnder(ws.dir, 'vol1/index.jpbook', 'vol1/a.jpnov');
@@ -634,6 +635,90 @@ test('a non-ASCII outDir (出力) is still excluded from discovery', async () =>
   assert.equal(result.artifacts.length, 1, '出力/old.jpbook is not a book');
   assert.ok(result.artifacts.every((a) => a.path.startsWith(`${ws.uri}/`)));
   assert.ok(result.artifacts.some((a) => a.path.endsWith('/vol1.txt')));
+});
+
+test("names with # and % (issue #76) list, build, and select — URIs are percent-encoded like the client's", async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, '進捗100%.jpbook', '---\ntitle: 作品名\n---\n第1巻#改稿.jpnov\n50%.jpnov');
+  await writeUnder(ws.dir, '第1巻#改稿.jpnov', 'あ');
+  await writeUnder(ws.dir, '50%.jpnov', 'い');
+  await writeUnder(ws.dir, 'sub#1/index.jpbook', 'sub#1/b(1).jpnov');
+  await writeUnder(ws.dir, 'sub#1/b(1).jpnov', 'う');
+  const bookUri = `${ws.uri}/%E9%80%B2%E6%8D%97100%25.jpbook`;
+  const subUri = `${ws.uri}/sub%231/index.jpbook`;
+
+  const list: ListBooksResult = await handleListBooks({ projectDirs: projectsFor(ws.uri) });
+  assert.deepEqual(list.books.map((b) => [b.uri, b.fileRel, b.title]), [
+    [subUri, 'sub#1/index.jpbook', undefined],
+    [bookUri, '進捗100%.jpbook', '作品名'],
+  ]);
+  // Each URI decodes back to the real file, whatever the name.
+  for (const b of list.books) {
+    assert.equal(fileURLToPath(b.uri), join(ws.dir, ...b.fileRel.split('/')));
+  }
+
+  const result: BuildResult = await handleBuild(ctx, {
+    format: 'txt',
+    settings: SETTINGS,
+    projectDirs: projectsFor(ws.uri),
+  });
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(
+    result.artifacts.map((a) => [a.path, a.kind === 'txt' ? a.content : a.kind]),
+    [[`${ws.uri}/dist/sub%231.txt`, 'う'], [`${ws.uri}/dist/%E9%80%B2%E6%8D%97100%25.txt`, 'あ\n\nい']],
+  );
+
+  // A subset build selects by that same key (the panel sends BookEntry.uri back verbatim).
+  const subset: BuildResult = await handleBuild(ctx, {
+    format: 'txt',
+    settings: SETTINGS,
+    projectDirs: projectsFor(ws.uri),
+    books: [bookUri],
+  });
+  assert.deepEqual(subset.artifacts.map((a) => a.path), [`${ws.uri}/dist/%E9%80%B2%E6%8D%97100%25.txt`]);
+});
+
+test('an outDir with # (出力#1) receives the artifact and stays excluded from discovery', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, 'vol1.jpbook', 'a.jpnov');
+  await writeUnder(ws.dir, 'a.jpnov', 'あ');
+  await writeUnder(ws.dir, '出力#1/old.jpbook', 'a.jpnov');
+
+  const result: BuildResult = await handleBuild(ctx, {
+    format: 'txt',
+    settings: SETTINGS,
+    projectDirs: projectsFor(ws.uri, { outDir: '出力#1' }),
+  });
+
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.outDirs, [`${ws.uri}/%E5%87%BA%E5%8A%9B%231`]);
+  assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/%E5%87%BA%E5%8A%9B%231/vol1.txt`]);
+});
+
+test('a failing book with # in its name is reported under its encoded URI; the other book still builds', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx, conn } = boot();
+  await writeUnder(ws.dir, '第1巻#改稿.jpbook', 'x#y.jpnov');
+  await writeUnder(ws.dir, 'good.jpbook', 'good.jpnov');
+  await writeUnder(ws.dir, 'good.jpnov', 'よい');
+
+  const result: BuildResult = await handleBuild(ctx, {
+    format: 'txt',
+    settings: SETTINGS,
+    projectDirs: projectsFor(ws.uri),
+  });
+
+  const badUri = `${ws.uri}/%E7%AC%AC1%E5%B7%BB%23%E6%94%B9%E7%A8%BF.jpbook`;
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.errors.map((e) => [e.uri, e.book, e.code]),
+    [[badUri, '第1巻#改稿.jpbook', 'book.entryFileNotFound']],
+  );
+  assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/good.txt`]);
+  // The line-level diagnostic lands on the same key the Books panel opens the book by.
+  assert.ok(conn.diagnostics.some((d) => d.uri === badUri && d.count > 0));
 });
 
 test('one batch build renders a DIFFERENT header per volume, each from its own front matter', async () => {

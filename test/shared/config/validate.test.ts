@@ -19,6 +19,26 @@ test('resolveContained accepts contained relative subpaths', () => {
   }
 });
 
+test("resolveContained percent-encodes the path in VS Code's form, so URL-special characters stay in the name", () => {
+  const cases: [string, string][] = [
+    ['第1巻#改稿.jpnov', 'file:///Users/x/proj/%E7%AC%AC1%E5%B7%BB%23%E6%94%B9%E7%A8%BF.jpnov'],
+    ['50%.jpnov', 'file:///Users/x/proj/50%25.jpnov'],
+    ['a?b.jpnov', 'file:///Users/x/proj/a%3Fb.jpnov'],
+    ['sub dir/b(1).jpnov', 'file:///Users/x/proj/sub%20dir/b%281%29.jpnov'],
+    ['tab\there.jpnov', 'file:///Users/x/proj/tab%09here.jpnov'],
+    ['x/../a#b', 'file:///Users/x/proj/a%23b'],
+    // An entry is a plain path, never a pre-encoded one: this names a file literally called %E3%81%82.jpnov.
+    ['%E3%81%82.jpnov', 'file:///Users/x/proj/%25E3%2581%2582.jpnov'],
+  ];
+  for (const [rel, expected] of cases) {
+    assert.deepEqual(resolveContained(ROOT, rel), { ok: true, abs: expected }, `for rel=${JSON.stringify(rel)}`);
+  }
+});
+
+test('resolveContained rejects text the encoder cannot represent (a lone surrogate) as path.invalid', () => {
+  assert.deepEqual(resolveContained(ROOT, '\uD800x.jpnov'), { ok: false, code: 'path.invalid' });
+});
+
 test('resolveContained accepts when the root already has a trailing slash', () => {
   assert.deepEqual(resolveContained('file:///Users/x/proj/', './src'), {
     ok: true,
