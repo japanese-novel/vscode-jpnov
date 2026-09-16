@@ -16,6 +16,11 @@
  *     stays a heading. A heading POSTFIX marks its line without re-checking the target text —
  *     a missed target already surfaces as `syntax.postfixTargetMissing` (accepted simplification).
  *   - A broken ［＃ (unclosed) contributes no prose: malformed markup is deliberately not linted.
+ *   - Outer extents: an opener (［＃傍点］, ［＃縦中横］, a ruby's ｜) pulls the next piece's
+ *     `outerStart` before it; a postfix, a value field, a ruby's 《reading》 or a span end pushes
+ *     the open piece's `outerEnd` past it. Openers and span ends pair per channel (emphasis by
+ *     variant, 縦中横, one heading slot) as `buildRows` does; a span end whose own opener is still
+ *     pending is an empty span. Extents are per line.
  *   - Offsets are per UTF-16 unit (astral chars = two consecutive units), matching
  *     `TextDocument.positionAt`. Terminators: '\n', '\r\n' and a lone '\r' all end a line.
  *
@@ -26,13 +31,60 @@
  * Relative imports only (native test loader); vscode-free; no LSP types (offsets only).
  */
 import { tokenize } from '../../shared/compiler/tokenizer.ts';
-import type { HeadingLevel } from '../../shared/compiler/tokenizer.ts';
+import type { HeadingLevel, Token } from '../../shared/compiler/tokenizer.ts';
 
 import type { LintLine, Piece, ProseUnit, ProseView, RubyReading } from './types.ts';
 
 /** The narration placeholder for a collapsed utterance interior. U+3007 〇 is classified as
  *  neither kanji nor kana by the tokenizer, so it cannot trip a run/width rule. */
 const SENTINEL = '〇';
+
+/** What a token does to the outer extents: `open` wraps the piece after it; `attach` (a postfix,
+ *  a value field) extends the piece before it; `close` (a span end) does too unless its own opener
+ *  is still pending; `reading` (an implicit ruby's 《…》) extends it and marks a ruby base; `ruby`
+ *  (an explicit ｜…《…》) opens at the ｜ as well; `neutral` binds nothing (a line-head ［＃N字下げ］
+ *  must stay at the head). Exhaustive: a new token kind is a compile error. */
+type ExtentRole = 'open' | 'close' | 'attach' | 'reading' | 'ruby' | 'neutral';
+const EXTENT_ROLE: Record<Token['kind'], ExtentRole> = {
+  text: 'neutral',
+  rubyExplicit: 'ruby',
+  rubyImplicit: 'reading',
+  rubyLeftPostfix: 'attach',
+  emphasisPostfix: 'attach',
+  emphasisSpanStart: 'open',
+  emphasisSpanEnd: 'close',
+  tcyPostfix: 'attach',
+  tcySpanStart: 'open',
+  tcySpanEnd: 'close',
+  headingPostfix: 'attach',
+  headingSpanStart: 'open',
+  headingSpanEnd: 'close',
+  comment: 'neutral',
+  brokenAnnotation: 'neutral',
+  pageBreak: 'neutral',
+  indent: 'neutral',
+  indentBlockStart: 'neutral',
+  indentBlockEnd: 'neutral',
+  valueField: 'attach',
+};
+
+/** The pairing key of an opener or span end: emphasis by variant, one slot for the heading levels,
+ *  one for 縦中横; a ruby's ｜ opens a key nothing closes. */
+function spanKey(token: Token): string {
+  switch (token.kind) {
+    case 'emphasisSpanStart':
+    case 'emphasisSpanEnd':
+      return `emphasis:${token.variant}`;
+    case 'headingSpanStart':
+    case 'headingSpanEnd':
+      return 'heading';
+    case 'tcySpanStart':
+    case 'tcySpanEnd':
+      return 'tcy';
+    default:
+      return token.kind;
+  }
+}
 
 /** One entry of a view plan: a whole piece, the 〇 sentinel, or the dialogue '\n' separator. */
 type PlanItem =
@@ -75,10 +127,47 @@ class LineBuilder {
   /** Utterance serial of the last dialogue piece on THIS line (separator bookkeeping). */
   lastDiaSerial: number | undefined = undefined;
 
-  // The piece under construction.
+  // The piece under construction, with its outer extents (unset = the piece's own edges).
   private curText = '';
   private curStart = 0;
   private curDepth = 0;
+  private curBefore: number | undefined = undefined;
+  private curAfter: number | undefined = undefined;
+  private curRubyBase = false;
+  /** Openers since the last piece, by pairing key; the earliest becomes the next `outerStart`. */
+  private readonly pending = new Map<string, number>();
+
+  /** An opening token at `at`. */
+  open(key: string, at: number): void {
+    if (!this.pending.has(key)) {
+      this.pending.set(key, at);
+    }
+  }
+
+  /** A postfix or value field ending at `end` extends the open piece, unless a pending opener
+   *  sealed it. */
+  attach(end: number): void {
+    if (this.curText !== '' && this.pending.size === 0) {
+      this.curAfter = end;
+    }
+  }
+
+  /** A ruby reading ending at `end`: its base was just pushed, so it always attaches. */
+  reading(end: number): void {
+    this.attach(end);
+    this.curRubyBase = true;
+  }
+
+  /** A span end at `end` ends its own pending opener (an empty span), else extends the open piece;
+   *  another channel's pending opener does not seal it. */
+  close(key: string, end: number): void {
+    if (this.pending.delete(key)) {
+      return;
+    }
+    if (this.curText !== '') {
+      this.curAfter = end;
+    }
+  }
 
   /** Appends one prose unit, closing the open piece at a source gap or a depth change. */
   push(ch: string, at: number, depth: number, serial: number): void {
@@ -88,6 +177,8 @@ class LineBuilder {
     if (this.curText === '') {
       this.curStart = at;
       this.curDepth = depth;
+      this.curBefore = this.pending.size === 0 ? undefined : Math.min(...this.pending.values());
+      this.pending.clear();
     }
     this.curText += ch;
   }
@@ -97,7 +188,14 @@ class LineBuilder {
     if (this.curText === '') {
       return;
     }
-    const piece: Piece = { text: this.curText, srcStart: this.curStart, depth: this.curDepth };
+    const piece: Piece = {
+      text: this.curText,
+      srcStart: this.curStart,
+      depth: this.curDepth,
+      outerStart: this.curBefore ?? this.curStart,
+      outerEnd: this.curAfter ?? this.curStart + this.curText.length,
+      rubyBase: this.curRubyBase,
+    };
     this.pieces.push(piece);
     const item: PlanItem = { kind: 'piece', piece };
     this.prosePlan.push(item);
@@ -111,6 +209,9 @@ class LineBuilder {
       this.lastDiaSerial = serial;
     }
     this.curText = '';
+    this.curBefore = undefined;
+    this.curAfter = undefined;
+    this.curRubyBase = false;
   }
 
   freeze(
@@ -222,6 +323,11 @@ export function* walkLines(src: string): Generator<LintLine, void, undefined> {
 
   let offset = 0; // source UTF-16 offset of the current token's `raw`
   for (const token of tokenize(src)) {
+    const role = EXTENT_ROLE[token.kind];
+    const end = offset + token.raw.length;
+    if (role === 'open' || role === 'ruby') {
+      builder.open(spanKey(token), offset); // before the switch pushes a ruby's base
+    }
     switch (token.kind) {
       case 'text': {
         const text = token.text;
@@ -285,7 +391,15 @@ export function* walkLines(src: string): Generator<LintLine, void, undefined> {
         builder.sawAnnotation = true;
         break;
     }
-    offset += token.raw.length;
+    // after the switch: a ruby's reading attaches to the base just pushed
+    if (role === 'close') {
+      builder.close(spanKey(token), end);
+    } else if (role === 'attach') {
+      builder.attach(end);
+    } else if (role === 'ruby' || role === 'reading') {
+      builder.reading(end);
+    }
+    offset = end;
   }
   yield flush(offset); // the final line, blank or not
 }

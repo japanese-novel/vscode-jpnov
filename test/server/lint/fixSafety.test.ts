@@ -1,23 +1,23 @@
 /**
  * The exhaustive fix-safety guard: NO auto-fix may overwrite the markup between two clean
- * characters (a fix once silently deleted an annotation — a data-loss bug class).
+ * characters (a fix once silently deleted an annotation — a data-loss bug class), and NO insert
+ * may land inside a ruby or an annotation span (an inserted 。 once split 山田《やまだ》 — #72).
  *
  * `FIX_CORPUS` is a `Record<CatalogId, …>`, so adding a catalog rule without deciding its entry is
  * a COMPILE error: list at least one corpus that produces a fix, or declare `null` (rule has no
  * fix). For every corpus the guard (a) asserts the plain text yields ≥ 1 fix (a dead corpus would
- * guard nothing), then (b) inserts an annotation between EVERY adjacent character pair and asserts
- * that applying all fixes leaves the markup sequence intact.
+ * guard nothing), then (b) slips a stand-alone annotation between EVERY adjacent character pair,
+ * line ends included, and (c) wraps EVERY single character in a ruby / a span; after every fix is
+ * applied, each variant must keep its markup token stream and every insert outside the wedge.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TextDocument } from 'vscode-languageserver-textdocument';
-
-import { computeLintFindings } from '../../../src/server/lint/engine.ts';
+import { tokenize } from '../../../src/shared/compiler/tokenizer.ts';
 import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
 import type { CatalogId } from '../../../src/shared/lint/catalog.ts';
-import { selectRules } from '../../../src/shared/lint/select.ts';
 import type { RawLintConfigWire } from '../../../src/shared/protocol.ts';
+import { applyLintFixes } from '../helpers.ts';
 
 /** Fix-producing corpora per rule; `null` = the rule never emits a fix. */
 const FIX_CORPUS: Record<CatalogId, readonly string[] | null> = {
@@ -47,11 +47,6 @@ const FIX_CORPUS: Record<CatalogId, readonly string[] | null> = {
   kana: null,
 };
 
-/** The markup the fixes must never touch (annotations / ruby readings / the base marker). */
-function markup(src: string): string[] {
-  return src.match(/［＃[^］]*］|《[^》]*》|｜/g) ?? [];
-}
-
 /** The enabling snapshot for one rule. */
 function enable(id: CatalogId): RawLintConfigWire {
   const rule = RULES.find((r) => r.id === id);
@@ -68,24 +63,51 @@ function enable(id: CatalogId): RawLintConfigWire {
   return { [settingKey(rule)]: value };
 }
 
-/** Apply every fix (right-to-left) and return the result. */
-function applied(src: string, raw: RawLintConfigWire): { out: string; fixes: number } {
-  const doc = TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
-  const findings = computeLintFindings(src, selectRules(raw), doc);
-  const edits = findings
-    .flatMap((f) =>
-      f.fix ? [{ s: doc.offsetAt(f.fix.range.start), e: doc.offsetAt(f.fix.range.end), t: f.fix.newText }] : [],
-    )
-    .sort((a, b) => b.s - a.s);
-  let out = src;
-  for (const ed of edits) {
-    out = out.slice(0, ed.s) + ed.t + out.slice(ed.e);
-  }
-  return { out, fixes: edits.length };
+/** The markup token stream: every non-text token by kind and raw text, a ruby by kind and reading
+ *  (a fix may legitimately rewrite characters of its base). */
+function shape(src: string): string[] {
+  return tokenize(src).flatMap((t) => {
+    if (t.kind === 'text') {
+      return [];
+    }
+    return [t.kind === 'rubyExplicit' || t.kind === 'rubyImplicit' ? `${t.kind}:${t.reading}` : `${t.kind}:${t.raw}`];
+  });
 }
 
-/** A postfix annotation whose target is never in the corpora — pure elided markup for lint. */
-const WEDGE = '［＃「z」に傍点］';
+/** A wedge: markup `open`…`close` around `wraps` characters of the corpus (0 = slipped between
+ *  two characters). */
+interface Wedge {
+  readonly open: string;
+  readonly close: string;
+  readonly wraps: number;
+}
+
+/** Between two characters: a postfix (its target is never in the corpora) and a comment. Around
+ *  one: an explicit ruby, and the 縦中横 / 傍点 / 丸傍点 / block 太字 spans. */
+const WEDGES: readonly Wedge[] = [
+  { open: '［＃「z」に傍点］', close: '', wraps: 0 },
+  { open: '［＃メモ］', close: '', wraps: 0 },
+  { open: '｜', close: '《z》', wraps: 1 },
+  { open: '［＃縦中横］', close: '［＃縦中横終わり］', wraps: 1 },
+  { open: '［＃傍点］', close: '［＃傍点終わり］', wraps: 1 },
+  { open: '［＃丸傍点］', close: '［＃丸傍点終わり］', wraps: 1 },
+  { open: '［＃ここから太字］', close: '［＃ここで太字終わり］', wraps: 1 },
+];
+
+/** Every variant of `corpus` under `wedge`, each with the wedge's own `[start, end)`. A wrapper is
+ *  line-local, so a line terminator is never wrapped. */
+function variants(corpus: string, wedge: Wedge): { variant: string; start: number; end: number }[] {
+  const out: { variant: string; start: number; end: number }[] = [];
+  for (let at = 0; at + wedge.wraps <= corpus.length; at += 1) {
+    const inner = corpus.slice(at, at + wedge.wraps);
+    if (inner.includes('\n')) {
+      continue;
+    }
+    const variant = corpus.slice(0, at) + wedge.open + inner + wedge.close + corpus.slice(at + wedge.wraps);
+    out.push({ variant, start: at, end: at + wedge.open.length + inner.length + wedge.close.length });
+  }
+  return out;
+}
 
 for (const rule of RULES) {
   const corpora = FIX_CORPUS[rule.id];
@@ -96,12 +118,19 @@ for (const rule of RULES) {
     const raw = enable(rule.id);
     for (const corpus of corpora) {
       // (a) the corpus is alive: the plain text yields at least one fix
-      assert.ok(applied(corpus, raw).fixes >= 1, `dead corpus for ${rule.id}: ${corpus}`);
-      // (b) markup wedged between any two characters survives every fix
-      for (let at = 1; at < corpus.length; at += 1) {
-        const variant = corpus.slice(0, at) + WEDGE + corpus.slice(at);
-        const { out } = applied(variant, raw);
-        assert.deepEqual(markup(out), markup(variant), `${rule.id} @${String(at)}: ${variant}`);
+      assert.ok(applyLintFixes(corpus, raw).edits.length >= 1, `dead corpus for ${rule.id}: ${corpus}`);
+      // (b)+(c) markup wedged anywhere survives every fix, and no insert lands inside it
+      for (const wedge of WEDGES) {
+        for (const { variant, start, end } of variants(corpus, wedge)) {
+          const { out, edits } = applyLintFixes(variant, raw);
+          const label = `${rule.id}: ${variant}`;
+          assert.deepEqual(shape(out), shape(variant), `${label} — markup tokens changed`);
+          for (const ed of edits) {
+            if (ed.s === ed.e) {
+              assert.ok(ed.s <= start || ed.s >= end, `${label} — insert at ${String(ed.s)} lands inside the wedge`);
+            }
+          }
+        }
       }
     }
   });

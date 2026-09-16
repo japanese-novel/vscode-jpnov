@@ -5,8 +5,8 @@
  *
  * `viewScan` runs the scanner over a chosen VIEW of each line: the scanner sees prose adjacency
  * (elided markup invisible), and this adapter is the ONE place a view hit is converted to a fix —
- * only when every unit of the hit lies in the same {@link Piece} (source-contiguous); otherwise
- * the warning survives and the fix is dropped.
+ * only when every unit of the hit lies in the same {@link Piece} (source-contiguous) and the fix
+ * would not delete a whole ruby base; otherwise the warning survives and the fix is dropped.
  *
  * `perPieceScan` runs the scanner over each piece alone: a run interrupted by markup is two runs,
  * not one (the dash rule's contract — parity is per rendered run), and a fix is safe by
@@ -30,7 +30,8 @@ export function viewSpan(view: ProseView, a: number, b: number): SrcSpan {
   return { start, end: (last?.src ?? start) + 1 };
 }
 
-/** A replacement fix for view hit `[a, b)` iff every unit shares one piece; undefined otherwise. */
+/** A replacement fix for view hit `[a, b)` iff every unit shares one piece and the fix does not
+ *  delete a whole ruby base (the stranded ｜《…》 would print literally); undefined otherwise. */
 export function viewFix(view: ProseView, a: number, b: number, text: string): FixSpec | undefined {
   const first = view.units[a];
   const piece = first?.piece ?? null;
@@ -42,8 +43,12 @@ export function viewFix(view: ProseView, a: number, b: number, text: string): Fi
       return undefined;
     }
   }
-  const lastIndex = view.units[b - 1]?.indexInPiece ?? first.indexInPiece;
-  return { replace: { piece, start: first.indexInPiece, end: lastIndex + 1 }, text };
+  const start = first.indexInPiece;
+  const end = (view.units[b - 1]?.indexInPiece ?? start) + 1;
+  if (text === '' && start === 0 && end === piece.text.length && piece.rubyBase) {
+    return undefined;
+  }
+  return { replace: { piece, start, end }, text };
 }
 
 /** Lifts `scan` onto one view of every line (`'prose'` = both 地の文 and 台詞 with adjacency). */
