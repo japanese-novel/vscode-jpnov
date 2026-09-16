@@ -15,7 +15,7 @@ import {
   buildSemanticTokens,
   tokenTypeIndex,
 } from '../../../src/server/semanticTokens.ts';
-import { VALUE_FIELD_BY_NAME } from '../../../src/shared/compiler/tokenizer.ts';
+import { VALUE_NAMES, valueAnnotation } from '../../../src/shared/compiler/tokenizer.ts';
 import { at, covers, decode, doc } from './tokens.ts';
 
 // A small project: 山田 太郎 as cast, 聖剣 as a coined keyword.
@@ -84,10 +84,9 @@ test('［＃改ページ］: brackets marker, 改ページ directive', () => {
   assert.deepEqual(at(toks, 0, 6), { line: 0, char: 6, len: 1, type: MARKER }); // ］
 });
 
-test('［＃ここに「…」の値を表示］: only the field name is a directive, the scaffolding demotes', () => {
-  // Derived from the field table: a new name is covered without editing this test.
-  for (const name of VALUE_FIELD_BY_NAME.keys()) {
-    const src = `［＃ここに「${name}」の値を表示］`;
+test('［＃ここに「…」の値を表示］: the name is a directive, known to the build or not; the scaffolding demotes', () => {
+  for (const name of [...Object.values(VALUE_NAMES), '発行日', '13']) {
+    const src = valueAnnotation(name);
     const toks = decode(buildSemanticTokens(doc(src), rec).data);
     const open = '［＃'.length;
     const scaffold = 'ここに「'.length;
@@ -112,9 +111,9 @@ test('［＃ここに「…」の値を表示］: only the field name is a direc
     // The keyword must stop at the field name — never spill onto the closing corner.
     assert.ok(!covers(toks, open + scaffold + name.length, tokenTypeIndex('directive')), name);
   }
-  // An unknown name degrades to one greyed span, exactly like any mistyped annotation.
-  const unknown = decode(buildSemanticTokens(doc('［＃ここに「発行日」の値を表示］'), rec).data);
-  assert.ok(!unknown.some((t) => t.type === tokenTypeIndex('directive')));
+  // An empty pair is no value display: one greyed span, exactly like any mistyped annotation.
+  const empty = decode(buildSemanticTokens(doc('［＃ここに「」の値を表示］'), rec).data);
+  assert.ok(!empty.some((t) => t.type === tokenTypeIndex('directive')));
 });
 
 test('emphasis span: variant -> directive, 左に -> direction', () => {

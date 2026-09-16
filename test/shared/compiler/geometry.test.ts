@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 
 import type { PaperFit } from '../../../src/shared/compiler/geometry.ts';
 import {
-  FOLIO_BAND,
+  FOOTER_BAND,
   HEADER_BAND,
   LINENUM_BAND,
   MARGIN_MM,
@@ -44,7 +44,7 @@ test('fit invariants hold over the whole settings domain', () => {
               const fit = fitPaper({ charsPerLine, linesPerPage, linePitch, hTop, size, orientation });
               const label = `${String(charsPerLine)}x${String(linesPerPage)}@${String(linePitch)}/hTop${String(hTop)} on ${size}/${orientation}`;
               const sheetBlockEm = linesPerPage * linePitch + 2 * SIDE_PAD;
-              const sheetInlineEm = charsPerLine + hTop + FOLIO_BAND;
+              const sheetInlineEm = charsPerLine + hTop + FOOTER_BAND;
               const floor = MARGIN_MM[size];
               // The font is MAXIMAL at its 0.001mm quantum: any larger and the sheet would
               // break the block PRINT_MARGIN surround or the inline MARGIN_MM floors.

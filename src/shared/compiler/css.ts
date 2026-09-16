@@ -13,7 +13,7 @@
  *   absent from the output;
  * - in BOTH modes the EDGE_INSET gap is reserved and the pitch is the one `--pitch` value
  *   whether edgeLine is on or off, so toggling it never moves a glyph;
- * - chrome sub-elements (`.pn` / `.hd` / `.ln` / `.line::before`) are horizontal-tb INSIDE a
+ * - chrome sub-elements (`.ft` / `.hd` / `.ln` / `.line::before`) are horizontal-tb INSIDE a
  *   vertical-rl container and use PHYSICAL positioning properties only.
  * Pure + vscode-free.
  */
@@ -213,7 +213,7 @@ type StylesheetOptions =
  * Renders the stylesheet for one document. `usedClasses` is the on-demand class sink
  * (callers pass it pre-sorted, lexicographic by class name, for deterministic output);
  * chrome features select their fragment in a fixed order (anchor → line numbers → edge →
- * header → folio), followed by the `:root` variables and (BUILD) the paper rules, so the
+ * header → footer), followed by the `:root` variables and (BUILD) the paper rules, so the
  * output stays deterministic.
  */
 export function stylesheet(opts: StylesheetOptions): string {
@@ -250,7 +250,7 @@ export function stylesheet(opts: StylesheetOptions): string {
       chrome.lineNumbers ? S.buildLn : '',
       edge !== null ? S.buildEdge : '',
       chrome.header !== '' ? S.buildHeader : '',
-      chrome.pageNumber !== 'none' ? S.buildFolio : '',
+      chrome.footerAlign !== 'none' ? S.buildFooter : '',
       rootVars(vars),
       paperRules(fit),
       edge !== null ? edgeRules('.page::before', opts.linesPerPage, 'em') : '',

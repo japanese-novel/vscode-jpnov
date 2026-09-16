@@ -56,9 +56,9 @@ function bookFromJpbook(texts: Texts, name: string, chrome: BookSample['chrome']
   const input: BookInput = {
     files,
     divider: parsed.meta.divider,
-    ...(covers.length > 0
-      ? { cover: { files: covers, title: parsed.meta.title ?? chapterStem(name), author: parsed.meta.author ?? '' } }
-      : {}),
+    title: parsed.meta.title ?? chapterStem(name),
+    author: parsed.meta.author ?? '',
+    ...(covers.length > 0 ? { cover: { files: covers } } : {}),
   };
   return { input, chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...chrome }, parsed.meta) };
 }

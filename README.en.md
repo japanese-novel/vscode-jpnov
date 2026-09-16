@@ -293,8 +293,8 @@ optional `---`-fenced block of `key: value` lines:
 ---
 title: 作品名　第一巻
 header: 作品名　一
-pageNumber: right
-pageNumberFormat: {page} / {totalPage}
+footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
+footerAlign: right
 divider: ＊　＊　＊
 ---
 01_prologue.jpnov
@@ -306,8 +306,8 @@ divider: ＊　＊　＊
 | `title` | — | Display name in the Books view and the EPUB title (the output path still derives from the file name) |
 | `author` | — | Author name; becomes the EPUB creator metadata |
 | `header` | `""` | Running head centred at the top of every page; omit for none |
-| `pageNumber` | `right` | Page-number placement: pinned (`right`, `left`) or alternating per page (`rightLeft`, `leftRight`), or `none` |
-| `pageNumberFormat` | `{page} / {totalPage}` | Page-number text; blank suppresses it |
+| `footer` | `［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］` | Footer line, `12 / 215` by default; blank suppresses it |
+| `footerAlign` | `right` | Footer placement: pinned (`right`, `left`) or alternating per page (`rightLeft`, `leftRight`), or `none` |
 | `divider` | — | Chapter divider inserted between chapters that do not open with a heading (e.g. `＊　＊　＊`); a bare mark is centred along the line at build time, a `［＃３字下げ］` prefix indents it instead; omit for a single blank line |
 | `cover` | — | Cover pages placed before the body: a cover sheet, a title page, a synopsis (see below) |
 
@@ -315,6 +315,9 @@ Every key is optional; unknown keys warn and are ignored, so future keys stay
 forward-compatible. The six keys from `title` to `divider` are also editable from
 the **Book Info** rows in the Books view, and `cover` from its **Cover pages**
 section.
+
+The header and footer take the same value annotations as a cover page (below), plus
+ページ番号, the current page; any other annotation or ruby prints as typed.
 
 ### Submission cover sheets and title pages
 
@@ -356,10 +359,14 @@ A cover file can pull in the book's own metadata:
 ［＃７字下げ］４００字詰め原稿用紙換算［＃縦中横］［＃ここに「原稿用紙換算枚数」の値を表示］［＃縦中横終わり］枚
 ```
 
-A build fills in that book's values. The preview shows stand-ins — タイトル, ペンネーム, and
-NaN — so one cover file serves any number of books. To decorate a substituted value,
-wrap it in the start/end form
+A build fills in that book's values. The preview shows each annotation's name — タイトル,
+ペンネーム, 総ページ数, 原稿用紙換算枚数 — so one cover file serves any number of books. To
+decorate a substituted value, wrap it in the start/end form
 (`［＃大見出し］［＃ここに「タイトル」の値を表示］［＃大見出し終わり］`).
+
+A name outside the table prints as itself: `［＃ここに「13」の値を表示］` renders `13`. Values
+are filled on cover pages and in the header and footer only; in a body chapter every
+annotation prints its name.
 
 The manuscript-sheet count is the number of vertical 20 × 20 manuscript sheets
 (400字詰め原稿用紙) the body fills, the unit Japanese literary contests state length in.

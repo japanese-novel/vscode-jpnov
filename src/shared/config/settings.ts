@@ -10,10 +10,11 @@
  * anything invalid coerces to its default. This is validation, not a compatibility layer.
  * Pure + vscode-free.
  */
-import type { EdgeLineStyle, PageNumberPosition } from '../compiler/chrome.ts';
+import type { EdgeLineStyle, FooterAlign } from '../compiler/chrome.ts';
 import { EDGE_LINE_STYLES } from '../compiler/chrome.ts';
 import type { PaperOrientation, PaperSize } from '../compiler/geometry.ts';
 import { PAPER_ORIENTATIONS, PAPER_SIZES } from '../compiler/geometry.ts';
+import { VALUE_NAMES, valueAnnotation } from '../compiler/tokenizer.ts';
 import type { HtmlSettings, PreviewSettings } from '../protocol.ts';
 import type { LayoutSettings } from './types.ts';
 import { AUTO_TCY_MODES, CHARS_MAX, CHARS_MIN, DASH_MODES, KINSOKU_MODES, LAYOUT_DEFAULT, LINE_PITCHES } from './types.ts';
@@ -34,20 +35,20 @@ export const BUILD_PAPER_DEFAULT = {
 
 /**
  * `lineNumbers`/`edgeLine` default the `jpnov.layout.paper.*` settings; the page-furniture fields
- * (`pageNumber`/`pageNumberFormat`/`header`) are NOT settings — they default a
- * `.jpbook`'s front matter when it omits the key (see `composeBookChrome`).
+ * (`footerAlign`/`footer`/`header`) are NOT settings — they default a `.jpbook`'s front
+ * matter when it omits the key (see `composeBookChrome`).
  */
 export const BUILD_CHROME_DEFAULT = {
   lineNumbers: false,
   edgeLine: 'none',
-  pageNumber: 'right',
-  pageNumberFormat: '{page} / {totalPage}',
+  footerAlign: 'right',
+  footer: `${valueAnnotation(VALUE_NAMES.page)} / ${valueAnnotation(VALUE_NAMES.totalPages)}`,
   header: '',
 } as const satisfies {
   lineNumbers: boolean;
   edgeLine: EdgeLineStyle;
-  pageNumber: PageNumberPosition;
-  pageNumberFormat: string;
+  footerAlign: FooterAlign;
+  footer: string;
   header: string;
 };
 

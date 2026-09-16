@@ -4,9 +4,9 @@
    number, or a page boundary. */
 
 /* The frame floats EDGE_INSET off the text grid, borrowed from the bands, so the glyphs never
-   touch the stroke while line numbers, header and folio still sit OUTSIDE it — like the printed
-   枠 of 原稿用紙. Insets: top = --htop band − EDGE_INSET; bottom = FOLIO_BAND − EDGE_INSET
-   (a folio-band derivation); left/right = SIDE_PAD, hugging the grid's
+   touch the stroke while line numbers, header and footer still sit OUTSIDE it — like the printed
+   枠 of 原稿用紙. Insets: top = --htop band − EDGE_INSET; bottom = FOOTER_BAND − EDGE_INSET
+   (a footer-band derivation); left/right = SIDE_PAD, hugging the grid's
    side columns flush (no EDGE_INSET sideways — at every pitch the glyph's ≥0.25em column-side
    slack clears the stroke). All guarded against drift by styles-codegen.test.ts.
    The 罫線 are this frame's own BACKGROUND, independent of the .line count — emitted by

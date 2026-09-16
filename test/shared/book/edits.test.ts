@@ -46,8 +46,8 @@ test('upsertMeta rewrites the WINNING (first) occurrence and normalizes a full-w
 
 test('upsertMeta appends an absent key before the closing fence (no reordering)', () => {
   const text = '---\nheader: 柱\n---\na.jpnov\n';
-  const out = apply(text, [upsertMeta(text, 'pageNumber', 'none')]);
-  assert.equal(out, '---\nheader: 柱\npageNumber: none\n---\na.jpnov\n');
+  const out = apply(text, [upsertMeta(text, 'footerAlign', 'none')]);
+  assert.equal(out, '---\nheader: 柱\nfooterAlign: none\n---\na.jpnov\n');
 });
 
 test('upsertMeta creates the front matter when the file has none', () => {
@@ -70,11 +70,11 @@ test('upsertMeta appends inside an UNTERMINATED block (still metadata territory)
 });
 
 test('upsertMeta keeps an explicitly-default or empty value (upsert never deletes)', () => {
-  const text = '---\npageNumber: left\n---\n';
-  const out = apply(text, [upsertMeta(text, 'pageNumber', 'right')]);
-  assert.equal(out, '---\npageNumber: right\n---\n');
+  const text = '---\nfooterAlign: left\n---\n';
+  const out = apply(text, [upsertMeta(text, 'footerAlign', 'right')]);
+  assert.equal(out, '---\nfooterAlign: right\n---\n');
   const cleared = apply(out, [upsertMeta(out, 'header', '')]);
-  assert.equal(cleared, '---\npageNumber: right\nheader:\n---\n');
+  assert.equal(cleared, '---\nfooterAlign: right\nheader:\n---\n');
 });
 
 test('upsertMeta sanitizes pasted newlines and edge whitespace out of the value', () => {
@@ -170,8 +170,8 @@ test('entryLines(chapters) and metaRows project the panel model in fixed order',
     { key: 'title', value: undefined },
     { key: 'author', value: undefined },
     { key: 'header', value: '柱' },
-    { key: 'pageNumber', value: undefined },
-    { key: 'pageNumberFormat', value: undefined },
+    { key: 'footer', value: undefined },
+    { key: 'footerAlign', value: undefined },
     { key: 'divider', value: undefined },
   ]);
 });

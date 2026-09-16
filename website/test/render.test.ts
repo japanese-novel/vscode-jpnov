@@ -48,7 +48,7 @@ test('editor lines carry the product colouring and reproduce the source', () => 
   assert.equal(s.editorLines.map((l) => l.map((r) => r.text).join('')).join('\n'), s.src.replace(/\n$/, ''));
 });
 
-test('the stage previews share one scope and the book folio counts two body pages', () => {
+test('the stage previews share one scope and the book footer counts two body pages', () => {
   for (const name of ['stageTyping', 'stageEmphasised', 'stageFixed'] as const) {
     const s = sample(name);
     assert.equal(s.kind, 'preview');
@@ -58,7 +58,7 @@ test('the stage previews share one scope and the book folio counts two body page
   const book = sample('stageBook');
   assert.equal(book.kind, 'book');
   assert.equal(book.totalPages, 2);
-  assert.ok(book.fragment.body.includes('<div class="hd">作品名　一</div><div class="pn r">1 / 2</div>'));
+  assert.ok(book.fragment.body.includes('<div class="hd">作品名　一</div><div class="ft r">1 / 2</div>'));
   assert.ok(book.fragment.body.startsWith(`<a class="print" href="${LINKS.sampleBook}?p=1" target="_blank" rel="noopener">印刷／PDF 保存</a>`));
   const cover = sample('cover');
   assert.equal(cover.kind, 'book');

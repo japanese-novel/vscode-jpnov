@@ -174,7 +174,7 @@ Whole window, then two crops:
 
 - `vscode-books-panel.png` (sidebar incl. activity bar): from the view header
   down through the 「新しい章…」 row. Must show all six 本の情報 rows
-  (タイトル・ヘッダー・章区切り filled in; ペンネーム and the ページ番号 rows at their
+  (タイトル・ヘッダー・章区切り filled in; ペンネーム and the two フッター rows at their
   defaults), the 表紙 section (the 表紙.jpnov row, its header's 「表紙を追加…」
   button and the 「新しい表紙…」 row), the chapter rows, and the 目次 header's
   「章を追加…」 button.

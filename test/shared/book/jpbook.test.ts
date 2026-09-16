@@ -101,13 +101,13 @@ test('parseJpbook collects fenced metadata and still parses the body', () => {
 
 test('parseJpbook accepts every recognized key and validates the enum', () => {
   const got = parseJpbook(
-    '---\ntitle: t\nheader: h\npageNumber: left\npageNumberFormat: {page}\n---\n',
+    '---\ntitle: t\nheader: h\nfooterAlign: left\nfooter: ［＃ここに「ページ番号」の値を表示］\n---\n',
   );
   assert.deepEqual(got.meta, {
     title: 't',
     header: 'h',
-    pageNumber: 'left',
-    pageNumberFormat: '{page}',
+    footerAlign: 'left',
+    footer: '［＃ここに「ページ番号」の値を表示］',
   });
 });
 
@@ -155,13 +155,13 @@ test('divider is a free-string key; parse/composeDividerValue split mark and 字
   assert.deepEqual(parseDividerValue(composeDividerValue('†', 3)), { mark: '†', indent: 3 });
 });
 
-test('parseJpbook warns on an invalid pageNumber value and leaves it unset', () => {
-  const got = parseJpbook('---\npageNumber: middle\n---\n');
+test('parseJpbook warns on an invalid footerAlign value and leaves it unset', () => {
+  const got = parseJpbook('---\nfooterAlign: middle\n---\n');
   assert.deepEqual(got.meta, {});
   assert.deepEqual(got.lines[1]?.kind, {
     warning: {
       code: 'jpbook.metaBadEnum',
-      args: ['pageNumber', 'middle', 'right, left, rightLeft, leftRight, none'],
+      args: ['footerAlign', 'middle', 'right, left, rightLeft, leftRight, none'],
     },
   });
 });
@@ -276,7 +276,7 @@ test('cover: item paths validate like chapter paths, quoting the line an item st
 test('the front-matter key list is the user-visible contract', () => {
   // A stable contract, pinned literally: everything else derives from these constants.
   assert.deepEqual([...FRONT_MATTER_KEYS], [
-    'title', 'author', 'header', 'pageNumber', 'pageNumberFormat', 'divider', 'cover',
+    'title', 'author', 'header', 'footer', 'footerAlign', 'divider', 'cover',
   ]);
   assert.deepEqual([...COVER_ITEM_MARKS], ['-', '－']);
 });
@@ -356,8 +356,8 @@ test('composeBookChrome: absent keys fall back to the product defaults', () => {
   assert.deepEqual(composeBookChrome(BASE, {}), {
     lineNumbers: true,
     edgeLine: 'red',
-    pageNumber: 'right',
-    pageNumberFormat: '{page} / {totalPage}',
+    footerAlign: 'right',
+    footer: '［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］',
     header: '',
   });
 });
@@ -366,21 +366,21 @@ test('composeBookChrome: front-matter values override the furniture, never the p
   assert.deepEqual(
     composeBookChrome(BASE, {
       header: '第二巻',
-      pageNumber: 'none',
-      pageNumberFormat: '{page}',
+      footerAlign: 'none',
+      footer: '［＃ここに「ページ番号」の値を表示］',
     }),
     {
       lineNumbers: true,
       edgeLine: 'red',
-      pageNumber: 'none',
-      pageNumberFormat: '{page}',
+      footerAlign: 'none',
+      footer: '［＃ここに「ページ番号」の値を表示］',
       header: '第二巻',
     },
   );
 });
 
-test('composeBookChrome: an explicitly empty template is preserved (folio suppression)', () => {
-  assert.equal(composeBookChrome(BASE, { pageNumberFormat: '' }).pageNumberFormat, '');
+test('composeBookChrome: an explicitly empty footer is preserved (footer suppression)', () => {
+  assert.equal(composeBookChrome(BASE, { footer: '' }).footer, '');
 });
 
 // --- jpbookOutRel --------------------------------------------------------
@@ -466,18 +466,18 @@ test('completeMetaLine offers every key on an empty line, inserted as "key: "', 
 });
 
 test('completeMetaLine filters keys by case-insensitive prefix, replacing the typed span', () => {
-  const got = completeMetaLine('  PAGE');
-  assert.deepEqual(got.map((c) => c.label), ['pageNumber', 'pageNumberFormat']);
+  const got = completeMetaLine('  FOOT');
+  assert.deepEqual(got.map((c) => c.label), ['footer', 'footerAlign']);
   assert.deepEqual(got[0]?.replace, { startChar: 2, endChar: 6 });
 });
 
-test('completeMetaLine offers enum members after "pageNumber:"', () => {
-  const got = completeMetaLine('pageNumber: le');
+test('completeMetaLine offers enum members after "footerAlign:"', () => {
+  const got = completeMetaLine('footerAlign: le');
   assert.deepEqual(got.map((c) => c.label), ['left', 'leftRight']);
   const first = got[0];
   assert.ok(first);
   assert.equal(first.kind, 'value');
-  assert.deepEqual(first.replace, { startChar: 12, endChar: 14 });
+  assert.deepEqual(first.replace, { startChar: 13, endChar: 15 });
 });
 
 test('completeMetaLine offers nothing after the colon of a free-text key', () => {

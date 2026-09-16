@@ -309,25 +309,19 @@ async function* buildRoot(
       }
 
       void ctx.connection.sendDiagnostics({ uri: fl.uri, diagnostics: lineDiags });
-      // The divider is book identity like the page furniture, but BODY content — it rides the
-      // BookInput into the assembly seams instead of composeBookChrome. Covers are html-only,
-      // so a broken cover reference cannot fail a txt/epub build; the title fallback is the
-      // EPUB dc:title rule. Chapters read first, so a book missing both reports the same
-      // error whichever format is built.
+      // The divider and the タイトル／ペンネーム values are BODY-side inputs and ride the
+      // BookInput (the title fallback is the EPUB dc:title rule); composeBookChrome carries
+      // only the page furniture. Covers are html-only, so a broken cover reference cannot fail
+      // a txt/epub build; chapters read first, so a book missing both reports the same error
+      // whichever format is built.
       const bookFiles = await readBookFiles(target.rootUri, parsed.lines);
       const coverFiles = selection.format === 'html' ? await readCoverFiles(target.rootUri, parsed.lines) : [];
       const input: BookInput = {
         ...bookFiles,
         divider: parsed.meta.divider,
-        ...(coverFiles.length > 0
-          ? {
-              cover: {
-                files: coverFiles,
-                title: parsed.meta.title ?? chapterStem(outRel),
-                author: parsed.meta.author ?? '',
-              },
-            }
-          : {}),
+        title: parsed.meta.title ?? chapterStem(outRel),
+        author: parsed.meta.author ?? '',
+        ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
       };
       yield { kind: 'artifact', outDir: target.outDirUri, artifact: emitArtifact(target.outDirUri, selection, outRel, input, parsed.meta) };
     } catch (cause) {

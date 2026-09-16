@@ -4,7 +4,7 @@
  * `--htop` band variable are computed from them, so they cannot live only in the static
  * stylesheets.
  *
- * Some of them (FOLIO_BAND, SIDE_PAD, EDGE_INSET) are ALSO written as plain literals in
+ * Some of them (FOOTER_BAND, SIDE_PAD, EDGE_INSET) are ALSO written as plain literals in
  * `styles/*.css`: that double home is deliberate — `@page` cannot read `var()` portably
  * (ruling: build output stays portable) — and is guarded by
  * `test/shared/compiler/styles-codegen.test.ts`, which asserts the `.css` literals equal
@@ -17,27 +17,27 @@
  */
 
 // Build-only chrome bands, in em (the same unit system as the charsPerLine-em grid).
-// The header and folio bands are ALWAYS allocated — the sheet keeps stable geometry no
+// The header and footer bands are ALWAYS allocated — the sheet keeps stable geometry no
 // matter which furniture is enabled — while the line-number band is on demand. The bands
 // are CONTENT: the MARGIN_MM paper margin stays furniture-free, and the furniture sits
-// flush against it (.hd top:0 / .pn bottom:0).
+// flush against it (.hd top:0 / .ft bottom:0).
 /** Header band at the physical top of a sheet (reserved even with no header text). */
 export const HEADER_BAND = 2;
 /** Line-number band between the header band and the column heads. */
 export const LINENUM_BAND = 1;
-/** Page-number (folio) band at the physical bottom of a sheet (reserved even without one). */
-export const FOLIO_BAND = 2;
+/** Footer band at the physical bottom of a sheet (reserved even without a footer). */
+export const FOOTER_BAND = 2;
 /**
  * Sheet padding on the physical left/right (the vertical-rl block axis): the text grid and
  * the outset frame never touch the paper's side cut. Doubly homed as fragment literals
- * (padding-block, frame sides, folio corners at SIDE_PAD + EDGE_INSET) —
+ * (padding-block, frame sides, footer corners at SIDE_PAD + EDGE_INSET) —
  * styles-codegen.test.ts guards the set.
  */
 export const SIDE_PAD = 1.5;
 /**
  * Frame ↔ text breathing gap in em, reserved UNCONDITIONALLY by both media (toggling
  * edgeLine never moves a glyph). Guard-only: the fit math never consumes it — the value
- * lives as fragment literals (preview reserve/lifts, frame top/bottom, folio corners),
+ * lives as fragment literals (preview reserve/lifts, frame top/bottom, footer corners),
  * every site derived-asserted from this constant by styles-codegen.test.ts.
  */
 export const EDGE_INSET = 0.35;
@@ -67,7 +67,7 @@ const PAPER_MM: Record<PaperSize, { readonly w: number; readonly h: number }> = 
 };
 
 /**
- * MINIMUM physical top/bottom paper margin in mm — pure white, the header/folio bands
+ * MINIMUM physical top/bottom paper margin in mm — pure white, the header/footer bands
  * EXCLUDED (the furniture is content and starts right below/above these): {@link fitPaper}
  * caps the font size so the sheet clears them even at tight pitches. A tuning knob — the
  * tests derive from it, so retuning needs no test edits.
@@ -96,7 +96,7 @@ export interface PaperFit {
   readonly insetBlockEm: number;
   /** Inset above the header band (physical top), em floored to 0.01. */
   readonly insetTopEm: number;
-  /** Inset below the folio band (physical bottom), em floored to 0.01. */
+  /** Inset below the footer band (physical bottom), em floored to 0.01. */
   readonly insetBottomEm: number;
 }
 
@@ -135,7 +135,7 @@ export function fitPaper(opts: {
   const widthMm = landscape ? paper.h : paper.w;
   const heightMm = landscape ? paper.w : paper.h;
   const sheetBlockEm = opts.linesPerPage * opts.linePitch + 2 * SIDE_PAD;
-  const sheetInlineEm = opts.charsPerLine + opts.hTop + FOLIO_BAND;
+  const sheetInlineEm = opts.charsPerLine + opts.hTop + FOOTER_BAND;
   const fontMm = Math.floor(Math.min(
     widthMm / (sheetBlockEm + 2 * PRINT_MARGIN),
     (heightMm - margin.top - margin.bottom) / sheetInlineEm,

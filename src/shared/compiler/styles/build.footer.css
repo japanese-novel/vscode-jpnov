@@ -1,10 +1,10 @@
-/* Page number (folio) — included when pageNumber ≠ 'none' (renderBook also normalizes a
-   blank format to 'none', so the .pn DOM element and these rules always agree). Flush
+/* Footer — included when footerAlign ≠ 'none' (renderBook also normalizes a blank footer
+   to 'none', so the .ft DOM element and these rules always agree). Flush
    against the bottom paper margin (bottom:0, the mirror of .hd's top:0), in
    smaller-than-body type; .r / .l pick the side per page, each corner at
    SIDE_PAD + EDGE_INSET, just inside the frame's side line. PHYSICAL
    bottom/right/left (horizontal-tb inside vertical-rl); ink #444 literal (print, not
    themed). */
-.pn{position:absolute;bottom:0;writing-mode:horizontal-tb;font-size:0.7em;line-height:1;color:#444;}
-.pn.r{right:1.85em;}
-.pn.l{left:1.85em;}
+.ft{position:absolute;bottom:0;writing-mode:horizontal-tb;font-size:0.7em;line-height:1;color:#444;}
+.ft.r{right:1.85em;}
+.ft.l{left:1.85em;}

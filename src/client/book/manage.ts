@@ -30,7 +30,7 @@ import {
   type MetaKey,
   type ParsedLine,
 } from '#/shared/book/jpbook.ts';
-import { PAGE_NUMBER_POSITIONS, type PageNumberPosition } from '#/shared/compiler/chrome.ts';
+import { FOOTER_ALIGNS, type FooterAlign } from '#/shared/compiler/chrome.ts';
 import { BUILD_CHROME_DEFAULT } from '#/shared/config/settings.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/errors.ts';
@@ -52,17 +52,17 @@ export function metaLabel(key: MetaKey): string {
       return vscode.l10n.t('Author');
     case 'header':
       return vscode.l10n.t('Header');
-    case 'pageNumber':
-      return vscode.l10n.t('Page Number');
-    case 'pageNumberFormat':
-      return vscode.l10n.t('Page Number Format');
+    case 'footer':
+      return vscode.l10n.t('Footer');
+    case 'footerAlign':
+      return vscode.l10n.t('Footer Alignment');
     case 'divider':
       return vscode.l10n.t('Chapter Divider');
   }
 }
 
-/** Localized display of one folio-position member (QuickPick items and meta-row values). */
-function positionLabel(value: PageNumberPosition): string {
+/** Localized display of one footer-alignment member (QuickPick items and meta-row values). */
+function alignLabel(value: FooterAlign): string {
   switch (value) {
     case 'right':
       return vscode.l10n.t('Always bottom-right');
@@ -73,7 +73,7 @@ function positionLabel(value: PageNumberPosition): string {
     case 'leftRight':
       return vscode.l10n.t('Alternate: left, then right');
     case 'none':
-      return vscode.l10n.t('No page number');
+      return vscode.l10n.t('No footer');
   }
 }
 
@@ -84,7 +84,7 @@ function positionLabel(value: PageNumberPosition): string {
  * key with no default shows an empty value tagged "(not set)".
  */
 export function metaValueParts(key: MetaKey, value: string | undefined): { value: string; note: string } {
-  const display = (v: string): string => (key === 'pageNumber' ? positionLabel(v as PageNumberPosition) : v);
+  const display = (v: string): string => (key === 'footerAlign' ? alignLabel(v as FooterAlign) : v);
   if (value !== undefined) {
     return { value: display(value), note: '' };
   }
@@ -472,17 +472,17 @@ async function editMeta(arg: unknown): Promise<void> {
   let value: string | undefined;
   if (node.metaKey === 'divider') {
     value = await pickDivider(node.value);
-  } else if (node.metaKey === 'pageNumber') {
+  } else if (node.metaKey === 'footerAlign') {
     const picked = await vscode.window.showQuickPick(
-      PAGE_NUMBER_POSITIONS.map((v) => ({ label: positionLabel(v), description: v, value: v })),
-      { placeHolder: vscode.l10n.t('Where the page number goes') },
+      FOOTER_ALIGNS.map((v) => ({ label: alignLabel(v), description: v, value: v })),
+      { placeHolder: vscode.l10n.t('Where the footer goes') },
     );
     value = picked?.value;
   } else {
     value = await vscode.window.showInputBox({
       prompt: metaLabel(node.metaKey),
-      value: node.value ?? (node.metaKey === 'pageNumberFormat' ? BUILD_CHROME_DEFAULT.pageNumberFormat : ''),
-      ...(node.metaKey === 'pageNumberFormat' ? { placeHolder: '{page} / {totalPage}' } : {}),
+      value: node.value ?? (node.metaKey === 'footer' ? BUILD_CHROME_DEFAULT.footer : ''),
+      ...(node.metaKey === 'footer' ? { placeHolder: BUILD_CHROME_DEFAULT.footer } : {}),
     });
   }
   if (value === undefined) {

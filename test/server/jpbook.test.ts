@@ -106,16 +106,16 @@ test('completeJpbook offers matching .jpnov files and drillable subdirs; hides .
 });
 
 test('completeJpbook routes front-matter lines to key/value completion (root-free)', async () => {
-  const parsed = parseJpbook('---\npage\n---\na.jpnov'); // meta completion needs no root at all
+  const parsed = parseJpbook('---\nfoot\n---\na.jpnov'); // meta completion needs no root at all
 
-  const keys = await completeJpbook(null, parsed, 'page', { line: 1, character: 4 });
-  assert.deepEqual(keys.map((i) => i.label), ['pageNumber', 'pageNumberFormat']);
+  const keys = await completeJpbook(null, parsed, 'foot', { line: 1, character: 4 });
+  assert.deepEqual(keys.map((i) => i.label), ['footer', 'footerAlign']);
   const firstKey = keys[0];
   assert.ok(firstKey);
   assert.equal(firstKey.kind, CompletionItemKind.Property);
-  assert.equal(firstKey.textEdit?.newText, 'pageNumber: ');
+  assert.equal(firstKey.textEdit?.newText, 'footer: ');
 
-  const vals = await completeJpbook(null, parsed, 'pageNumber: n', { line: 1, character: 13 });
+  const vals = await completeJpbook(null, parsed, 'footerAlign: n', { line: 1, character: 14 });
   assert.deepEqual(vals.map((i) => i.label), ['none']);
   assert.equal(vals[0]?.kind, CompletionItemKind.EnumMember);
 

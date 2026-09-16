@@ -216,15 +216,14 @@ export interface IndentBlockEndToken extends TokenBase {
 }
 
 /**
- * Value display ［＃ここに「タイトル／ペンネーム／総ページ数／原稿用紙換算枚数」の値を表示］ — a standalone
- * command that renders as text: the html build substitutes the book's value on cover pages,
- * every other compile (preview, body chapters, EPUB, the issue scans) the fixed placeholder
- * from {@link VALUE_FIELD_PLACEHOLDERS} — a cover template serves many books, so the editor
- * side is bookless by design. The `.txt` build keeps the annotation verbatim like all others.
+ * Value display ［＃ここに「名前」の値を表示］: renders the value the compile supplies for `name`,
+ * else the name itself. Only the html build supplies values ({@link VALUE_NAMES}), to cover
+ * pages and the page furniture; every other compile is bookless by design (a cover template
+ * serves many books). The `.txt` build keeps the annotation verbatim.
  */
 export interface ValueFieldToken extends TokenBase {
   readonly kind: 'valueField';
-  readonly field: ValueField;
+  readonly name: string;
 }
 
 export type Token =
@@ -279,31 +278,22 @@ export const HEADING_LITERALS = ['大見出し', '中見出し', '小見出し']
 export type HeadingLevel = 1 | 2 | 3;
 
 /**
- * The value fields ［＃ここに「…」の値を表示］ accepts, as ONE source: `name` is what the
- * author writes, `field` is what the book supplies, `stand` is what a bookless compile
- * substitutes. A field's own name doubles as its stand-in, except the two counts, which have
- * no text form. The two lookups below derive from this, so they cannot drift apart.
+ * The names the html build supplies to ［＃ここに「…」の値を表示］: cover pages get the first
+ * four, the page furniture (header / footer) all five. Any other name — and every name in a
+ * compile that supplies no values — renders as the name itself.
  */
-const VALUE_FIELDS = [
-  { name: 'タイトル', field: 'title', stand: 'タイトル' },
-  { name: 'ペンネーム', field: 'author', stand: 'ペンネーム' },
-  { name: '総ページ数', field: 'totalPages', stand: 'NaN' },
-  { name: '原稿用紙換算枚数', field: 'sheets', stand: 'NaN' },
-] as const;
+export const VALUE_NAMES = {
+  title: 'タイトル',
+  author: 'ペンネーム',
+  totalPages: '総ページ数',
+  sheets: '原稿用紙換算枚数',
+  page: 'ページ番号',
+} as const;
 
-export type ValueField = (typeof VALUE_FIELDS)[number]['field'];
-
-/** Accepted JA names; shared with the tmLanguage rule via grammar-sync. A Map, not an object:
- *  the name comes from the DOCUMENT, where `toString` would hit Object.prototype. */
-export const VALUE_FIELD_BY_NAME: ReadonlyMap<string, ValueField> = new Map(
-  VALUE_FIELDS.map((f) => [f.name, f.field]),
-);
-
-/** The bookless stand-ins (preview / body chapters / EPUB / the issue scans), keyed to match
- *  the per-book `values` the cover compile passes instead. */
-export const VALUE_FIELD_PLACEHOLDERS: Readonly<Record<ValueField, string>> = Object.fromEntries(
-  VALUE_FIELDS.map((f) => [f.field, f.stand]),
-) as Record<ValueField, string>;
+/** The value display annotation for `name` — the inverse spelling of the tokenizer's rule. */
+export function valueAnnotation(name: string): string {
+  return `${OPEN_BRACKET}${HASH}${VALUE_OPEN}${name}${VALUE_CLOSE}${CLOSE_BRACKET}`;
+}
 
 /** The heading level `s` names, or null when `s` is not one of {@link HEADING_LITERALS}. */
 function headingLevelOf(s: string): HeadingLevel | null {
@@ -378,14 +368,14 @@ function classifyAnnotation(inner: string, raw: string, atLineStart: boolean): T
     return { kind: 'pageBreak', raw };
   }
 
-  // Value display ［＃ここに「タイトル」の値を表示］ — a closed name set; an unknown name greys
-  // out like any mistyped annotation. ここに… collides with no other branch's literals.
-  if (inner.startsWith(VALUE_OPEN) && inner.endsWith(VALUE_CLOSE)) {
-    const field = VALUE_FIELD_BY_NAME.get(inner.slice(VALUE_OPEN.length, inner.length - VALUE_CLOSE.length));
-    if (field !== undefined) {
-      return { kind: 'valueField', raw, field };
-    }
-    return { kind: 'comment', raw, inner };
+  // Value display ［＃ここに「名前」の値を表示］ — any non-empty name (the grammar's `[^］]+`);
+  // an empty pair greys out. ここに… collides with no other branch's literals.
+  if (
+    inner.startsWith(VALUE_OPEN) &&
+    inner.endsWith(VALUE_CLOSE) &&
+    inner.length > VALUE_OPEN.length + VALUE_CLOSE.length
+  ) {
+    return { kind: 'valueField', raw, name: inner.slice(VALUE_OPEN.length, inner.length - VALUE_CLOSE.length) };
   }
 
   // Corner-target postfix ［＃「対象」に傍点／の左に傍線／は太字…］.
@@ -874,10 +864,10 @@ export function findTcyIssues(src: string): TcyIssue[] {
         }
         break;
       case 'valueField':
-        // Bookless length: the editor compile substitutes the placeholder, a cover build may
-        // run longer.
+        // Bookless length: the editor compile renders the name; a cover or furniture build
+        // may run longer.
         if (open !== null) {
-          contentLen += Array.from(VALUE_FIELD_PLACEHOLDERS[token.field]).length;
+          contentLen += Array.from(token.name).length;
           contentEnd = end;
         }
         break;

@@ -86,7 +86,7 @@ export interface BookRender {
   readonly paper: { readonly widthMm: number; readonly heightMm: number; readonly fontMm: number };
   /** Pages kept in `fragment`. */
   readonly pageCount: number;
-  /** Body pages of the whole book — the folio's `{totalPage}`. */
+  /** Body pages of the whole book — the footer's 総ページ数. */
   readonly totalPages: number;
 }
 
