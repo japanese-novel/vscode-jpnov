@@ -29,6 +29,9 @@ export interface BookGroupVM {
 /** One chapter or cover row in a `detail`. */
 export interface EntryVM {
   readonly line: number;
+  /** The entry path as written in the `.jpbook` (a cover item's marker excluded); with `line` and
+   *  the detail's `version`, the row's identity the row verbs echo. */
+  readonly path: string;
   readonly name: string;
   readonly folder: string;
   readonly fileUri: string;
@@ -68,6 +71,8 @@ export interface DetailMessage {
   readonly type: 'detail';
   readonly uri: string;
   readonly title: string;
+  /** The `TextDocument.version` the rows were parsed from; the row verbs echo it. */
+  readonly version: number;
   readonly chapters: readonly EntryVM[];
   readonly covers: readonly EntryVM[];
   readonly meta: readonly MetaVM[];
@@ -104,17 +109,38 @@ export type BooksOutbound =
   | { readonly type: 'closeDetail' }
   | { readonly type: 'openFile'; readonly uri: string }
   | { readonly type: 'editMeta'; readonly uri: string; readonly metaKey: string }
-  // Entry-list verbs: `list` names the target list; `line` is the entry's document line.
+  // Entry-list verbs: `list` names the target list. A row verb names the row as rendered (`line`,
+  // the `path` written there, the detail's `version`); the host acts only while the text still
+  // matches, and answers a stale row with a re-push.
   | { readonly type: 'addEntries'; readonly uri: string; readonly list: EntryList }
   | { readonly type: 'createEntry'; readonly uri: string; readonly list: EntryList }
-  | { readonly type: 'removeEntry'; readonly uri: string; readonly list: EntryList; readonly line: number }
-  | { readonly type: 'moveEntry'; readonly uri: string; readonly list: EntryList; readonly line: number; readonly dir: -1 | 1 }
+  | {
+    readonly type: 'removeEntry';
+    readonly uri: string;
+    readonly list: EntryList;
+    readonly line: number;
+    readonly path: string;
+    readonly version: number;
+  }
+  | {
+    readonly type: 'moveEntry';
+    readonly uri: string;
+    readonly list: EntryList;
+    readonly line: number;
+    readonly path: string;
+    readonly version: number;
+    readonly dir: -1 | 1;
+  }
   | {
     readonly type: 'moveEntryTo';
     readonly uri: string;
     readonly list: EntryList;
     readonly line: number;
+    readonly path: string;
+    readonly version: number;
+    /** The row to drop before, named like the moved row; both null = after the list's last entry. */
     readonly before: number | null;
+    readonly beforePath: string | null;
   }
   | { readonly type: 'welcome'; readonly action: WelcomeAction };
 

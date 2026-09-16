@@ -158,6 +158,8 @@ export const ProgressLocation = { SourceControl: 1, Window: 10, Notification: 15
 export interface FakeTextDocument {
   uri: Uri;
   languageId: string;
+  /** `TextDocument.version` (the panel's row verbs echo it); `doc()` starts at 1 and `applyEdit` leaves it alone. */
+  version: number;
   getText(): string;
   /** Present on `doc()`-built documents (manage.ts saves after `applyEdit`); hand-rolled fakes may omit it. */
   save?(): Promise<boolean>;
@@ -638,7 +640,7 @@ export function buildVscode(state: MockState): Record<string, unknown> {
 }
 
 export function doc(uri: string, languageId: string, text = ''): FakeTextDocument {
-  return { uri: Uri.parse(uri), languageId, getText: () => text, save: () => Promise.resolve(true) };
+  return { uri: Uri.parse(uri), languageId, version: 1, getText: () => text, save: () => Promise.resolve(true) };
 }
 
 /** A fake `vscode.Webview`: captures outbound `postMessage` (posted) + delivers inbound (receive). */

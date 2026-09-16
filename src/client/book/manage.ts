@@ -11,7 +11,15 @@
 import * as vscode from 'vscode';
 
 import { COVER_TEMPLATE, normalizeFileInput } from '#/shared/book/create.ts';
-import { appendEntries, entryLines, listedEntries, moveEntryTo, removeEntry, upsertMeta } from '#/shared/book/edits.ts';
+import {
+  appendEntries,
+  entryLines,
+  listedEntries,
+  moveEntryTo,
+  removeEntry,
+  resolveEntry,
+  upsertMeta,
+} from '#/shared/book/edits.ts';
 import type { TextReplace } from '#/shared/book/edits.ts';
 import {
   composeDividerValue,
@@ -20,6 +28,7 @@ import {
   parseJpbook,
   type EntryList,
   type MetaKey,
+  type ParsedLine,
 } from '#/shared/book/jpbook.ts';
 import { PAGE_NUMBER_POSITIONS, type PageNumberPosition } from '#/shared/compiler/chrome.ts';
 import { BUILD_CHROME_DEFAULT } from '#/shared/config/settings.ts';
@@ -31,7 +40,7 @@ import { command } from '../commands.ts';
 import { renderMessage } from '../messages.ts';
 import { chapterUri, FIND_FILES_EXCLUDE, splitRelPath } from '../paths.ts';
 import { normalizeFsPath } from './rename.ts';
-import type { BookNode } from './nodes.ts';
+import type { BookNode, EntryNode } from './nodes.ts';
 import type { BooksViewProvider } from './view.ts';
 
 /** Localized display name of a metadata key (the meta row's label and edit prompt). */
@@ -100,11 +109,18 @@ export async function applyBookEdits(uri: vscode.Uri, replaces: readonly TextRep
   }
 }
 
-/** The book's live text (dirty buffer included) — every planner starts from this. */
-async function bookText(entry: BookEntry): Promise<{ uri: vscode.Uri; text: string }> {
+/** The book's live text (dirty buffer included) and its version — every planner starts from this. */
+async function bookText(entry: BookEntry): Promise<{ uri: vscode.Uri; text: string; version: number }> {
   const uri = vscode.Uri.parse(entry.uri);
   const doc = await vscode.workspace.openTextDocument(uri);
-  return { uri, text: doc.getText() };
+  return { uri, text: doc.getText(), version: doc.version };
+}
+
+/** The line a row verb acts on, or null when the panel was stale (the text moved past the row's
+ *  version, or that line no longer lists that path): nothing is planned, the provider's re-push
+ *  shows the live rows. */
+function rowLine(node: EntryNode, lines: readonly ParsedLine[], version: number): number | null {
+  return version === node.version ? resolveEntry(lines, node.list, node) : null;
 }
 
 function nodeOf(arg: unknown): BookNode | null {
@@ -327,8 +343,12 @@ async function removeEntryCmd(arg: unknown): Promise<void> {
   if (node?.kind !== 'entry') {
     return;
   }
-  const { uri, text } = await bookText(node.entry);
-  const edit = removeEntry(text, node.list, node.line);
+  const { uri, text, version } = await bookText(node.entry);
+  const line = rowLine(node, parseJpbook(text).lines, version);
+  if (line === null) {
+    return;
+  }
+  const edit = removeEntry(text, node.list, line);
   if (edit !== null) {
     await applyBookEdits(uri, [edit]);
   }
@@ -339,12 +359,14 @@ async function moveEntry(arg: unknown, direction: -1 | 1): Promise<void> {
   if (node?.kind !== 'entry') {
     return;
   }
-  const { uri, text } = await bookText(node.entry);
-  const lines = entryLines(parseJpbook(text).lines, node.list);
-  const index = lines.indexOf(node.line);
-  if (index < 0) {
+  const { uri, text, version } = await bookText(node.entry);
+  const parsed = parseJpbook(text);
+  const line = rowLine(node, parsed.lines, version);
+  if (line === null) {
     return;
   }
+  const lines = entryLines(parsed.lines, node.list);
+  const index = lines.indexOf(line); // ≥ 0: rowLine found it among this list's entries
   // Up: insert before the previous entry. Down: insert before the one PAST the next
   // (or at the end when the next entry is the last).
   const before =
@@ -356,7 +378,7 @@ async function moveEntry(arg: unknown, direction: -1 | 1): Promise<void> {
   if (before === undefined || (direction === 1 && index + 1 >= lines.length)) {
     return; // already first / already last
   }
-  const edits = moveEntryTo(text, node.list, node.line, before);
+  const edits = moveEntryTo(text, node.list, line, before);
   if (edits !== null) {
     await applyBookEdits(uri, edits);
   }
