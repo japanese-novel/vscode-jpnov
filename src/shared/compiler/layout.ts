@@ -929,9 +929,10 @@ function separate(units: readonly Unit[], mode: KinsokuMode): readonly Unit[] {
  * that alone resolves the boundary (ぶら下げ, see {@link canHang}), and otherwise 禁則処理
  * nudges the break point LEFTWARD so a line never ENDS on an opening bracket (「『【（) nor
  * STARTS with a 行頭禁則 char (」』】）、。！？) — 追い出し. The walk re-tests the new
- * boundary, so cascades and the resulting reflow fall out naturally; the `> start` guard
- * never empties a line, which also leaves a lone-char row as-is. (禁則 walks unit text only —
- * the indent is CSS padding, not a unit, so the two never interact.)
+ * boundary, so cascades and the resulting reflow fall out naturally; the `> floor` guard keeps
+ * a line's first real unit, so no line ever empties and a lone-char row stays as-is. Every
+ * boundary test looks through zero-width units to the nearest real one. (禁則 walks unit text
+ * only — the indent is CSS padding, not a unit, so the two never interact.)
  */
 function wrapRow(
   row: Extract<Row, { kind: 'line' }>,
@@ -957,7 +958,7 @@ function wrapRow(
     if (u === undefined) {
       continue;
     }
-    if (u.cells > 0 && i > start && cells + u.cells > budget) {
+    if (u.cells > 0 && cells > 0 && cells + u.cells > budget) {
       let brk = i; // break BEFORE units[brk]
       if (mode !== 'none') {
         const close = closeFor(mode);
@@ -974,10 +975,11 @@ function wrapRow(
           cells = 0;
           continue; // u is consumed as the hang — it must not count into the next column
         }
-        // 追い出し: find the last acceptable break point
+        // 追い出し: find the last acceptable break point; the line keeps its first real unit.
+        const floor = nextReal(units, start) + 1;
         while (
-          brk > start + 1 &&
-          (everyCharIn(units[brk], close) ||
+          brk > floor &&
+          (everyCharIn(units[nextReal(units, brk)], close) ||
             everyCharIn(units[lastReal(units, start, brk)], KINSOKU_OPEN))
         ) {
           brk -= 1;
