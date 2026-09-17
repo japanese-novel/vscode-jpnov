@@ -24,7 +24,7 @@ export type ReadText = (uri: string, token?: CancellationToken) => Promise<ReadT
  */
 export interface ServerContext {
   readonly connection: Connection;
-  /** The only way server code obtains manuscript text: the client reads the disk and decodes as the editor would. */
+  /** The only way server code obtains manuscript text: the client answers with the text the editor shows. */
   readonly readText: ReadText;
   /** Enabled prose-lint rules, resolved from the client's `jpnov.lint.*` settings snapshot. Workspace-
    *  (not root-) scoped, so it lives on the context rather than per root. */

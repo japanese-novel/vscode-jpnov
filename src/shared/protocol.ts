@@ -333,9 +333,9 @@ export interface ReadTextParams {
 export type ReadTextFailure = 'notFound' | 'notText' | 'other';
 
 /**
- * The client reads the bytes from DISK (a build never sees the dirty buffer) and decodes them as
- * the editor would: an open document's own encoding, else the one VS Code picks for the uri.
- * `why` is the raw client-side message (untranslatable); only `other` surfaces it.
+ * The text as the editor shows it: an open document's live buffer (unsaved edits included), else
+ * the disk decoded with the encoding VS Code picks for the uri. `why` is the raw client-side
+ * message (untranslatable); only `other` surfaces it.
  */
 export type ReadTextResult =
   | { readonly ok: true; readonly text: string }

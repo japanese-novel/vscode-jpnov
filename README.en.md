@@ -63,10 +63,10 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
    book, and opened in the editor. Aozora Bunko annotations are highlighted as you type;
    click the preview icon in the editor title bar (**Japanese Novel: Open
    Preview to the Side**) to write beside the vertical layout.
-3. **Build it.** Save everything (builds read from disk) and click **Print /
-   Save as PDF** at the bottom of the view: the book opens in your browser,
-   and the same button floating on the page (印刷／PDF 保存) brings up
-   the print dialog — print on paper, or choose Save as PDF there for a PDF.
+3. **Build it.** Click **Print / Save as PDF** at the bottom of the view: the
+   book opens in your browser, and the same button floating on the page
+   (印刷／PDF 保存) brings up the print dialog — print on paper, or choose
+   Save as PDF there for a PDF.
    The text and EPUB buttons sit beside it. With a book open, the buttons
    build just that book; back in the list, they build every checked book.
 
@@ -242,13 +242,14 @@ block, a backslash in a path, an entry that is not a `.jpnov` file) fails that
 book's build with its first error; the other books still build. Warnings, such
 as unknown keys or duplicates, never stop a build.
 
-Chapters and the `.jpbook` itself are read from disk with the encoding the
-editor uses for that file: an open document's own encoding, otherwise the one
-VS Code picks for it (`files.encoding`, `files.autoGuessEncoding`, a byte order
-mark). Keep `files.autoGuessEncoding` on if you bring in manuscripts saved by
-other apps, such as Windows Notepad. A Shift JIS manuscript that reads
-correctly in the editor builds correctly; a file VS Code cannot decode as text
-fails that book's build with `cannot read "…": not a text file`.
+Chapters and the `.jpbook` itself are taken as the editor shows them: an open
+file contributes its current text, unsaved edits included, so a build matches
+the preview; a closed file is read from disk with the encoding VS Code picks
+for it (`files.encoding`, `files.autoGuessEncoding`, a byte order mark). Keep
+`files.autoGuessEncoding` on if you bring in manuscripts saved by other apps,
+such as Windows Notepad. A Shift JIS manuscript that reads correctly in the
+editor builds correctly; a file VS Code cannot decode as text fails that
+book's build with `cannot read "…": not a text file`.
 
 A PDF saved from the print dialog embeds a subset of each font it uses. With
 the default stack, the result is fine to submit to a print shop and to sell:
