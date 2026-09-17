@@ -125,6 +125,9 @@ function stripPrintRules(raw: string): { css: string; size: { widthMm: number; h
   return { css, size, fontMm };
 }
 
+/** The product's document-global registration (class.emr.css `--emr`): stays unscoped, ahead of the rules. */
+const PROPERTY_RULES = /@property [^{}]+\{[^{}]*\}/g;
+
 /** The root-relative rewrites every fragment needs, then the scope prefix on every selector. */
 function finishCss(css: string, scope: string, kind: 'preview' | 'book'): string {
   const rewritten = css
@@ -135,7 +138,8 @@ function finishCss(css: string, scope: string, kind: 'preview' | 'book'): string
     .replaceAll('var(--vscode-editorLineNumber-foreground,#888)', 'var(--jp-ln,#888)')
     .replace('.print{position:fixed;', '.print{position:absolute;')
     .replace(`${scope}{background:#e8e8e8;}`, '');
-  return baseRule(scope, kind) + prefixSelectors(rewritten, scope);
+  const registrations = rewritten.match(PROPERTY_RULES) ?? [];
+  return registrations.join('') + baseRule(scope, kind) + prefixSelectors(rewritten.replace(PROPERTY_RULES, ''), scope);
 }
 
 /** The artifact's button becomes a link (or goes), and only the kept pages stay in the body. */

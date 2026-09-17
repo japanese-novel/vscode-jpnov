@@ -1,12 +1,12 @@
 /**
- * Mounts the stage: registers ScrollTrigger, runs the 傍点 probes once fonts are ready, and
+ * Mounts the stage: registers ScrollTrigger, runs the 傍点 probe once fonts are ready, and
  * builds the pinned timeline only where motion and a wide viewport apply (the CSS shows the
  * static sequence otherwise). A failure removes `html.js`, which also reveals the static sequence.
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
-import { probeAll } from '../scripts/emrProbe.ts';
+import { pinEmrShift } from '../../../src/client/webview/probe/emrShift.ts';
 import { buildTimeline } from './timeline.ts';
 
 export const MOTION_QUERY = '(prefers-reduced-motion: no-preference) and (min-width: 56.25rem)';
@@ -20,7 +20,7 @@ export function mountStage(): void {
     gsap.registerPlugin(ScrollTrigger);
     const mm = gsap.matchMedia();
     mm.add(MOTION_QUERY, () => {
-      probeAll(root);
+      pinEmrShift(root);
       const tl = buildTimeline(root);
       return () => {
         tl.scrollTrigger?.kill();
@@ -28,14 +28,14 @@ export function mountStage(): void {
       };
     });
     void document.fonts.ready.then(() => {
-      probeAll();
+      pinEmrShift(document);
       ScrollTrigger.refresh();
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     window.addEventListener('resize', () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        probeAll();
+        pinEmrShift(document);
       }, 200);
     });
   } catch (err: unknown) {
