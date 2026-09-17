@@ -208,15 +208,14 @@ const MEASURE_SCRIPT = `<script>
     r.setStart(tn, 0); r.setEnd(tn, 1);
     return r.getBoundingClientRect().x;
   };
-  let emphDevMax = null;
+  let emphDevs = null;
   const ref = lines.findIndex((l) => !l.classList.contains('emr') && gx(l) !== null);
   if (ref >= 0 && lines.some((l) => l.classList.contains('emr'))) {
     const pitch = lines[ref].getBoundingClientRect().width;
     const x0 = gx(lines[ref]) + ref * pitch;
-    emphDevMax = 0;
-    lines.forEach((l, i) => {
+    emphDevs = lines.map((l, i) => {
       const x = gx(l);
-      if (x !== null) emphDevMax = Math.max(emphDevMax, Math.abs(x - (x0 - i * pitch)));
+      return { cls: l.className, dev: x === null ? null : x - (x0 - i * pitch) };
     });
   }
   // Ruby lane containment: the reading lane is out of flow, so a ruby box is exactly as tall
@@ -229,7 +228,7 @@ const MEASURE_SCRIPT = `<script>
     : 0;
   const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
   document.documentElement.setAttribute('${MARKER}', JSON.stringify({
-    emphDevMax,
+    emphDevs,
     rubyLaneSpillPx: ruby ? ruby.getBoundingClientRect().height - baseExtent : 0,
     writingMode: grid ? getComputedStyle(grid).writingMode : 'missing',
     rootFontSize: rootPx,
@@ -245,8 +244,8 @@ const MEASURE_SCRIPT = `<script>
 </script>`;
 
 interface VerifyMetrics {
-  /** Largest 傍点 glyph-lattice deviation over all lines in px, or null when no line carries `.emr`. */
-  readonly emphDevMax: number | null;
+  /** Per-line glyph-lattice deviation in px (class + dev), or null when no line carries `.emr`. */
+  readonly emphDevs: readonly { readonly cls: string; readonly dev: number | null }[] | null;
   /** The first ruby box's inline extent beyond its base spans, in px — 0 while the lane stays out of flow. */
   readonly rubyLaneSpillPx: number;
   readonly writingMode: string;
@@ -380,9 +379,10 @@ test('the built page follows every 行送り tier (column width and fitted font 
     // Every 傍点 line must stay on the lattice at every tier on any engine and font: the probe
     // measures each line's real push in place (the closed form alone fits only a+d = 1em fonts
     // on Chromium ≤151, and CI's fallback serif is not one).
+    const devs = (m.emphDevs ?? []).map((d) => `${d.cls}:${d.dev === null ? '-' : d.dev.toFixed(3)}`);
     assert.ok(
-      m.emphDevMax !== null && m.emphDevMax < 0.75,
-      `@${String(linePitch)}: every 傍点 line must stay on the glyph lattice (max dev ${String(m.emphDevMax)}px)`,
+      m.emphDevs?.every((d) => d.dev !== null && Math.abs(d.dev) < 0.75) === true,
+      `@${String(linePitch)}: every 傍点 line must stay on the glyph lattice (devs px: ${devs.join(' | ')})`,
     );
   }
 });

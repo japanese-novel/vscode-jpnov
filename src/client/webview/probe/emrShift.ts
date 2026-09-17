@@ -1,8 +1,10 @@
 /**
  * 傍点 baseline-shift probe, the runtime companion of class.emr.css (mechanism and geometry there);
  * the compiler inlines it through css.ts emrProbe() and the website imports it. Every `.emr` line
- * is measured in place, because Chromium's push depends on the column before the line. The pin
- * goes through the CSSOM: the preview webview's CSP strips markup style attributes.
+ * is measured in place against a plain column appended to the same parent, because Chromium's
+ * push depends on the column before the line and an unpushed glyph's offset carries the engine's
+ * metric rounding. Styling goes through the CSSOM: the preview webview's CSP strips markup style
+ * attributes.
  */
 
 /** Text off the glyph lattice: line-number heads, ruby readings, and 縦中横 runs (half-width rects). */
@@ -29,32 +31,75 @@ function referenceGlyph(line: HTMLElement): DOMRect | null {
 }
 
 /**
- * The line's baseline push in px: how far its first glyph sits block-endward of the column's
- * centre, where the half-leading places an unpushed glyph. Both rects carry the line's current
- * translate, so an earlier pin does not skew a re-measurement.
+ * How far the line's first glyph sits from the column's block-end edge, in px. Both rects carry
+ * the line's current translate, so an earlier pin does not skew a re-measurement.
  */
-function linePush(line: HTMLElement): number | null {
+function glyphOffset(line: HTMLElement): number | null {
   const glyph = referenceGlyph(line);
   const box = line.getBoundingClientRect();
-  if (glyph === null || box.width === 0) {
-    return null;
-  }
-  return (box.width - glyph.width) / 2 - (glyph.x - box.x);
+  return glyph === null || box.width === 0 ? null : glyph.x - box.x;
+}
+
+/** The classes a probe column shares with the line (all but the shift itself), so it takes the line's font. */
+function probeClass(line: HTMLElement): string {
+  return [...line.classList].filter((name) => name !== 'emr').join(' ');
+}
+
+/** A plain probe column appended to `host`: its glyph offset is the unpushed offset for `className` lines there. */
+function appendProbe(host: HTMLElement, className: string): HTMLElement {
+  const box = document.createElement('div');
+  box.className = className;
+  box.style.visibility = 'hidden';
+  box.textContent = '永';
+  host.appendChild(box);
+  return box;
 }
 
 /**
  * Pins `--emr-shift` on every `.emr` line under `root`, in em of the line's font size, from the
- * line's own push; a line with nothing to measure loses its pin and takes the stylesheet's
- * closed-form fallback. Every line is measured before any is pinned.
+ * line's own push against the unpushed offset of a probe column beside it; a line with nothing to
+ * measure loses its pin and takes the stylesheet's closed-form fallback. The DOM writes bracket
+ * the reads, so every measurement shares one layout.
  */
 export function pinEmrShift(root: ParentNode): void {
-  const lines = [...root.querySelectorAll<HTMLElement>('.emr')].map((line) => ({ line, push: linePush(line) }));
-  for (const { line, push } of lines) {
+  // One probe column per parent and class set, shared by the lines it stands for.
+  const probes = new Map<HTMLElement, Map<string, HTMLElement>>();
+  const probeFor = (line: HTMLElement): HTMLElement | null => {
+    const host = line.parentElement;
+    if (host === null) {
+      return null;
+    }
+    const byClass = probes.get(host) ?? new Map<string, HTMLElement>();
+    probes.set(host, byClass);
+    const className = probeClass(line);
+    const probe = byClass.get(className) ?? appendProbe(host, className);
+    byClass.set(className, probe);
+    return probe;
+  };
+  const pairs = [...root.querySelectorAll<HTMLElement>('.emr')].map((line) => ({ line, probe: probeFor(line) }));
+  const columns = [...probes.values()].flatMap((byClass) => [...byClass.values()]);
+  let measured: { line: HTMLElement; push: number | null; em: number }[];
+  try {
+    const unpushed = new Map(columns.map((probe) => [probe, glyphOffset(probe)] as const));
+    measured = pairs.map(({ line, probe }) => {
+      const reference = probe === null ? null : (unpushed.get(probe) ?? null);
+      const offset = glyphOffset(line);
+      return {
+        line,
+        push: reference === null || offset === null ? null : reference - offset,
+        em: parseFloat(getComputedStyle(line).fontSize),
+      };
+    });
+  } finally {
+    for (const probe of columns) {
+      probe.remove();
+    }
+  }
+  for (const { line, push, em } of measured) {
     if (push === null) {
       line.style.removeProperty('--emr-shift');
-      continue;
+    } else {
+      line.style.setProperty('--emr-shift', `${String(Math.max(0, push / em))}em`);
     }
-    const em = parseFloat(getComputedStyle(line).fontSize);
-    line.style.setProperty('--emr-shift', `${String(Math.max(0, push / em))}em`);
   }
 }
