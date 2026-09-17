@@ -1,6 +1,7 @@
 /**
- * The client side of `jpnov/readText`: bytes from disk, the encoding from the editor (an open
- * document's own, else VS Code's choice for the uri), and every failure as a wire result.
+ * The client side of `jpnov/readText`: an open document's live buffer (unsaved edits included,
+ * #87), else the disk decoded with the encoding VS Code picks for the uri, and every failure as
+ * a wire result.
  *
  * Runs in CI via `npm run test:integration`; for direct runs see test/client/README.md.
  */
@@ -37,12 +38,19 @@ test('a closed file decodes with the encoding VS Code picks for its uri', async 
   assert.deepEqual(state.decodeCalls, [{ uri: URI }]);
 });
 
-test('an open document decodes with its own encoding, so "Reopen with Encoding" holds', async () => {
-  seed(encodeTxt(TEXT, 'shiftJis').bytes);
-  state.textDocuments.push(doc(URI, 'jpnov', 'stale buffer', 'shiftjis'));
+test('an open document answers with its live text, unsaved edits included, and never reads the disk', async () => {
+  // Nothing on the mock disk: a disk read would come back `notFound`.
+  state.textDocuments.push(doc(URI, 'jpnov', TEXT, 'shiftjis'));
 
   assert.deepEqual(await readText({ uri: URI }), { ok: true, text: TEXT });
-  assert.deepEqual(state.decodeCalls, [{ encoding: 'shiftjis' }]);
+  assert.deepEqual(state.decodeCalls, []);
+});
+
+test('an open document is found across Unicode normalization of its path', async () => {
+  const nfc = 'file:///ws/src/ガイド.jpnov'; // the entry as typed into the .jpbook
+  state.textDocuments.push(doc(nfc.normalize('NFD'), 'jpnov', TEXT)); // opened by its on-disk (NFD) name
+
+  assert.deepEqual(await readText({ uri: nfc }), { ok: true, text: TEXT });
 });
 
 const FAILURES: readonly [string, () => void, ReadTextFailure, string][] = [

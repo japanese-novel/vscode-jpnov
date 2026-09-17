@@ -213,7 +213,7 @@ function ensureStarted(): void {
     }),
   );
 
-  // The server never decodes manuscript bytes; book/readText.ts answers with the editor's encoding.
+  // The server never reads manuscript files; book/readText.ts answers with the text the editor shows.
   // Registered before start(): vscode-languageclient parks the handler until the connection exists.
   context.subscriptions.push(
     client.onRequest(ReadTextRequest, (params: ReadTextParams): Promise<ReadTextResult> => readText(params)),

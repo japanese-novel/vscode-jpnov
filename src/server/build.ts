@@ -10,7 +10,7 @@
  *   features use), and page furniture comes from each book's OWN front matter
  *   (`composeBookChrome`), so one batch build carries a different header per volume;
  * - the server never touches `vscode.fs` nor decodes bytes: manuscript text arrives through
- *   `jpnov/readText` (the client reads the disk with the editor's encoding) and artifacts leave
+ *   `jpnov/readText` (the client answers with the text the editor shows) and artifacts leave
  *   here as text the CLIENT writes (owning the `.txt` encoding);
  * - vscode-free — the runtime `Connection` is reached only through {@link ServerContext}.
  */
