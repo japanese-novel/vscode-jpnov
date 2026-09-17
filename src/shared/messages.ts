@@ -71,6 +71,10 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return 'unterminated block annotation (missing ［＃ここで…終わり］)';
     case 'syntax.danglingBlockEnd':
       return 'block-end annotation without a matching start';
+    case 'syntax.unterminatedSpan':
+      return 'unterminated start/end annotation (missing ［＃…終わり］)';
+    case 'syntax.danglingSpanEnd':
+      return 'end annotation without a matching start';
     case 'syntax.postfixTargetMissing':
       return `annotation target "${a(0)}" is not on this line, or is not aligned to a character boundary`;
     case 'syntax.unterminatedTcy':

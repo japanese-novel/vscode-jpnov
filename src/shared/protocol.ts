@@ -78,6 +78,8 @@ export type MsgCode =
   | 'syntax.unclosedAnnotation' // args: [] — unterminated ［＃ (no ］ before the line end); the diagnostic range IS the span
   | 'syntax.unterminatedBlock' // args: [] — ［＃ここから…］ with no matching ［＃ここで…終わり］ before EOF; range = the ここから annotation
   | 'syntax.danglingBlockEnd' // args: [] — ［＃ここで…終わり］ with no open block; range = the 終わり annotation
+  | 'syntax.unterminatedSpan' // args: [] — inline ［＃…］ opener with no ［＃…終わり］ before EOF (the render runs it to the end); range = the opener
+  | 'syntax.danglingSpanEnd' // args: [] — inline ［＃…終わり］ with nothing open in its channel (render no-op); range = the annotation
   | 'syntax.postfixTargetMissing' // args: [target] — a corner-target postfix (傍点系/縦中横/左ルビ/見出し) whose target is absent from its line or not aligned to unit boundaries; range = the annotation
   | 'syntax.unterminatedTcy' // args: [] — ［＃縦中横］ with no 終わり before its line end (the render auto-closes); range = the opening annotation
   | 'syntax.danglingTcyEnd' // args: [] — ［＃縦中横終わり］ with no open span (render no-op); range = the annotation

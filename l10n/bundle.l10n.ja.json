@@ -90,6 +90,8 @@
   "unterminated ［＃ annotation (missing ］)": "注記が閉じられていません（「］」が必要です）",
   "unterminated block annotation (missing ［＃ここで…終わり］)": "ブロック注記が閉じられていません（「［＃ここで…終わり］」が必要です）",
   "block-end annotation without a matching start": "ブロック終了注記に対応する開始注記がありません",
+  "unterminated start/end annotation (missing ［＃…終わり］)": "開始／終了型の注記が閉じられていません（「［＃…終わり］」が必要です）",
+  "end annotation without a matching start": "終了注記に対応する開始注記がありません",
   "annotation target \"{0}\" is not on this line, or is not aligned to a character boundary": "注記の対象文字「{0}」が行内で見つからないか、文字境界に揃っていません",
   "unterminated 縦中横 (missing ［＃縦中横終わり］ before the end of the line)": "縦中横が閉じられていません（行末までに「［＃縦中横終わり］」が必要です）",
   "［＃縦中横終わり］ without a matching ［＃縦中横］": "「［＃縦中横終わり］」に対応する「［＃縦中横］」がありません",

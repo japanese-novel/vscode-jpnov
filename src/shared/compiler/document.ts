@@ -4,7 +4,15 @@ import type { BuildChrome } from './chrome.ts';
 import { emrProbe, stylesheet } from './css.ts';
 import type { PaperOrientation, PaperSize } from './geometry.ts';
 import { buildRows, paginate, pagesToHtml, type DisplayLine, type RenderPage, type Row } from './layout.ts';
-import { indentAnnotation, splitLines, tokenize, VALUE_NAMES, type Token } from './tokenizer.ts';
+import {
+  closingAnnotation,
+  indentAnnotation,
+  splitLines,
+  tokenize,
+  unterminatedOpeners,
+  VALUE_NAMES,
+  type Token,
+} from './tokenizer.ts';
 
 /** 400字詰め原稿用紙 (20 字 × 20 行): the grid ［＃ここに「原稿用紙換算枚数」の値を表示］
  *  re-flows the body on. Tests derive from this, never write 20. */
@@ -106,10 +114,10 @@ function dividerLine(divider: string, charsPerLine: number | null): string {
 
 /**
  * The junction "glue" between two adjacent chapters, as ONE shared string: the `.txt` build
- * joins newline-stripped chapter sources with `'\n' + glue`, and the HTML build inserts
- * `buildRows(tokenize(glue))` between the files' row batches — the leading `'\n'` belongs to
- * the txt seam only (it terminates the previous chapter's last line, which the HTML side has
- * already emitted), so the two outputs stay faithful duals.
+ * joins newline-stripped chapter sources with `'\n' + seamClosers(prev) + glue`, and the HTML
+ * build inserts `buildRows(tokenize(glue))` between the files' row batches — the leading `'\n'`
+ * (it terminates the previous chapter's last line, which the HTML side has already emitted) and
+ * the closers belong to the txt seam only, so the two outputs stay faithful duals.
  *
  * One blank line ALWAYS separates chapters. The divider line plus one more blank follows
  * only when a divider is configured AND the next chapter does not open with a 見出し (the
@@ -140,6 +148,23 @@ export function chapterGlue(
     return `\n${dividerLine(divider, charsPerLine)}\n\n`;
   }
   return '\n';
+}
+
+/**
+ * The closers a `.txt` seam appends for the spans the previous chapter `src` leaves open — the
+ * per-file state reset the HTML build gets from buildRows, spelled out. Row-neutral by placement:
+ * the ここで-form closers share one line of their own (a block-directive-only line paints no
+ * column); the inline 傍点/傍線 closers head the seam's blank line the glue supplies (zero-width
+ * annotations keep it blank, and the ここで line has already cleared the 字下げ/見出し it would
+ * inherit). Not the previous line's end, where an open ［＃縦中横］ would flush unstyled and a
+ * broken ［＃… would swallow them. '' when nothing is open; the last chapter takes none.
+ */
+function seamClosers(src: string): string {
+  const closers = unterminatedOpeners(src).map(closingAnnotation);
+  const line = (block: boolean): string =>
+    closers.filter((c) => c.block === block).map((c) => c.text).join('');
+  const blockLine = line(true);
+  return `${blockLine === '' ? '' : `${blockLine}\n`}${line(false)}`;
 }
 
 /**
@@ -291,12 +316,14 @@ export function renderBook(opts: {
 
 /**
  * Concatenates a book's `files[]` into ONE plain-text document, the dual of {@link renderBook}:
- * each file loses its single trailing newline, then files join with `'\n' + chapterGlue(...)`
- * (the `'\n'` ends the previous chapter's last line; the glue re-tokenizes into exactly the rows
- * the HTML build inserts at that seam). The output takes the manuscript's line endings: CRLF
- * throughout when any chapter file is CRLF, else LF; a lone `\r` passes through. `autoTcy`
- * materializes the 自動縦中横 rewrite per file so the `.txt` round-trips idempotently. An empty
- * book -> "" (a wholly-empty middle file adds one extra blank line — benign). Pure + vscode-free.
+ * each file loses its single trailing newline, then files join with
+ * `'\n' + seamClosers(prev) + chapterGlue(...)` (the `'\n'` ends the previous chapter's last line;
+ * the closers end the spans it left open; the glue re-tokenizes into exactly the rows the HTML
+ * build inserts at that seam). The output takes the manuscript's line endings: CRLF throughout
+ * when any chapter file is CRLF, else LF; a lone `\r` passes through. `autoTcy` materializes the
+ * 自動縦中横 rewrite per file so the `.txt` round-trips idempotently. An empty book -> "" (a
+ * wholly-empty middle file adds one extra blank line — benign); a divider that itself opens a span
+ * (`［＃太字］＊`) leaks into the next chapter. Pure + vscode-free.
  */
 export function concatBookText(
   book: BookInput,
@@ -307,12 +334,12 @@ export function concatBookText(
   const sources = book.files.map((file) =>
     applyAutoTcy(file.src.replace(/\r\n/g, '\n'), autoTcy).replace(/\n$/, ''),
   );
-  const joined = sources.reduce(
-    (acc, src, i) =>
-      i === 0
-        ? src
-        : `${acc}\n${chapterGlue(sources[i - 1] ?? '', src, book.divider ?? '', charsPerLine)}${src}`,
-    '',
-  );
+  const joined = sources.reduce((acc, src, i) => {
+    if (i === 0) {
+      return src;
+    }
+    const prev = sources[i - 1] ?? '';
+    return `${acc}\n${seamClosers(prev)}${chapterGlue(prev, src, book.divider ?? '', charsPerLine)}${src}`;
+  }, '');
   return eol === '\n' ? joined : joined.replace(/\n/g, eol);
 }

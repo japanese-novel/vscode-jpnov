@@ -80,7 +80,7 @@ export interface EmphasisSpanStartToken extends TokenBase {
    * True iff this came from the BLOCK form ［＃ここから太字/斜体］ (own-line, 太字/斜体 only). The
    * inline form ［＃太字］ leaves it undefined. Drives empty-column suppression, the block-form
    * split colouring (ここから・ここで・終わり demoted to marker, keyword kept on 太字/斜体), and block
-   * pairing ({@link findUnpairedBlocks}).
+   * pairing ({@link findUnpairedSpans}).
    */
   readonly block?: true;
 }
@@ -152,7 +152,7 @@ export interface HeadingSpanStartToken extends TokenBase {
   /**
    * True iff this came from the BLOCK form ［＃ここから大見出し］ (own-line). The inline form
    * ［＃大見出し］ leaves it undefined. Drives empty-column suppression, the block-form split
-   * colouring, block pairing ({@link findUnpairedBlocks}), and the subsequent-lines-only
+   * colouring, block pairing ({@link findUnpairedSpans}), and the subsequent-lines-only
    * onset (same-line text keeps its pre-block state, like the indent block).
    */
   readonly block?: true;
@@ -209,7 +209,7 @@ export interface IndentBlockStartToken extends TokenBase {
 
 /**
  * Block indent closer ［＃ここで字下げ終わり］. A dangling one (no open block) is a layout no-op;
- * {@link findUnpairedBlocks} surfaces it as a Warning.
+ * {@link findUnpairedSpans} surfaces it as a Warning.
  */
 export interface IndentBlockEndToken extends TokenBase {
   readonly kind: 'indentBlockEnd';
@@ -290,15 +290,37 @@ export const VALUE_NAMES = {
   page: 'ページ番号',
 } as const;
 
+/** `inner` wrapped as a ［＃…］ annotation — the composer every inverse spelling below shares. */
+function annotation(inner: string): string {
+  return `${OPEN_BRACKET}${HASH}${inner}${CLOSE_BRACKET}`;
+}
+
 /** The value display annotation for `name` — the inverse spelling of the tokenizer's rule. */
 export function valueAnnotation(name: string): string {
-  return `${OPEN_BRACKET}${HASH}${VALUE_OPEN}${name}${VALUE_CLOSE}${CLOSE_BRACKET}`;
+  return annotation(`${VALUE_OPEN}${name}${VALUE_CLOSE}`);
+}
+
+/** True iff `variant` has a ここから／ここで form: 太字/斜体 only. */
+function hasBlockForm(variant: string): boolean {
+  return variant === BOLD || variant === ITALIC;
 }
 
 /** The heading level `s` names, or null when `s` is not one of {@link HEADING_LITERALS}. */
 function headingLevelOf(s: string): HeadingLevel | null {
   const idx = (HEADING_LITERALS as readonly string[]).indexOf(s);
   return idx === -1 ? null : ((idx + 1) as HeadingLevel);
+}
+
+/** The inverse of {@link headingLevelOf}. */
+function headingLiteralOf(level: HeadingLevel): string {
+  switch (level) {
+    case 1:
+      return HEADING_LITERALS[0];
+    case 2:
+      return HEADING_LITERALS[1];
+    case 3:
+      return HEADING_LITERALS[2];
+  }
 }
 
 /**
@@ -309,7 +331,7 @@ export function indentAnnotation(amount: number): string {
   const digits = String(amount).replace(/[0-9]/g, (d) =>
     String.fromCharCode(0xff10 + d.charCodeAt(0) - 0x30),
   );
-  return `［＃${digits}字下げ］`;
+  return annotation(`${digits}${INDENT_SUFFIX}`);
 }
 
 /**
@@ -361,7 +383,7 @@ function connectorMatches(family: 'ni' | 'ha' | null, channel: Channel): boolean
  * branch reads it). Recognition is PURELY LITERAL and kept literally identical to the tmLanguage
  * patterns, so the grammar and this lexer never colour a span differently: whether a recognised
  * block actually pairs / an indent actually applies is decided later (layout /
- * {@link findUnpairedBlocks}), never by degrading a well-formed directive to a grey comment here.
+ * {@link findUnpairedSpans}), never by degrading a well-formed directive to a grey comment here.
  */
 function classifyAnnotation(inner: string, raw: string, atLineStart: boolean): Token {
   if (inner === PAGE_BREAK) {
@@ -389,7 +411,7 @@ function classifyAnnotation(inner: string, raw: string, atLineStart: boolean): T
     if (mid === INDENT_SUFFIX) {
       return { kind: 'indentBlockEnd', raw };
     }
-    if (mid === BOLD || mid === ITALIC) {
+    if (hasBlockForm(mid)) {
       return { kind: 'emphasisSpanEnd', raw, variant: mid, block: true };
     }
     const headingEnd = headingLevelOf(mid);
@@ -406,7 +428,7 @@ function classifyAnnotation(inner: string, raw: string, atLineStart: boolean): T
     if (amount !== null) {
       return { kind: 'indentBlockStart', raw, amount };
     }
-    if (body === BOLD || body === ITALIC) {
+    if (hasBlockForm(body)) {
       return { kind: 'emphasisSpanStart', raw, variant: body, block: true };
     }
     const headingStart = headingLevelOf(body);
@@ -698,85 +720,136 @@ export function findBrokenAnnotations(src: string): BrokenAnnotation[] {
   return spans;
 }
 
-// Unpaired block directives (Warning diagnostics)
+// Unpaired span directives (Warning diagnostics) and their closers (the .txt seam)
 
-/** An unpaired block directive as absolute source offsets. `kind` picks the message code. */
-export interface UnpairedBlock {
+/**
+ * The cross-line span slots buildRows keeps — one INDEPENDENT slot per channel, never a stack: a
+ * start replaces a still-open same-channel start (last-wins), an end clears its channel whatever
+ * its form, channels overlap freely. Block-capable channels first: the `.txt` seam's order.
+ */
+export type SpanChannel = Channel | 'heading' | 'indent';
+const SPAN_CHANNELS: readonly SpanChannel[] = ['indent', 'weight', 'style', 'heading', 'emph', 'line'];
+
+/** A span opener still in effect at the end of input — what a `.txt` seam spells a closer for. */
+export type SpanOpener = IndentBlockStartToken | EmphasisSpanStartToken | HeadingSpanStartToken;
+type SpanCloser = IndentBlockEndToken | EmphasisSpanEndToken | HeadingSpanEndToken;
+
+/** The channel a span start/end drives; 'span' resolution covers the inline form's bare 左に prefix
+ *  (the block form's 太字/斜体 carry none). 縦中横 is line-local: {@link findTcyIssues} owns it. */
+function spanChannelOf(token: SpanOpener | SpanCloser): SpanChannel | null {
+  switch (token.kind) {
+    case 'indentBlockStart':
+    case 'indentBlockEnd':
+      return 'indent';
+    case 'headingSpanStart':
+    case 'headingSpanEnd':
+      return 'heading';
+    case 'emphasisSpanStart':
+    case 'emphasisSpanEnd':
+      return resolveStyle(token.variant, 'span')?.channel ?? null;
+  }
+}
+
+/** True iff the annotation is a block form (ここから／ここで); the indent tokens carry no `block` flag. */
+function isBlockForm(token: SpanOpener | SpanCloser): boolean {
+  return token.kind === 'indentBlockStart' || token.kind === 'indentBlockEnd' || token.block === true;
+}
+
+interface OpenSpan {
+  readonly token: SpanOpener;
+  readonly start: number;
+  readonly end: number;
+}
+
+/** Walks `src`'s span slots: `onDangling` sees every end with nothing open in its channel; the
+ *  return is the openers still in effect at the end of input, in {@link SPAN_CHANNELS} order. */
+function walkSpans(
+  src: string,
+  onDangling?: (token: SpanCloser, start: number, end: number) => void,
+): OpenSpan[] {
+  const open = new Map<SpanChannel, OpenSpan>();
+  let offset = 0;
+  for (const token of tokenize(src)) {
+    const end = offset + token.raw.length;
+    switch (token.kind) {
+      case 'indentBlockStart':
+      case 'emphasisSpanStart':
+      case 'headingSpanStart': {
+        const ch = spanChannelOf(token);
+        if (ch !== null) {
+          open.set(ch, { token, start: offset, end }); // last-wins
+        }
+        break;
+      }
+      case 'indentBlockEnd':
+      case 'emphasisSpanEnd':
+      case 'headingSpanEnd': {
+        const ch = spanChannelOf(token);
+        if (ch !== null && !open.delete(ch)) {
+          onDangling?.(token, offset, end); // nothing was open in this channel
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    offset = end;
+  }
+  return SPAN_CHANNELS.flatMap((ch) => {
+    const span = open.get(ch);
+    return span === undefined ? [] : [span];
+  });
+}
+
+/** An unpaired span directive as absolute source offsets; `kind` + `block` (its own form) pick the
+ *  message code. */
+export interface UnpairedSpan {
   readonly start: number;
   readonly end: number;
   readonly kind: 'unterminated' | 'dangling';
-}
-
-type BlockChannel = 'indent' | 'weight' | 'style' | 'heading';
-
-/** The block channel a token opens/closes, or null if it is not a block directive. */
-function blockChannelOf(token: Token): BlockChannel | null {
-  if (token.kind === 'indentBlockStart' || token.kind === 'indentBlockEnd') {
-    return 'indent';
-  }
-  if (
-    (token.kind === 'emphasisSpanStart' || token.kind === 'emphasisSpanEnd') &&
-    token.block === true
-  ) {
-    const c = resolveStyle(token.variant)?.channel;
-    return c === 'weight' || c === 'style' ? c : null;
-  }
-  if (
-    (token.kind === 'headingSpanStart' || token.kind === 'headingSpanEnd') &&
-    token.block === true
-  ) {
-    return 'heading'; // one channel for all three levels (they share one render slot)
-  }
-  return null;
+  readonly block: boolean;
 }
 
 /**
- * Source spans of every block directive left unpaired — unterminated ［＃ここから…］ (open at EOF)
- * and dangling ［＃ここで…終わり］ (no open block) — in document order, re-derived from
- * {@link tokenize} so the Warning diagnostics can never disagree with the render. Rendering itself
- * is always lenient (EOF auto-close, dangling no-op); this is the ONLY error surface for blocks, a
- * Warning (vs the unclosed-［＃ Error of {@link findBrokenAnnotations}).
- *
- * Pairing is one INDEPENDENT SINGLE SLOT per channel (indent / weight / style), NOT a stack:
- * blocks may overlap across channels (a 太字 block inside a 字下げ block is fine), and a
- * still-open same-channel start is simply superseded (the render is last-wins — e.g. ２字下げ
- * re-opened as ４字下げ is a legal amount change, not an unterminated block). Inline spans
- * (no `block` flag) never participate.
+ * Source spans of every span directive left unpaired — a start open at EOF, an end with nothing
+ * open in its channel — in document order, re-derived from {@link tokenize} so the Warnings can
+ * never disagree with the render (lenient: EOF auto-close, dangling no-op). The ONLY error surface
+ * for spans, a Warning vs the unclosed-［＃ Error of {@link findBrokenAnnotations}; inline and
+ * block forms pair alike, `block` only picks the message.
  */
-export function findUnpairedBlocks(src: string): UnpairedBlock[] {
-  const spans: UnpairedBlock[] = [];
-  const open: Record<BlockChannel, { start: number; end: number } | undefined> = {
-    indent: undefined,
-    weight: undefined,
-    style: undefined,
-    heading: undefined,
-  };
-  let offset = 0;
-  for (const token of tokenize(src)) {
-    const ch = blockChannelOf(token);
-    if (ch !== null) {
-      const span = { start: offset, end: offset + token.raw.length };
-      const isStart =
-        token.kind === 'indentBlockStart' ||
-        token.kind === 'emphasisSpanStart' ||
-        token.kind === 'headingSpanStart';
-      if (isStart) {
-        open[ch] = span; // replace: a still-open same-channel start is superseded (render is last-wins)
-      } else if (open[ch] !== undefined) {
-        open[ch] = undefined; // paired
-      } else {
-        spans.push({ ...span, kind: 'dangling' });
-      }
-    }
-    offset += token.raw.length;
-  }
-  for (const ch of ['indent', 'weight', 'style', 'heading'] as const) {
-    const s = open[ch];
-    if (s !== undefined) {
-      spans.push({ start: s.start, end: s.end, kind: 'unterminated' });
-    }
+export function findUnpairedSpans(src: string): UnpairedSpan[] {
+  const spans: UnpairedSpan[] = [];
+  const open = walkSpans(src, (token, start, end) => {
+    spans.push({ start, end, kind: 'dangling', block: isBlockForm(token) });
+  });
+  for (const s of open) {
+    spans.push({ start: s.start, end: s.end, kind: 'unterminated', block: isBlockForm(s.token) });
   }
   return spans.sort((a, b) => a.start - b.start);
+}
+
+/** The span openers still in effect at the end of `src`, in {@link SPAN_CHANNELS} order — what a
+ *  `.txt` chapter seam must close ({@link closingAnnotation}). */
+export function unterminatedOpeners(src: string): SpanOpener[] {
+  return walkSpans(src).map((s) => s.token);
+}
+
+/**
+ * The annotation that closes `opener`'s channel, the inverse of {@link classifyAnnotation}: the
+ * ここで form for the channels that have one (字下げ／太字／斜体／見出し — a block-directive line paints
+ * no column), the inline ［＃…終わり］ for 傍点/傍線. `block` says which, for placement.
+ */
+export function closingAnnotation(opener: SpanOpener): { readonly text: string; readonly block: boolean } {
+  switch (opener.kind) {
+    case 'indentBlockStart':
+      return { text: annotation(`${BLOCK_TO}${INDENT_SUFFIX}${SPAN_END_SUFFIX}`), block: true };
+    case 'headingSpanStart':
+      return { text: annotation(`${BLOCK_TO}${headingLiteralOf(opener.level)}${SPAN_END_SUFFIX}`), block: true };
+    case 'emphasisSpanStart': {
+      const block = hasBlockForm(opener.variant);
+      return { text: annotation(`${block ? BLOCK_TO : ''}${opener.variant}${SPAN_END_SUFFIX}`), block };
+    }
+  }
 }
 
 // 縦中横 structural issues (Warning diagnostics)

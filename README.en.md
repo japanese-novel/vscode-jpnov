@@ -168,10 +168,10 @@ Notes: 傍点/傍線 take a left-side variant spelled differently in each form �
 **forward-ref** form uses `の左に` (`［＃「対象」の左に傍点］`), the **start / end**
 form uses bare `左に` (`［＃左に傍点］…［＃左に傍点終わり］`); bold/italic use the
 connector **は**. Indent counts (`○`) are **full-width digits** (２, １０); the block indent
-also indents wrapped continuation lines. An unclosed block (`ここから` with no
-`ここで…終わり`) still renders to the end of the file but raises an editor
-**Warning**; an unclosed `［＃` is an **Error**. Italic relies on the browser
-synthesising an oblique for Japanese fonts.
+also indents wrapped continuation lines. An unclosed start / end or block annotation
+(`［＃太字］` or `ここから…` with no `…終わり`) still renders to the end of the file but
+raises an editor **Warning**, as does a `…終わり` with nothing open; an unclosed `［＃`
+is an **Error**. Italic relies on the browser synthesising an oblique for Japanese fonts.
 
 **Left ruby** puts a reading on the left of the preceding text; pair it with an
 ordinary right ruby for 両側ルビ (`青空文庫《あおぞらぶんこ》［＃「青空文庫」の左に
@@ -228,7 +228,8 @@ is an icon button):
   external assets) that prints the same way whenever you reopen it.
 - **Build to Text** — the chapters concatenated as Aozora-format `.txt`
   (auto-tate-chū-yoko is materialised as explicit annotations, so the text
-  round-trips).
+  round-trips; an annotation still open at a chapter's end is closed at the seam,
+  so the chapters render exactly as in the HTML build).
 - **Build to EPUB** — a reflowable EPUB 3 per book: vertical writing and
   right-to-left page turning carry over into the reader, while font size and
   line wrapping follow the reading device. One spine file per chapter, split again
