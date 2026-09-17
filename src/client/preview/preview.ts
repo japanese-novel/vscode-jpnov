@@ -5,7 +5,9 @@
  * be hardened (strict CSP `<meta>`, a per-render nonce on the inline `<style>`, the nonce'd
  * cursor-follow script) before it is assigned to `webview.html`. The panel survives window
  * reloads through the serializer in extension.ts — `adopt()` must stay synchronous through its
- * first paint and never throw.
+ * first paint and never throw. A lifetime listener follows editor switches and remembers the
+ * last `.jpnov` document, so the preview command has something to show even when issued from
+ * a non-text editor such as the walkthrough page.
  */
 import * as vscode from 'vscode';
 
@@ -50,6 +52,14 @@ export class Preview {
    */
   private lastRevealLine: number | undefined;
   /**
+   * Uri of the last `.jpnov` document rendered or made active; open() falls back to it when no
+   * previewable editor is active. Resolved through workspace.textDocuments at use time, so a
+   * closed document is skipped.
+   */
+  private lastDocUri: string | undefined;
+  /** Lifetime listener behind {@link lastDocUri} and editor-switch re-renders; released by dispose(). */
+  private readonly activeEditorListener: vscode.Disposable;
+  /**
    * Serializes renders so a slow request can't clobber a newer buffer's output.
    * teardown() bumps it, so an in-flight render can never write to a disposed or
    * replaced panel (every panel transition funnels through teardown()).
@@ -62,6 +72,15 @@ export class Preview {
 
   constructor(client: LanguageClient) {
     this.client = client;
+    this.lastDocUri = this.previewableEditor(vscode.window.activeTextEditor)?.document.uri.toString();
+    // Re-render when the user switches which file is active (a no-op while no panel is open).
+    this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor((next) => {
+      const editor = this.previewableEditor(next);
+      if (editor !== undefined) {
+        this.lastDocUri = editor.document.uri.toString();
+        void this.renderDocument(editor.document);
+      }
+    });
   }
 
   /**
@@ -71,16 +90,21 @@ export class Preview {
    * `toSide` mirrors VS Code's Markdown preview: when true ("Open Preview to the Side",
    * also the editor-title icon) the panel opens BESIDE the editor and keeps focus on the
    * source; when false ("Open Preview") it opens in the editor's own column and takes focus.
+   *
+   * Without a previewable active editor (the walkthrough page or the panel itself has focus),
+   * a panel that already shows a document is only revealed; a new one shows the last `.jpnov`
+   * document, else the neutral shell (#88).
    */
   open(toSide: boolean): void {
-    const editor = vscode.window.activeTextEditor;
-    const column = toSide
-      ? vscode.ViewColumn.Beside
-      : (editor?.viewColumn ?? vscode.ViewColumn.One);
+    const active = vscode.window.activeTextEditor;
+    const editor = this.previewableEditor(active);
     const preserveFocus = toSide;
 
     let panel = this.panel;
     if (panel === undefined) {
+      const column = toSide
+        ? vscode.ViewColumn.Beside
+        : (active?.viewColumn ?? vscode.ViewColumn.One);
       panel = vscode.window.createWebviewPanel(
         Preview.viewType,
         vscode.l10n.t('Japanese Novel Preview'),
@@ -91,13 +115,26 @@ export class Preview {
       );
       this.wire(panel);
     } else {
+      // No previewable editor to be beside: reveal the panel in its own column.
+      // `reveal(undefined)` targets the active group and would move the panel there.
+      let column = panel.viewColumn;
+      if (editor !== undefined) {
+        column = toSide ? vscode.ViewColumn.Beside : (editor.viewColumn ?? vscode.ViewColumn.One);
+      }
       panel.reveal(column, preserveFocus);
     }
 
-    if (editor !== undefined && this.isPreviewable(editor.document)) {
+    if (editor !== undefined) {
       void this.renderDocument(editor.document);
-    } else {
-      panel.webview.html = this.emptyShell(panel.webview);
+    } else if (this.currentDocUri === undefined) {
+      // Nothing shown yet: the last `.jpnov` document, else the neutral shell. A panel that
+      // already shows a document keeps it.
+      const doc = this.openPreviewable(this.lastDocUri);
+      if (doc !== undefined) {
+        void this.renderDocument(doc);
+      } else {
+        panel.webview.html = this.emptyShell(panel.webview);
+      }
     }
   }
 
@@ -124,8 +161,8 @@ export class Preview {
     panel.webview.options = { enableScripts: true };
 
     const { uri, line } = parsePanelState(state);
-    const editor = vscode.window.activeTextEditor;
-    if (editor !== undefined && this.isPreviewable(editor.document)) {
+    const editor = this.previewableEditor(vscode.window.activeTextEditor);
+    if (editor !== undefined) {
       // Paint before the async render: the server is cold right after a reload, so the
       // first response can take seconds, and a wedged start must never leave a blank tab.
       panel.webview.html = this.loadingShell(panel.webview);
@@ -141,17 +178,14 @@ export class Preview {
 
   /** Re-renders the shown document with fresh settings (extension.ts calls this on `jpnov.layout.*` edits); a no-op when nothing is shown. */
   refresh(): void {
-    const uri = this.currentDocUri;
-    if (uri === undefined) {
-      return;
-    }
-    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
-    if (doc !== undefined && this.isPreviewable(doc)) {
+    const doc = this.openPreviewable(this.currentDocUri);
+    if (doc !== undefined) {
       void this.renderDocument(doc);
     }
   }
 
   dispose(): void {
+    this.activeEditorListener.dispose();
     // Capture before teardown(): teardown() nulls `this.panel`, so disposing it must
     // happen against the captured reference (its onDidDispose handler re-enters
     // teardown(), which is idempotent).
@@ -165,6 +199,20 @@ export class Preview {
     return doc.languageId === 'jpnov';
   }
 
+  /** `editor` when it shows a previewable document, else undefined. */
+  private previewableEditor(editor: vscode.TextEditor | undefined): vscode.TextEditor | undefined {
+    return editor !== undefined && this.isPreviewable(editor.document) ? editor : undefined;
+  }
+
+  /** The document for `uri` if it is still open and previewable, else undefined. */
+  private openPreviewable(uri: string | undefined): vscode.TextDocument | undefined {
+    if (uri === undefined) {
+      return undefined;
+    }
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
+    return doc !== undefined && this.isPreviewable(doc) ? doc : undefined;
+  }
+
   /** Posts a scroll-to-line message to the live webview (no re-render). */
   private reveal(line: number): void {
     this.lastRevealLine = line;
@@ -175,9 +223,10 @@ export class Preview {
 
   /**
    * Take ownership of `panel` (freshly created by open() or revived by the serializer):
-   * track it, tear down on dispose, and wire the listeners that drive re-renders and
-   * cursor-follow. The dispose hook is attached before anything can await, so an early
-   * close cannot leak panelDisposables.
+   * track it, tear down on dispose, and wire the listeners that drive edit re-renders and
+   * cursor-follow (editor switches are handled by the constructor's lifetime listener). The
+   * dispose hook is attached before anything can await, so an early close cannot leak
+   * panelDisposables.
    */
   private wire(panel: vscode.WebviewPanel): void {
     this.panel = panel;
@@ -185,16 +234,10 @@ export class Preview {
       this.teardown();
     });
     this.panelDisposables.push(
-      // Re-render when the user switches which file is active...
-      vscode.window.onDidChangeActiveTextEditor((next) => {
-        if (next !== undefined && this.isPreviewable(next.document)) {
-          void this.renderDocument(next.document);
-        }
-      }),
-      // ...on every edit to the file currently shown (live dirty buffer), debounced so a typing
-      // burst costs one render. The trailing call reads the document's CURRENT text (TextDocument
-      // is live), and re-checks the panel still shows that document (it may have switched or
-      // closed during the delay).
+      // Re-render on every edit to the file currently shown (live dirty buffer), debounced so a
+      // typing burst costs one render. The trailing call reads the document's CURRENT text
+      // (TextDocument is live), and re-checks the panel still shows that document (it may have
+      // switched or closed during the delay).
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (e.document.uri.toString() === this.currentDocUri) {
           clearTimeout(this.renderDebounce);
@@ -252,6 +295,7 @@ export class Preview {
       this.lastRevealLine = undefined; // the remembered line belongs to the old document
     }
     this.currentDocUri = uri;
+    this.lastDocUri = uri;
     panel.title = vscode.l10n.t('{0} — Preview', lastPathSegment(uri));
 
     const seq = ++this.renderSeq;

@@ -15,7 +15,7 @@
   "walkthrough.chapter.title": "最初の章を書く",
   "walkthrough.chapter.description": "章はただの `.jpnov` ファイルです。作成して書き始めましょう。ルビ・傍点・改ページは青空文庫の注記で書き、入力中にハイライトされます。あとで本にまとめられるよう、拡張子 `.jpnov` を付けて保存してください。\n[章を作成](command:workbench.action.files.newUntitledFile?%7B%22languageId%22%3A%22jpnov%22%7D)",
   "walkthrough.preview.title": "縦書きで確認する",
-  "walkthrough.preview.description": "プレビューを開くと、原稿用紙のような縦書き・右から左のレイアウトで組み上がりを確認できます。書くそばから反映されます。\n[プレビューを開く](command:jpnov.previewToSide)",
+  "walkthrough.preview.description": "プレビューを開くと、原稿用紙のような縦書き・右から左のレイアウトで組み上がりを確認できます。書くそばから反映されます。\n[プレビューを横に開く](command:jpnov.previewToSide)",
   "walkthrough.build.title": "章をまとめて本にする",
   "walkthrough.build.description": "下の「本を作成」でファイル名を入力すると、新しい本が「本の一覧」で開きます（フォルダーを開いていなければ[先に開いて](command:workbench.action.files.openFolder)ください）。章の追加・並べ替えも、タイトルやヘッダーといった「本の情報」の編集もその場で行えます。あとは出力したい本にチェックを入れます。一覧の下のボタンで、ページ組版の HTML・電子書籍の EPUB・青空文庫形式のテキストに出力します。このうち「印刷／PDF 保存」ボタンは、本を HTML に出力してブラウザーで開きます。そのまま印刷や PDF 保存ができます。`.jpbook` 1 つが本 1 冊です。中身はただのテキストファイルなので、手で書いても同じです（例を参照）。\n[本を作成](command:jpbook.createFile)\n[「本の一覧」を開く](command:workbench.view.extension.jpnov)",
   "walkthrough.highlight.title": "（任意）執筆と推敲を助ける設定",

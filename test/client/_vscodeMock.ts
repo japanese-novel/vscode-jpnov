@@ -200,8 +200,12 @@ export interface FakeWebviewPanel {
   viewType: string;
   title: string;
   webview: FakeWebview;
+  /** `WebviewPanel.viewColumn`; tests set it to observe a reveal in place. */
+  viewColumn: number | undefined;
+  /** The arguments of every `reveal` call, captured for assertions. */
+  revealed: { column: number | undefined; preserveFocus: boolean | undefined }[];
   disposed: boolean;
-  reveal(): void;
+  reveal(column?: number, preserveFocus?: boolean): void;
   dispose(): void;
   onDidDispose(listener: Listener<void>): Disposable;
 }
@@ -718,9 +722,11 @@ export function createFakePanel(
     viewType,
     title,
     webview: makeFakeWebview(opts),
+    viewColumn: undefined,
+    revealed: [],
     disposed: false,
-    reveal() {
-      /* no-op */
+    reveal(column?: number, preserveFocus?: boolean) {
+      this.revealed.push({ column, preserveFocus });
     },
     dispose() {
       this.disposed = true;
