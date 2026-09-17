@@ -7,11 +7,12 @@
  * - `.jpbook` entries resolve against the WORKSPACE FOLDER ROOT (the same base the live editor
  *   features use), and page furniture comes from each book's OWN front matter
  *   (`composeBookChrome`), so one batch build carries a different header per volume;
- * - the server never touches `vscode.fs`: artifacts leave here as text and the CLIENT writes
- *   them (and owns the `.txt` encoding);
+ * - the server never touches `vscode.fs` nor decodes bytes: manuscript text arrives through
+ *   `jpnov/readText` (the client reads the disk with the editor's encoding) and artifacts leave
+ *   here as text the CLIENT writes (owning the `.txt` encoding);
  * - vscode-free — the runtime `Connection` is reached only through {@link ServerContext}.
  */
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,14 +40,13 @@ import type {
   ListBooksResult,
   LocalizableMessage,
   ProjectDirsMap,
+  ReadTextResult,
 } from '#/shared/protocol.ts';
 
 import { fileLevelError } from './diagnostics.ts';
 import { diagnoseJpbook } from './jpbook.ts';
 import { childUri, isFileScheme, normalizeRootUri } from './fsUri.ts';
 import type { ServerContext } from './context.ts';
-
-const UTF8 = new TextDecoder('utf-8');
 
 /** A `*.jpbook` discovered under a workspace folder root. */
 interface DiscoveredJpbook {
@@ -128,33 +128,48 @@ async function* walkJpbooks(dirUri: string, dirPath: string, dirRel: string, out
 
 /**
  * Reads the `ok` entries of one parsed `.jpbook` in order (skipping blank/front-matter/
- * duplicate/error lines), each resolved relative to the WORKSPACE FOLDER ROOT and decoded
- * UTF-8, into the shape {@link renderBook} consumes. Throws on the first escaping/
+ * duplicate/error lines), each resolved relative to the WORKSPACE FOLDER ROOT and read
+ * through the client, into the shape {@link renderBook} consumes. Throws on the first escaping/
  * unreadable/missing entry so the caller can convert it into a per-book build error (the
  * diagnostic is published separately).
  */
-async function readBookFiles(rootUri: string, lines: readonly ParsedLine[]): Promise<BookInput> {
+async function readBookFiles(
+  ctx: ServerContext,
+  rootUri: string,
+  lines: readonly ParsedLine[],
+  token?: CancellationToken,
+): Promise<BookInput> {
   const files: { name: string; src: string }[] = [];
   for (const pl of lines) {
     if (pl.kind !== 'ok') {
       continue;
     }
-    files.push({ name: pl.value, src: await readEntry(rootUri, pl.value) });
+    files.push({ name: pl.value, src: await readEntry(ctx, rootUri, pl.value, token) });
   }
   return { files };
 }
 
-/** The bytes of one discovered book, or null when it cannot be read (vanished mid-request) — never a throw. */
-async function readBookBytes(uri: string): Promise<Buffer | null> {
-  try {
-    return await readFile(fileURLToPath(uri));
-  } catch {
-    return null;
+/** The reply's text, or the {@link LocalizedError} its failure maps to; `rel` names the file in the message. */
+function textOf(reply: ReadTextResult, rel: string): string {
+  if (reply.ok) {
+    return reply.text;
+  }
+  switch (reply.reason) {
+    case 'notFound':
+      throw new LocalizedError({ code: 'book.entryFileNotFound', args: [rel] });
+    case 'notText':
+      throw new LocalizedError({ code: 'book.entryNotText', args: [rel] });
+    case 'other':
+      throw new LocalizedError({ code: 'book.entryReadFailed', args: [rel, reply.why] });
+    default: {
+      const exhaustive: never = reply.reason;
+      throw new Error(`textOf: unhandled reason ${String(exhaustive)}`);
+    }
   }
 }
 
-/** Reads one root-relative entry to UTF-8 text; throws a {@link LocalizedError} per failure mode. */
-async function readEntry(rootUri: string, rel: string): Promise<string> {
+/** Reads one root-relative entry through the client; throws a {@link LocalizedError} per failure mode. */
+async function readEntry(ctx: ServerContext, rootUri: string, rel: string, token?: CancellationToken): Promise<string> {
   const resolved = resolveContained(rootUri, rel);
   if (!resolved.ok) {
     throw new LocalizedError({ code: resolved.code });
@@ -162,24 +177,19 @@ async function readEntry(rootUri: string, rel: string): Promise<string> {
   if (!isFileScheme(resolved.abs)) {
     throw new LocalizedError({ code: 'book.entryNeedsFileScheme', args: [rel] });
   }
-  let bytes: Buffer;
-  try {
-    bytes = await readFile(fileURLToPath(resolved.abs));
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new LocalizedError({ code: 'book.entryFileNotFound', args: [rel] });
-    }
-    const why = errorText(cause);
-    throw new LocalizedError({ code: 'book.entryReadFailed', args: [rel, why] });
-  }
-  return UTF8.decode(bytes);
+  return textOf(await ctx.readText(resolved.abs, token), rel);
 }
 
 /**
  * Reads the built cover entries (`'coverEntry'` only — duplicates and muted lines are
  * skipped, like chapter duplicates) in manifest order, same failure modes as the chapters.
  */
-async function readCoverFiles(rootUri: string, lines: readonly ParsedLine[]): Promise<{ name: string; src: string }[]> {
+async function readCoverFiles(
+  ctx: ServerContext,
+  rootUri: string,
+  lines: readonly ParsedLine[],
+  token?: CancellationToken,
+): Promise<{ name: string; src: string }[]> {
   const files: { name: string; src: string }[] = [];
   for (const pl of lines) {
     if (pl.kind !== 'coverEntry') {
@@ -189,7 +199,7 @@ async function readCoverFiles(rootUri: string, lines: readonly ParsedLine[]): Pr
     if (entry === null) {
       continue;
     }
-    files.push({ name: entry.value, src: await readEntry(rootUri, entry.value) });
+    files.push({ name: entry.value, src: await readEntry(ctx, rootUri, entry.value, token) });
   }
   return files;
 }
@@ -281,6 +291,7 @@ async function* buildRoot(
   ctx: ServerContext,
   target: ProjectRoot,
   selection: BuildSelection,
+  token?: CancellationToken,
 ): AsyncGenerator<BuildOutput> {
   const jpbooks = await discoverJpbooks(target.rootUri, target.outDirUri);
   // Group by derived output path to detect collisions across the whole root up front.
@@ -291,13 +302,13 @@ async function* buildRoot(
     if (selection.books && !selection.books.has(fl.uri)) {
       continue;
     }
-    const bytes = await readBookBytes(fl.uri);
-    if (bytes === null) {
+    const manifest = await ctx.readText(fl.uri, token);
+    if (!manifest.ok && manifest.reason === 'notFound') {
       // Disappeared mid-build; skip silently rather than error on a non-existent file.
       continue;
     }
     try {
-      const parsed = parseJpbook(UTF8.decode(bytes));
+      const parsed = parseJpbook(textOf(manifest, fl.fileRel));
       // Per-line diagnostics (same path the live editor uses); published on the .jpbook URI.
       const lineDiags = await diagnoseJpbook(target.rootUri, parsed);
       const outRel = jpbookOutRel(fl.fileRel);
@@ -321,8 +332,8 @@ async function* buildRoot(
       // only the page furniture. Covers are html-only, so a broken cover reference cannot fail
       // a txt/epub build; chapters read first, so a book missing both reports the same error
       // whichever format is built.
-      const bookFiles = await readBookFiles(target.rootUri, parsed.lines);
-      const coverFiles = selection.format === 'html' ? await readCoverFiles(target.rootUri, parsed.lines) : [];
+      const bookFiles = await readBookFiles(ctx, target.rootUri, parsed.lines, token);
+      const coverFiles = selection.format === 'html' ? await readCoverFiles(ctx, target.rootUri, parsed.lines, token) : [];
       const input: BookInput = {
         ...bookFiles,
         divider: parsed.meta.divider,
@@ -396,7 +407,7 @@ export async function handleBuild(
     try {
       // for-await (not Array.fromAsync) so outputs yielded before a mid-root throw are kept;
       // the throw itself (book discovery, iteration) becomes a root-level error.
-      for await (const output of buildRoot(ctx, target, selection)) {
+      for await (const output of buildRoot(ctx, target, selection, token)) {
         if (token?.isCancellationRequested) {
           break;
         }
@@ -421,16 +432,16 @@ export async function handleBuild(
 
 /**
  * Handles `jpnov/listBooks`: enumerates every `*.jpbook` under each targeted root as a
- * {@link BookEntry} for the client's Books panel. Each file is read ONCE for its
- * front-matter `title` (display metadata; an unreadable file simply lists untitled) — but
- * no diagnostics and no output-path collision check (those belong to an actual build).
+ * {@link BookEntry} for the client's Books panel. Each file is read ONCE, through the client
+ * like a build, for its front-matter `title` (display metadata; an unreadable file simply lists
+ * untitled) — but no diagnostics and no output-path collision check (those belong to an actual build).
  */
-export async function handleListBooks(params: ListBooksParams): Promise<ListBooksResult> {
+export async function handleListBooks(ctx: ServerContext, params: ListBooksParams): Promise<ListBooksResult> {
   const perRoot = await Promise.all(targetRoots(params.projectDirs).map(async (target) => {
     const jpbooks = await discoverJpbooks(target.rootUri, target.outDirUri);
     return Promise.all(jpbooks.map(async (fl): Promise<BookEntry> => {
-      const bytes = await readBookBytes(fl.uri);
-      const title = bytes === null ? undefined : parseJpbook(UTF8.decode(bytes)).meta.title;
+      const reply = await ctx.readText(fl.uri);
+      const title = reply.ok ? parseJpbook(reply.text).meta.title : undefined;
       return {
         uri: fl.uri,
         rootUri: target.rootUri,

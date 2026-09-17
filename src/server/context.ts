@@ -6,12 +6,16 @@
  * vscode-free: only `import type` of the language-server types is used; the runtime
  * `Connection` is injected by server.ts.
  */
-import type { Connection } from 'vscode-languageserver/node';
+import type { CancellationToken, Connection } from 'vscode-languageserver/node';
 
 import type { RuleSelection } from '#/shared/lint/select.ts';
+import type { ReadTextResult } from '#/shared/protocol.ts';
 
 import type { HighlightStore } from './highlight/vocabulary.ts';
 import type { WorkspaceRoots } from './roots.ts';
+
+/** Text of one `file:` URI as the client decodes it (`jpnov/readText`); tests inject a Node reader. */
+export type ReadText = (uri: string, token?: CancellationToken) => Promise<ReadTextResult>;
 
 /**
  * Mutable, process-wide server state threaded through every server module. It is a
@@ -20,6 +24,8 @@ import type { WorkspaceRoots } from './roots.ts';
  */
 export interface ServerContext {
   readonly connection: Connection;
+  /** The only way server code obtains manuscript text: the client reads the disk and decodes as the editor would. */
+  readonly readText: ReadText;
   /** Enabled prose-lint rules, resolved from the client's `jpnov.lint.*` settings snapshot. Workspace-
    *  (not root-) scoped, so it lives on the context rather than per root. */
   lintSelection: RuleSelection;

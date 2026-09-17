@@ -21,6 +21,8 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return `cannot read "${a(0)}": file not found`;
     case 'book.entryReadFailed':
       return `cannot read "${a(0)}": ${a(1)}`;
+    case 'book.entryNotText':
+      return `cannot read "${a(0)}": not a text file`;
     case 'build.outPathCollision':
       return `output path "${a(0)}" is claimed by multiple book files: ${a(1)}`;
     case 'build.failed':

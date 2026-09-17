@@ -30,6 +30,8 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('cannot read "{0}": file not found', s(0));
     case 'book.entryReadFailed':
       return vscode.l10n.t('cannot read "{0}": {1}', s(0), s(1));
+    case 'book.entryNotText':
+      return vscode.l10n.t('cannot read "{0}": not a text file', s(0));
     case 'build.outPathCollision':
       return vscode.l10n.t('output path "{0}" is claimed by multiple book files: {1}', s(0), s(1));
     case 'build.failed':

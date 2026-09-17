@@ -8,6 +8,9 @@
  *
  * Every custom payload below is defined with plain strings so it survives IPC
  * (structured-clone over the forked-process channel) without vscode value types.
+ *
+ * Every request flows client -> server except `jpnov/readText`, the server's way to obtain
+ * manuscript text (it never decodes bytes itself).
  */
 import type { EdgeLineStyle, PreviewChrome } from './compiler/chrome.ts';
 import type { EpubMember } from './compiler/epub.ts';
@@ -50,6 +53,7 @@ export type MsgCode =
   | 'book.entryNeedsFileScheme' // args: [value]
   | 'book.entryFileNotFound' // args: [value]  (ENOENT)
   | 'book.entryReadFailed' // args: [value, why]  (why = raw OS error, untranslatable)
+  | 'book.entryNotText' // args: [value]  (the client's decoder refused the bytes: binary content)
   | 'build.outPathCollision' // args: [outRel, list]
   | 'build.failed' // args: [detail]  (detail = raw build error, untranslatable)
   | 'jpbook.backslashSeparator' // args: [value]
@@ -313,3 +317,24 @@ export interface RenderFileParams {
 export interface RenderFileResult {
   readonly html: string;
 }
+
+// jpnov/readText (S->C request)
+
+export const ReadTextRequest = 'jpnov/readText';
+
+/** The `file:` URI of a `.jpnov` / `.jpbook`, percent-encoded like every URI the server composes (#76). */
+export interface ReadTextParams {
+  readonly uri: string;
+}
+
+/** Why the client produced no text: the file is missing, its bytes are not text, or any other I/O failure. */
+export type ReadTextFailure = 'notFound' | 'notText' | 'other';
+
+/**
+ * The client reads the bytes from DISK (a build never sees the dirty buffer) and decodes them as
+ * the editor would: an open document's own encoding, else the one VS Code picks for the uri.
+ * `why` is the raw client-side message (untranslatable); only `other` surfaces it.
+ */
+export type ReadTextResult =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly reason: ReadTextFailure; readonly why: string };

@@ -8,6 +8,8 @@
  *   `initializationOptions`, reply the negotiated capabilities.
  * - `jpnov/build`, `jpnov/listBooks`, `jpnov/renderFile` request handlers (per-root state
  *   rides each request's `projectDirs`; the vocabulary rides `jpnov/highlightChanged`).
+ * - `jpnov/readText` (server -> client): the only request this side sends; manuscript and
+ *   manifest text comes back decoded by the client.
  */
 import {
   CodeActionKind,
@@ -35,6 +37,7 @@ import {
   HighlightChangedNotification,
   LintConfigChangedNotification,
   ListBooksRequest,
+  ReadTextRequest,
   RenderFileRequest,
 } from '#/shared/protocol.ts';
 import type {
@@ -44,6 +47,8 @@ import type {
   LintConfigChangedParams,
   ListBooksParams,
   ListBooksResult,
+  ReadTextParams,
+  ReadTextResult,
   RenderFileParams,
   RenderFileResult,
 } from '#/shared/protocol.ts';
@@ -63,8 +68,26 @@ import { parseJpbook } from '#/shared/book/jpbook.ts';
 
 const connection = createConnection(ProposedFeatures.all);
 
+/** A reply outside the wire shape is a read failure, never a crash. */
+function isReadTextResult(value: unknown): value is ReadTextResult {
+  return typeof value === 'object' && value !== null && typeof (value as { ok?: unknown }).ok === 'boolean';
+}
+
+/**
+ * One `jpnov/readText` round trip per file, cancelled with the build. An absent token stays out of
+ * the call: vscode-jsonrpc takes a trailing `undefined` as a second positional param.
+ */
+async function readTextOverWire(uri: string, token?: CancellationToken): Promise<ReadTextResult> {
+  const params: ReadTextParams = { uri };
+  const reply: unknown = token === undefined
+    ? await connection.sendRequest(ReadTextRequest, params)
+    : await connection.sendRequest(ReadTextRequest, params, token);
+  return isReadTextResult(reply) ? reply : { ok: false, reason: 'other', why: 'the client did not answer jpnov/readText' };
+}
+
 const context: ServerContext = {
   connection,
+  readText: readTextOverWire,
   lintSelection: selectRules({}), // all rules off until the client's snapshot arrives at initialize
   highlight: createHighlightStore(), // empty until the client's snapshot arrives at initialize
   roots: createWorkspaceRoots(), // seeded at initialize; live via workspace/didChangeWorkspaceFolders
@@ -162,12 +185,13 @@ connection.onRequest(
   ): Promise<BuildResult> => handleBuild(context, params, workDone, token),
 );
 
-// List books: enumerate every `.jpbook` of every root in the request's projectDirs map.
-// PURE enumeration (no reads/diagnostics); the wire may omit params, so accept the nullable form.
+// List books: enumerate every `.jpbook` of every root in the request's projectDirs map and read
+// each one through the client for its title (no diagnostics); the wire may omit params, so accept
+// the nullable form.
 connection.onRequest(
   ListBooksRequest,
   (params: ListBooksParams | undefined): Promise<ListBooksResult> =>
-    handleListBooks(params ?? { projectDirs: {} }),
+    handleListBooks(context, params ?? { projectDirs: {} }),
 );
 
 // Preview: render one file's live buffer to a standalone HTML document. Strings only.

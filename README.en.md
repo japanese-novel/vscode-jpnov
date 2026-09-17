@@ -238,6 +238,14 @@ Outputs land in `<outDir>/<book path>.{html,epub,txt}` with `outDir`
 defaulting to `dist`. Two book files that resolve to the same output path fail
 the build with a diagnostic.
 
+Chapters and the `.jpbook` itself are read from disk with the encoding the
+editor uses for that file: an open document's own encoding, otherwise the one
+VS Code picks for it (`files.encoding`, `files.autoGuessEncoding`, a byte order
+mark). Keep `files.autoGuessEncoding` on if you bring in manuscripts saved by
+other apps, such as Windows Notepad. A Shift JIS manuscript that reads
+correctly in the editor builds correctly; a file VS Code cannot decode as text
+fails that book's build with `cannot read "…": not a text file`.
+
 A PDF saved from the print dialog embeds a subset of each font it uses. With
 the default stack, the result is fine to submit to a print shop and to sell:
 Hiragino Mincho (macOS) and Yu Mincho (Windows) are OS-bundled fonts whose

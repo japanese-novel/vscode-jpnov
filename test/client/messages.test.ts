@@ -27,6 +27,7 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'book.entryNeedsFileScheme': ['a.jpnov'],
   'book.entryFileNotFound': ['a.jpnov'],
   'book.entryReadFailed': ['a.jpnov', 'EACCES: permission denied'],
+  'book.entryNotText': ['a.jpnov'],
   'build.outPathCollision': ['vol1', 'a.jpbook, b.jpbook'],
   'build.failed': ['boom'],
   'jpbook.backslashSeparator': ['sub\\a.jpnov'],

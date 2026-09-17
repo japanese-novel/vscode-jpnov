@@ -1,12 +1,17 @@
 /**
  * Minimal LSP stdio client for the E2E smoke suite: spawns the bundled server, frames
- * JSON-RPC with Content-Length headers, and auto-replies `result: null` to every
- * server→client request (`client/registerCapability` etc.), which is all the smoke
- * flows need from the client side.
+ * JSON-RPC with Content-Length headers, and answers server→client requests: `jpnov/readText`
+ * from disk as UTF-8 (the server never decodes files), everything else
+ * (`client/registerCapability` etc.) with `result: null`.
  */
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import type { Readable, Writable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
+
+import { errorText } from '../../src/shared/errors.ts';
+import type { ReadTextParams, ReadTextResult } from '../../src/shared/protocol.ts';
 
 interface RpcError {
   readonly code: number;
@@ -16,6 +21,7 @@ interface RpcError {
 interface RpcMessage {
   readonly id?: number | string;
   readonly method?: string;
+  readonly params?: unknown;
   readonly result?: unknown;
   readonly error?: RpcError;
 }
@@ -27,6 +33,19 @@ interface Pending {
 }
 
 const RESPONSE_TIMEOUT_MS = 15_000;
+
+/** Server→client requests answered with content; anything else gets `result: null`. */
+const RESPONDERS: Readonly<Partial<Record<string, (params: unknown) => Promise<unknown>>>> = {
+  'jpnov/readText': async (params): Promise<ReadTextResult> => {
+    const { uri } = params as ReadTextParams;
+    try {
+      return { ok: true, text: await readFile(fileURLToPath(uri), 'utf8') };
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      return { ok: false, reason: code === 'ENOENT' ? 'notFound' : 'other', why: errorText(err) };
+    }
+  },
+};
 
 export class LspClient {
   private readonly child: ChildProcessByStdio<Writable, Readable, null>;
@@ -111,7 +130,7 @@ export class LspClient {
   private dispatch(message: RpcMessage): void {
     if (message.method !== undefined) {
       if (message.id !== undefined) {
-        this.send({ jsonrpc: '2.0', id: message.id, result: null });
+        void this.answer(message.id, message.method, message.params);
       }
       return;
     }
@@ -127,6 +146,19 @@ export class LspClient {
       pending.reject(new Error(`${pending.method}: server error ${String(message.error.code)}: ${message.error.message}`));
     } else {
       pending.resolve(message.result);
+    }
+  }
+
+  private async answer(id: number | string, method: string, params: unknown): Promise<void> {
+    const responder = RESPONDERS[method];
+    if (responder === undefined) {
+      this.send({ jsonrpc: '2.0', id, result: null });
+      return;
+    }
+    try {
+      this.send({ jsonrpc: '2.0', id, result: await responder(params) });
+    } catch (err) {
+      this.send({ jsonrpc: '2.0', id, error: { code: -32603, message: errorText(err) } });
     }
   }
 }
