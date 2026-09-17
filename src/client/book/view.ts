@@ -4,7 +4,8 @@
  * builds ONLY the checked books. This provider is the single source of truth for the book list
  * and the selection — the webview only renders the last pushed `state` and dispatches actions.
  * The SERVER enumerates and renders (`jpnov/listBooks`, `jpnov/build`); the provider owns every
- * artifact write (the server never touches `vscode.fs`) and the Print action's browser hand-off.
+ * artifact write (the server never touches `vscode.fs`; `readText.ts` answers its reads) and the
+ * Print action's browser hand-off.
  * Form editing lives in `manage.ts`, reached by dispatching `jpbook.*` commands with a
  * synthesized node. Visibility is gated by the `jpnov.active` context key (extension.ts).
  */
@@ -699,7 +700,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           return []; // cancelled while the reply was landing: write nothing
         }
 
-        // The CLIENT owns all filesystem writes and encodings.
+        // The CLIENT owns every filesystem write and encoding decision (reads: book/readText.ts).
         const txtEncoding = vscode.workspace
           .getConfiguration()
           .get<TxtEncoding>('jpnov.layout.txt.encoding', TXT_ENCODING_DEFAULT);

@@ -160,6 +160,8 @@ export interface FakeTextDocument {
   languageId: string;
   /** `TextDocument.version` (the panel's row verbs echo it); `doc()` starts at 1 and `applyEdit` leaves it alone. */
   version: number;
+  /** `TextDocument.encoding` ('utf8', 'shiftjis', …); `doc()` defaults it to 'utf8'. */
+  encoding?: string;
   getText(): string;
   /** Present on `doc()`-built documents (manage.ts saves after `applyEdit`); hand-rolled fakes may omit it. */
   save?(): Promise<boolean>;
@@ -249,6 +251,14 @@ export interface MockState {
   fsEntries: Map<string, number>;
   /** File contents for readFile (uri string → utf8 text). */
   fsContent: Map<string, string>;
+  /** Raw bytes for readFile (uri string → bytes), consulted before `fsContent`. */
+  fsBytes: Map<string, Uint8Array>;
+  /** `workspace.fs.readFile` rejections: uri string → the `FileSystemError.code` to reject with. */
+  fsReadErrors: Map<string, string>;
+  /** The encoding `workspace.decode(bytes, { uri })` picks per uri string ('utf8' when absent). */
+  guessedEncoding: Map<string, string>;
+  /** Recorded `workspace.decode` options, one entry per call (`{ uri }` or `{ encoding }`). */
+  decodeCalls: ({ uri: string } | { encoding: string })[];
   /** Settings store for `workspace.getConfiguration().get(key, dflt)` (full key → value). */
   config: Record<string, unknown>;
   /** Scope-aware settings values: `${scopeUri}|${section.key}` (or `|full.key`) → value. */
@@ -302,6 +312,10 @@ export function createMockState(): MockState {
     unopenableDocs: new Set<string>(),
     fsEntries: new Map<string, number>(),
     fsContent: new Map<string, string>(),
+    fsBytes: new Map<string, Uint8Array>(),
+    fsReadErrors: new Map<string, string>(),
+    guessedEncoding: new Map<string, string>(),
+    decodeCalls: [],
     config: {},
     scopedConfig: new Map<string, unknown>(),
     inspectResults: new Map(),
@@ -346,6 +360,10 @@ export function resetMockState(s: MockState): void {
   s.unopenableDocs.clear();
   s.fsEntries.clear();
   s.fsContent.clear();
+  s.fsBytes.clear();
+  s.fsReadErrors.clear();
+  s.guessedEncoding.clear();
+  s.decodeCalls.length = 0;
   s.config = {};
   s.scopedConfig.clear();
   s.inspectResults.clear();
@@ -360,6 +378,9 @@ export function resetMockState(s: MockState): void {
   s.progressOptions.length = 0;
   s.progressCancelled = false;
 }
+
+/** VS Code encoding ids → WHATWG decoder labels, for the ids the tests use. */
+const DECODER_LABELS: Readonly<Partial<Record<string, string>>> = { utf8: 'utf-8', shiftjis: 'shift_jis' };
 
 /**
  * Build a `vscode`-shaped namespace object bound to `state`. Pass this to
@@ -451,10 +472,15 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       return Promise.resolve();
     },
     readFile(uri: Uri): Promise<Uint8Array> {
-      if (!state.fsEntries.has(uri.toString())) {
+      const key = uri.toString();
+      const code = state.fsReadErrors.get(key);
+      if (code !== undefined) {
+        return Promise.reject(new FileSystemError(code));
+      }
+      if (!state.fsEntries.has(key)) {
         return Promise.reject(FileSystemError.FileNotFound(uri));
       }
-      return Promise.resolve(Buffer.from(state.fsContent.get(uri.toString()) ?? '', 'utf8'));
+      return Promise.resolve(state.fsBytes.get(key) ?? Buffer.from(state.fsContent.get(key) ?? '', 'utf8'));
     },
     stat(uri: Uri): Promise<{ type: number }> {
       const type = state.fsEntries.get(uri.toString());
@@ -485,6 +511,15 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       return state.workspaceFolders;
     },
     fs: fsApi,
+    /** `vscode.workspace.decode`: the options are recorded; NUL bytes count as binary (VS Code's own heuristic). */
+    decode(content: Uint8Array, options: { uri: Uri } | { encoding: string }): Promise<string> {
+      const label = 'encoding' in options ? options.encoding : (state.guessedEncoding.get(options.uri.toString()) ?? 'utf8');
+      state.decodeCalls.push('encoding' in options ? { encoding: options.encoding } : { uri: options.uri.toString() });
+      if (content.includes(0)) {
+        return Promise.reject(new Error('Stream is binary but only text is accepted for decoding'));
+      }
+      return Promise.resolve(new TextDecoder(DECODER_LABELS[label] ?? label).decode(content));
+    },
     createFileSystemWatcher(): {
       onDidCreate: (l: Listener<Uri>) => Disposable;
       onDidDelete: (l: Listener<Uri>) => Disposable;
@@ -639,8 +674,8 @@ export function buildVscode(state: MockState): Record<string, unknown> {
   };
 }
 
-export function doc(uri: string, languageId: string, text = ''): FakeTextDocument {
-  return { uri: Uri.parse(uri), languageId, version: 1, getText: () => text, save: () => Promise.resolve(true) };
+export function doc(uri: string, languageId: string, text = '', encoding = 'utf8'): FakeTextDocument {
+  return { uri: Uri.parse(uri), languageId, version: 1, encoding, getText: () => text, save: () => Promise.resolve(true) };
 }
 
 /** A fake `vscode.Webview`: captures outbound `postMessage` (posted) + delivers inbound (receive). */

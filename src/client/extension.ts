@@ -1,6 +1,7 @@
 /**
  * Extension entry (host side) — the ONLY tree permitted to value-import `vscode`. It forks the
- * language server over IPC and owns the host-side UI (Books panel, live preview).
+ * language server over IPC and owns the host-side UI (Books panel, live preview) plus every
+ * filesystem read and write the server needs.
  *
  * Activation is two-phase because `onStartupFinished` activates this extension in EVERY window:
  *   Phase 1 `activate()`  — synchronous registrations only (commands, serializer, lazy-start
@@ -22,9 +23,12 @@ import {
 import {
   HighlightChangedNotification,
   LintConfigChangedNotification,
+  ReadTextRequest,
   ServerErrorNotification,
   type HighlightChangedParams,
   type LintConfigChangedParams,
+  type ReadTextParams,
+  type ReadTextResult,
   type ServerErrorParams,
 } from '#/shared/protocol.ts';
 import { errorText } from '#/shared/errors.ts';
@@ -39,6 +43,7 @@ import { folderIsNovelProject } from './probe.ts';
 import { isLocalizableMessage, renderMessage } from './messages.ts';
 import { Preview } from './preview/preview.ts';
 import { registerRenameTracking } from './book/tracking.ts';
+import { readText } from './book/readText.ts';
 
 let client: LanguageClient | undefined;
 let preview: Preview | undefined;
@@ -206,6 +211,12 @@ function ensureStarted(): void {
     client.onNotification(ServerErrorNotification, (params: ServerErrorParams) => {
       void vscode.window.showErrorMessage(renderMessage(params.message));
     }),
+  );
+
+  // The server never decodes manuscript bytes; book/readText.ts answers with the editor's encoding.
+  // Registered before start(): vscode-languageclient parks the handler until the connection exists.
+  context.subscriptions.push(
+    client.onRequest(ReadTextRequest, (params: ReadTextParams): Promise<ReadTextResult> => readText(params)),
   );
 
   // Folder add/remove while running: re-push the FULL highlight map (replacement semantics —

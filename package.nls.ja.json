@@ -117,7 +117,7 @@
   "jpnov.layout.txt.encoding.utf8.description": "入力した文字をそのまま書き出します。",
   "jpnov.layout.txt.encoding.utf8Bom.label": "UTF-8（BOM 付き）",
   "jpnov.layout.txt.encoding.utf8Bom.description": "先頭に BOM を付けます。Windows のアプリでも UTF-8 として開けます。",
-  "jpnov.layout.outDir.description": "`.html`・`.epub`・`.txt` の本を出力するフォルダー（ワークスペース フォルダーからの相対パス）。出力専用のフォルダーで、ここに置いたファイルは本として扱いません。",
+  "jpnov.layout.outDir.description": "`.html`・`.epub`・`.txt` の本を出力するフォルダー（開いているフォルダーからの相対パス）。出力専用のフォルダーで、ここに置いたファイルは本として扱いません。",
   "jpnov.editor.updateRefsOnFileMove.description": "VS Code 内で章ファイルやフォルダーの名前を変えたり移動したりしたとき、本のファイル（`.jpbook`）に書かれたパスを更新するかどうか。参照先が見つからないパスはエディターで警告します。",
   "jpnov.editor.updateRefsOnFileMove.prompt.label": "毎回確認",
   "jpnov.editor.updateRefsOnFileMove.prompt.description": "更新する前に確認を表示します。",

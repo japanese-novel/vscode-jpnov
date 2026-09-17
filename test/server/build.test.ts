@@ -7,26 +7,30 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CancellationToken } from 'vscode-languageserver/node';
+import { CancellationToken, CancellationTokenSource } from 'vscode-languageserver/node';
 
 import { handleBuild, handleListBooks } from '../../src/server/build.ts';
 import {
   makeContext,
   makeFakeConnection,
   makeTmpWorkspace,
+  nodeReader,
   writeUnder,
   type FakeConnection,
 } from './helpers.ts';
-import type { ServerContext } from '../../src/server/context.ts';
+import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT } from '../../src/shared/config/settings.ts';
 import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
 import { MANUSCRIPT_SHEET } from '../../src/shared/compiler/document.ts';
+import { encodeTxt } from '../../src/shared/encoding.ts';
 import type {
   BuildResult,
   HtmlSettings,
   ListBooksResult,
+  MsgCode,
   ProjectDirs,
   ProjectDirsMap,
+  ReadTextFailure,
 } from '../../src/shared/protocol.ts';
 
 /** The product-default settings snapshot every build request carries (settings is required). */
@@ -422,9 +426,9 @@ test('listBooks enumerates every jpbook, carrying its front-matter title when pr
   await writeUnder(ws.dir, 'part1/vol2/index.jpbook', '---\ntitle: 第二巻\n---\npart1/vol2/c.jpnov');
   await writeUnder(ws.dir, 'part1/vol2/c.jpnov', 'て');
 
-  // Enumeration reads each file only for its title: handleListBooks has no connection to
-  // publish diagnostics with, so no diagnosis can happen here by construction.
-  const result: ListBooksResult = await handleListBooks({ projectDirs: projectsFor(ws.uri) });
+  // Enumeration reads each file (through the context's reader) only for its title; it
+  // publishes no diagnostics by construction.
+  const result: ListBooksResult = await handleListBooks(boot().ctx, { projectDirs: projectsFor(ws.uri) });
 
   assert.equal(result.books.length, 2);
   const byOut = new Map(result.books.map((b) => [b.outRel, b]));
@@ -609,7 +613,7 @@ test('discovery skips dot-folders, node_modules, and the resolved outDir', async
   await writeUnder(ws.dir, 'deep/node_modules/z.jpbook', 'a.jpnov');
   await writeUnder(ws.dir, 'dist/w.jpbook', 'a.jpnov');
 
-  const result: ListBooksResult = await handleListBooks({ projectDirs: projectsFor(ws.uri) });
+  const result: ListBooksResult = await handleListBooks(boot().ctx, { projectDirs: projectsFor(ws.uri) });
 
   assert.equal(result.books.length, 1, 'only the real book is discovered');
   assert.equal(result.books[0]?.fileRel, 'vol1/index.jpbook');
@@ -648,7 +652,7 @@ test("names with # and % (issue #76) list, build, and select — URIs are percen
   const bookUri = `${ws.uri}/%E9%80%B2%E6%8D%97100%25.jpbook`;
   const subUri = `${ws.uri}/sub%231/index.jpbook`;
 
-  const list: ListBooksResult = await handleListBooks({ projectDirs: projectsFor(ws.uri) });
+  const list: ListBooksResult = await handleListBooks(boot().ctx, { projectDirs: projectsFor(ws.uri) });
   assert.deepEqual(list.books.map((b) => [b.uri, b.fileRel, b.title]), [
     [subUri, 'sub#1/index.jpbook', undefined],
     [bookUri, '進捗100%.jpbook', '作品名'],
@@ -1070,4 +1074,115 @@ test('build: CRLF chapters — the txt keeps CRLF, the html equals the LF build'
   assert.equal(await build('\r\n', 'txt'), 'あいう\r\n\r\nかきく');
   assert.equal(await build('\n', 'txt'), 'あいう\n\nかきく');
   assert.equal(await build('\r\n', 'html'), await build('\n', 'html'));
+});
+
+// --- manuscript encoding (issue #81): the server never decodes bytes, the context's reader does ---
+
+/** Shift JIS bytes of `text`. */
+function sjis(text: string): Uint8Array {
+  return encodeTxt(text, 'shiftJis').bytes;
+}
+
+/** A reader that fails `rel` with `reason` and reads everything else from disk as UTF-8. */
+function failing(rel: string, reason: ReadTextFailure): ReadText {
+  const disk = nodeReader();
+  return (uri, token) =>
+    uri.endsWith(`/${rel}`) ? Promise.resolve({ ok: false, reason, why: 'EACCES: permission denied' }) : disk(uri, token);
+}
+
+const CHAPTER = '　山田　太郎は王都へ向かった。';
+
+test('build: Shift JIS manuscript and manifest come out clean when the reader decodes them as the editor would', async () => {
+  await using ws = await makeTmpWorkspace();
+  const ctx = makeContext(makeFakeConnection(), nodeReader('shift_jis'));
+  await writeUnder(ws.dir, 'vol1.jpbook', sjis('---\ntitle: 作品名\n---\nsrc/a.jpnov\n'));
+  await writeUnder(ws.dir, 'src/a.jpnov', sjis(CHAPTER));
+
+  const txt: BuildResult = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+  assert.deepEqual(txt.errors, []);
+  const artifact = txt.artifacts[0];
+  assert.ok(artifact?.kind === 'txt');
+  assert.equal(artifact.content, CHAPTER);
+
+  const epub: BuildResult = await handleBuild(ctx, { format: 'epub', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+  const book = epub.artifacts[0];
+  assert.ok(book?.kind === 'epub');
+  const opf = book.members.find((m) => m.name === 'OEBPS/package.opf')?.content ?? '';
+  assert.ok(opf.includes('<dc:title>作品名</dc:title>'));
+});
+
+test('build: the same Shift JIS bytes under a UTF-8 reader build ok with U+FFFD, as the editor would show them', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'vol1.jpbook', 'src/a.jpnov');
+  await writeUnder(ws.dir, 'src/a.jpnov', sjis(CHAPTER));
+
+  const result: BuildResult = await handleBuild(boot().ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+  assert.equal(result.ok, true);
+  const artifact = result.artifacts[0];
+  assert.ok(artifact?.kind === 'txt');
+  assert.ok(artifact.content.includes('\uFFFD'));
+});
+
+const READ_FAILURES: readonly [ReadTextFailure, MsgCode, readonly string[]][] = [
+  ['notFound', 'book.entryFileNotFound', ['bad/x.jpnov']],
+  ['notText', 'book.entryNotText', ['bad/x.jpnov']],
+  ['other', 'book.entryReadFailed', ['bad/x.jpnov', 'EACCES: permission denied']],
+];
+
+for (const [reason, code, args] of READ_FAILURES) {
+  test(`build: a "${reason}" read failure is that book's ${code}; the other book still builds`, async () => {
+    await using ws = await makeTmpWorkspace();
+    const ctx = makeContext(makeFakeConnection(), failing('bad/x.jpnov', reason));
+    await writeUnder(ws.dir, 'bad/index.jpbook', 'bad/x.jpnov');
+    await writeUnder(ws.dir, 'bad/x.jpnov', 'あ');
+    await writeUnder(ws.dir, 'good/index.jpbook', 'good/y.jpnov');
+    await writeUnder(ws.dir, 'good/y.jpnov', 'い');
+
+    const result: BuildResult = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.errors.map((e) => [e.uri, e.code, e.args]), [[`${ws.uri}/bad/index.jpbook`, code, args]]);
+    assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/good.txt`]);
+  });
+}
+
+test('build: a manifest the reader cannot decode is that book\'s error; a vanished manifest is skipped', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'vol1.jpbook', 'src/a.jpnov');
+  await writeUnder(ws.dir, 'src/a.jpnov', 'あ');
+  const params = { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) } as const;
+
+  const notText: BuildResult = await handleBuild(makeContext(makeFakeConnection(), failing('vol1.jpbook', 'notText')), params);
+  assert.deepEqual(notText.errors.map((e) => [e.uri, e.code, e.args]), [[`${ws.uri}/vol1.jpbook`, 'book.entryNotText', ['vol1.jpbook']]]);
+  assert.equal(notText.artifacts.length, 0);
+
+  const vanished: BuildResult = await handleBuild(makeContext(makeFakeConnection(), failing('vol1.jpbook', 'notFound')), params);
+  assert.equal(vanished.ok, true);
+  assert.equal(vanished.artifacts.length, 0);
+});
+
+test('listBooks: a book whose manifest the reader cannot read is listed untitled', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'vol1.jpbook', '---\ntitle: 作品名\n---\nsrc/a.jpnov');
+  const ctx = makeContext(makeFakeConnection(), failing('vol1.jpbook', 'other'));
+
+  const result: ListBooksResult = await handleListBooks(ctx, { projectDirs: projectsFor(ws.uri) });
+  assert.deepEqual(result.books.map((b) => [b.fileRel, b.outRel, b.title]), [['vol1.jpbook', 'vol1', undefined]]);
+});
+
+test('build: the request token rides every readText call', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'vol1.jpbook', 'src/a.jpnov\nsrc/b.jpnov');
+  await writeUnder(ws.dir, 'src/a.jpnov', 'あ');
+  await writeUnder(ws.dir, 'src/b.jpnov', 'い');
+  const seen: (CancellationToken | undefined)[] = [];
+  const disk = nodeReader();
+  const ctx = makeContext(makeFakeConnection(), (uri, token) => {
+    seen.push(token);
+    return disk(uri, token);
+  });
+  const token = new CancellationTokenSource().token;
+
+  await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) }, undefined, token);
+  assert.equal(seen.length, 3); // the manifest + two chapters
+  assert.ok(seen.every((t) => t === token));
 });

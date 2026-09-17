@@ -776,7 +776,7 @@
     "pretest": "npm run gen && npm run type-check",
     "test": "node --import ./test/register.mjs --test --experimental-test-module-mocks \"test/shared/**/*.test.ts\" \"test/server/highlight/**/*.test.ts\" \"test/server/lint/**/*.test.ts\" \"test/client/bookRename.test.ts\" \"test/client/editorIndent.test.ts\"",
     "pretest:integration": "npm run gen",
-    "test:integration": "node --import ./test/register.mjs --test --experimental-test-module-mocks \"test/client/bookCreate.test.ts\" \"test/client/bookManage.test.ts\" \"test/client/booksView.test.ts\" \"test/client/highlightConfig.test.ts\" \"test/client/messages.test.ts\" \"test/client/preview.test.ts\" \"test/client/probe.test.ts\" \"test/server/build.test.ts\" \"test/server/jpbook.test.ts\"",
+    "test:integration": "node --import ./test/register.mjs --test --experimental-test-module-mocks \"test/client/bookCreate.test.ts\" \"test/client/bookManage.test.ts\" \"test/client/booksView.test.ts\" \"test/client/highlightConfig.test.ts\" \"test/client/messages.test.ts\" \"test/client/preview.test.ts\" \"test/client/probe.test.ts\" \"test/client/readText.test.ts\" \"test/server/build.test.ts\" \"test/server/jpbook.test.ts\"",
     "pretest:e2e": "npm run build:dev",
     "test:e2e": "node --import ./test/register.mjs --test \"test/e2e/**/*.test.ts\"",
     "prescreenshots": "npm run gen:styles",
