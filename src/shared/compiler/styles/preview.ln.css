@@ -9,3 +9,5 @@
    PHYSICAL top/left/right on purpose: the element is horizontal-tb INSIDE a vertical-rl
    container — logical insets would resolve against its own writing mode and land wrong. */
 .ln{position:absolute;top:0;left:0;right:0;transform:translateY(calc(-100% - 0.35rem - 2px));writing-mode:horizontal-tb;text-align:center;font-size:10px;line-height:1;color:var(--vscode-editorLineNumber-foreground,#888);pointer-events:none;user-select:none;}
+/* A 傍点 line's number rides the column's counter-shift (class.emr.css); undo it so the number stays over the glyphs. */
+.emr>.ln{translate:calc(-1*var(--emr)) 0;}

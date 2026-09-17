@@ -372,10 +372,17 @@ test('傍点 .emr counter-shift is on-demand, probe-driven with a closed-form fa
   for (const make of [preview, build]) {
     assert.match(
       make({ usedClasses: ['emr'] }),
-      /\.emr\{translate:var\(--emr-shift,max\(0em,\(2 - var\(--pitch\)\)\*0\.5em\)\) 0\}/,
+      /\.emr\{--emr:var\(--emr-shift,max\(0em,\(2 - var\(--pitch\)\)\*0\.5em\)\);translate:var\(--emr\) 0\}/,
     );
     assert.doesNotMatch(make(), /\.emr\{/);
+    // Registered as a length: the em computes at the line, so the number's undo inherits px.
+    assert.match(make({ usedClasses: ['emr'] }), /@property --emr\{syntax:'<length>';inherits:true;initial-value:0px\}\.emr\{/);
   }
+  // The line-number fragments undo the resolved shift on the number, so it stays over the column.
+  const emr = ['emr'];
+  assert.match(preview({ usedClasses: emr, chrome: { lineNumbers: true, edgeLine: 'none' } }), /\.emr>\.ln\{translate:calc\(-1\*var\(--emr\)\) 0;\}/);
+  assert.match(build({ usedClasses: emr, chrome: { ...BUILD_OFF, lineNumbers: true } }), /\.emr::before\{translate:calc\(-1\*var\(--emr\)\) 0;\}/);
+  assert.doesNotMatch(preview({ usedClasses: emr }), /var\(--emr\)\) 0;\}/);
 });
 
 test('reflow ruby.ru rule is native ruby-position (under + nested-over reset), on demand', () => {

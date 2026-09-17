@@ -194,19 +194,29 @@ const MEASURE_SCRIPT = `<script>
     range.selectNodeContents(line);
     painted = Math.round(range.getBoundingClientRect().height);
   }
-  // 傍点 lattice deviation: with line 0 plain and line 1 carrying .emr (both opening on the
-  // SAME canary glyph), the first glyphs must sit exactly one pitch apart — the emr
-  // counter-shift holding the grid against Chromium's emphasis-mark baseline push.
-  const lines = document.querySelectorAll('.line');
-  let emphDev = null;
-  if (lines.length >= 2 && lines[1].classList.contains('emr')) {
-    const gx = (el) => {
-      const r = document.createRange();
-      const tn = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
-      r.setStart(tn, 0); r.setEnd(tn, 1);
-      return r.getBoundingClientRect().x;
-    };
-    emphDev = gx(lines[1]) - (gx(lines[0]) - lines[0].getBoundingClientRect().width);
+  // 傍点 lattice deviation: every column's first on-lattice glyph (line-number heads, ruby readings
+  // and 縦中横 runs skipped, as the probe skips them) must sit on the pitch lattice laid through the
+  // first plain line; the largest excess is the emr counter-shift's error (class.emr.css).
+  const lines = [...document.querySelectorAll('.line')];
+  const gx = (el) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.parentElement.closest('.ln, rt, .tcy') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
+    const tn = walker.nextNode();
+    if (!tn) return null;
+    const r = document.createRange();
+    r.setStart(tn, 0); r.setEnd(tn, 1);
+    return r.getBoundingClientRect().x;
+  };
+  let emphDevs = null;
+  const ref = lines.findIndex((l) => !l.classList.contains('emr') && gx(l) !== null);
+  if (ref >= 0 && lines.some((l) => l.classList.contains('emr'))) {
+    const pitch = lines[ref].getBoundingClientRect().width;
+    const x0 = gx(lines[ref]) + ref * pitch;
+    emphDevs = lines.map((l, i) => {
+      const x = gx(l);
+      return { cls: l.className, dev: x === null ? null : x - (x0 - i * pitch) };
+    });
   }
   // Ruby lane containment: the reading lane is out of flow, so a ruby box is exactly as tall
   // as its base spans; a lane that joined the flow (WebKit's <rt> rule, #65) adds the reading.
@@ -218,7 +228,7 @@ const MEASURE_SCRIPT = `<script>
     : 0;
   const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
   document.documentElement.setAttribute('${MARKER}', JSON.stringify({
-    emphDev,
+    emphDevs,
     rubyLaneSpillPx: ruby ? ruby.getBoundingClientRect().height - baseExtent : 0,
     writingMode: grid ? getComputedStyle(grid).writingMode : 'missing',
     rootFontSize: rootPx,
@@ -234,8 +244,8 @@ const MEASURE_SCRIPT = `<script>
 </script>`;
 
 interface VerifyMetrics {
-  /** 傍点 glyph-lattice deviation in px, or null when line 1 carries no `.emr`. */
-  readonly emphDev: number | null;
+  /** Per-line glyph-lattice deviation in px (class + dev), or null when no line carries `.emr`. */
+  readonly emphDevs: readonly { readonly cls: string; readonly dev: number | null }[] | null;
   /** The first ruby box's inline extent beyond its base spans, in px — 0 while the lane stays out of flow. */
   readonly rubyLaneSpillPx: number;
   readonly writingMode: string;
@@ -309,9 +319,18 @@ test('the built page follows every 行送り tier (column width and fitted font 
   const wsDir = await mkdtemp(join(tmpdir(), 'jpnov-e2e-pitch-'));
   cleanups.push(wsDir);
   const wsUri = pathToFileURL(wsDir).href.replace(/\/$/, '');
-  // Line 0 plain, line 1 with 傍点, both opening on the same canary glyph — feeds the
-  // measure script's emphDev lattice check.
-  const pitchText = '中の本文。\n中傍点行［＃「傍点行」に傍点］。\n';
+  // The 傍点 neighbourhoods class.emr.css tells apart (first column, ruby neighbour, left-side 傍点
+  // neighbour, plain neighbour), every line opening on the same canary glyph for the lattice check.
+  const pitchText = [
+    '中傍点行［＃「傍点行」に傍点］。',
+    '中｜物語《ものがたり》の行。',
+    '中傍点行［＃「傍点行」に傍点］。',
+    '中左傍点［＃「左傍点」の左に傍点］の行。',
+    '中傍点行［＃「傍点行」に傍点］。',
+    '中の本文。',
+    '中傍点行［＃「傍点行」に傍点］。',
+    '',
+  ].join('\n');
   await writeFile(join(wsDir, 'hon.jpnov'), pitchText, 'utf8');
   await writeFile(join(wsDir, 'hon.jpbook'), '---\ntitle: 試験本\n---\nhon.jpnov\n', 'utf8');
   const projectDirs = { [wsUri]: { outDir: 'dist' } };
@@ -357,14 +376,13 @@ test('the built page follows every 行送り tier (column width and fitted font 
       Math.abs(m.linePitchPx - linePitch * m.rootFontSize) < 0.25,
       `@${String(linePitch)}: a line column must be exactly one 行送り wide (${String(m.linePitchPx)}px vs ${String(linePitch * m.rootFontSize)}px)`,
     );
-    // The .emr counter-shift must hold a 傍点 line on the glyph lattice at every tier ON ANY
-    // ENGINE AND FONT: the emitted probe measures the real push beside a real line (the CSS
-    // closed form alone is exact only for a+d = 1em fonts on Chromium ≤151 — CI's fallback
-    // serif is not one — and Chromium 152 leaves a sub-pixel residue that a detached or
-    // scaled probe misses).
+    // Every 傍点 line must stay on the lattice at every tier on any engine and font: the probe
+    // measures each line's real push in place (the closed form alone fits only a+d = 1em fonts
+    // on Chromium ≤151, and CI's fallback serif is not one).
+    const devs = (m.emphDevs ?? []).map((d) => `${d.cls}:${d.dev === null ? '-' : d.dev.toFixed(3)}`);
     assert.ok(
-      m.emphDev !== null && Math.abs(m.emphDev) < 0.75,
-      `@${String(linePitch)}: a 傍点 line must stay on the glyph lattice (dev ${String(m.emphDev)}px)`,
+      m.emphDevs?.every((d) => d.dev !== null && Math.abs(d.dev) < 0.75) === true,
+      `@${String(linePitch)}: every 傍点 line must stay on the glyph lattice (devs px: ${devs.join(' | ')})`,
     );
   }
 });

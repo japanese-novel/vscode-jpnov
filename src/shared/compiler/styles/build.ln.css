@@ -18,3 +18,5 @@
    none. The header and footer are DOM elements the emitter withholds; this counter is pure CSS
    matching `.page`, so the same exemption has to be spelled out here. */
 .page.cover .line::before{content:none;}
+/* A 傍点 line's number rides the column's counter-shift (class.emr.css); undo it so the number stays over the glyphs. */
+.emr::before{translate:calc(-1*var(--emr)) 0;}

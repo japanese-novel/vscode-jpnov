@@ -28,8 +28,10 @@ test('a preview fragment keeps every rule under its scope and no root or viewpor
   }
   assert.ok(!UNIT.test(fragment.css), 'no rem/vh units');
   for (const rule of fragment.css.split('}').filter((r) => r.trim() !== '')) {
-    assert.ok(rule.startsWith('.jp-r-t'), `unscoped rule: ${rule.slice(0, 60)}`);
+    // The 傍点 shift's length registration is document-global by nature (class.emr.css).
+    assert.ok(rule.startsWith('.jp-r-t') || rule.startsWith('@property --emr{'), `unscoped rule: ${rule.slice(0, 60)}`);
   }
+  assert.equal(fragment.css.split('@property --emr{').length, 2, 'the --emr registration is kept once, unscoped');
   assert.ok(fragment.css.includes(`--jp-em:calc(var(--jp-band) / (var(--cpl) + ${String(2 * EDGE_INSET)}))`));
   assert.ok(fragment.css.includes('.jp-r-t .line{position:relative;}'));
   assert.ok(fragment.css.includes('calc(0.35 * var(--jp-em))'));
