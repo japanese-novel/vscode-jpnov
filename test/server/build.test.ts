@@ -24,6 +24,7 @@ import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
 import { MANUSCRIPT_SHEET } from '../../src/shared/compiler/document.ts';
 import { encodeTxt } from '../../src/shared/encoding.ts';
 import type {
+  BuildFormat,
   BuildResult,
   HtmlSettings,
   ListBooksResult,
@@ -1144,6 +1145,126 @@ for (const [reason, code, args] of READ_FAILURES) {
     assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/good.txt`]);
   });
 }
+
+/** A `.jpbook` Error line refuses the book whatever the format; each row's manifest is `bad/index.jpbook`. */
+const SYNTAX_FAILURES: readonly {
+  readonly name: string;
+  readonly manifest: string;
+  /** Files to create (an Error line fails even when its file exists). */
+  readonly files: readonly string[];
+  readonly format: BuildFormat;
+  readonly code: MsgCode;
+  readonly args: readonly string[];
+  /** Diagnostics published on the manifest: line errors plus fs verdicts on the ok lines. */
+  readonly diagnostics: number;
+}[] = [
+  {
+    name: 'a lone fence',
+    manifest: '---',
+    files: [],
+    format: 'txt',
+    code: 'jpbook.metaUnterminated',
+    args: [],
+    diagnostics: 1,
+  },
+  {
+    name: 'a backslash separator',
+    manifest: 'bad\\第一章.jpnov',
+    files: ['bad/第一章.jpnov'],
+    format: 'epub',
+    code: 'jpbook.backslashSeparator',
+    args: ['bad\\第一章.jpnov'],
+    diagnostics: 1,
+  },
+  {
+    name: 'a non-.jpnov entry after a valid chapter (CRLF manifest)',
+    manifest: 'bad/第一章.jpnov\r\nbad/第二章.txt\r\n',
+    files: ['bad/第一章.jpnov', 'bad/第二章.txt'],
+    format: 'txt',
+    code: 'jpbook.notJpnov',
+    args: ['bad/第二章.txt'],
+    diagnostics: 1,
+  },
+  {
+    name: 'a cover-item error under a txt build',
+    manifest: '---\ncover:\n  - bad/表紙.txt\n---\nbad/第一章.jpnov',
+    files: ['bad/表紙.txt', 'bad/第一章.jpnov'],
+    format: 'txt',
+    code: 'jpbook.notJpnov',
+    args: ['- bad/表紙.txt'],
+    diagnostics: 1,
+  },
+  {
+    // Reported over the missing chapter, which still gets its diagnostic.
+    name: 'a syntax error beside a missing chapter',
+    manifest: 'bad/第一章.jpnov\nbad/第二章.txt',
+    files: [],
+    format: 'html',
+    code: 'jpbook.notJpnov',
+    args: ['bad/第二章.txt'],
+    diagnostics: 2,
+  },
+];
+
+for (const row of SYNTAX_FAILURES) {
+  test(`build: ${row.name} is that book's error and emits nothing`, async () => {
+    await using ws = await makeTmpWorkspace();
+    const { ctx, conn } = boot();
+    await writeUnder(ws.dir, 'bad/index.jpbook', row.manifest);
+    for (const rel of row.files) {
+      await writeUnder(ws.dir, rel, 'あ');
+    }
+
+    const result: BuildResult = await handleBuild(ctx, { format: row.format, settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+    const badUri = `${ws.uri}/bad/index.jpbook`;
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.errors.map((e) => [e.uri, e.code, e.args]), [[badUri, row.code, row.args]]);
+    assert.deepEqual(result.artifacts, []);
+    assert.deepEqual(conn.diagnostics, [{ uri: badUri, count: row.diagnostics }]);
+  });
+}
+
+test('build: an Error line fails the book before any chapter is read; the other book still builds', async () => {
+  await using ws = await makeTmpWorkspace();
+  const conn = makeFakeConnection();
+  const reads: string[] = [];
+  const disk = nodeReader();
+  const ctx = makeContext(conn, (uri, token) => {
+    reads.push(uri.slice(ws.uri.length + 1));
+    return disk(uri, token);
+  });
+  await writeUnder(ws.dir, 'bad/index.jpbook', '---\ntitle: 作品名\nbad/a.jpnov\nbad/b.jpnov');
+  await writeUnder(ws.dir, 'bad/a.jpnov', 'あ');
+  await writeUnder(ws.dir, 'bad/b.jpnov', 'い');
+  await writeUnder(ws.dir, 'good/index.jpbook', 'good/y.jpnov');
+  await writeUnder(ws.dir, 'good/y.jpnov', 'う');
+
+  const result: BuildResult = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+  const badUri = `${ws.uri}/bad/index.jpbook`;
+  assert.deepEqual(reads, ['bad/index.jpbook', 'good/index.jpbook', 'good/y.jpnov']); // no bad chapter
+  assert.deepEqual(
+    result.errors.map((e) => [e.book, e.uri, e.code, e.args]),
+    [['bad/index.jpbook', badUri, 'jpbook.metaUnterminated', []]], // the fence, not the swallowed lines
+  );
+  assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/good.txt`]);
+  // bad: the fence + two swallowed chapter lines; good: none.
+  assert.deepEqual(conn.diagnostics, [{ uri: badUri, count: 3 }, { uri: `${ws.uri}/good/index.jpbook`, count: 0 }]);
+});
+
+test('build: duplicate-key, bad-enum and duplicate-chapter warnings stay non-fatal', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx, conn } = boot();
+  await writeUnder(ws.dir, 'vol1.jpbook', '---\ntitle: 作品名\ntitle: 作品名\nfooterAlign: どこか\n---\nsrc/a.jpnov\nsrc/a.jpnov');
+  await writeUnder(ws.dir, 'src/a.jpnov', 'あ');
+
+  const result: BuildResult = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.errors, []);
+  const artifact = result.artifacts[0];
+  assert.ok(artifact?.kind === 'txt');
+  assert.equal(artifact.content, 'あ'); // the duplicate line is not built twice
+  assert.deepEqual(conn.diagnostics, [{ uri: `${ws.uri}/vol1.jpbook`, count: 3 }]);
+});
 
 test('build: a manifest the reader cannot decode is that book\'s error; a vanished manifest is skipped', async () => {
   await using ws = await makeTmpWorkspace();

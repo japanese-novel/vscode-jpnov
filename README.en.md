@@ -236,7 +236,10 @@ is an icon button):
 
 Outputs land in `<outDir>/<book path>.{html,epub,txt}` with `outDir`
 defaulting to `dist`. Two book files that resolve to the same output path fail
-the build with a diagnostic.
+the build with a diagnostic. A `.jpbook` with a syntax error (an unclosed `---`
+block, a backslash in a path, an entry that is not a `.jpnov` file) fails that
+book's build with its first error; the other books still build. Warnings, such
+as unknown keys or duplicates, never stop a build.
 
 Chapters and the `.jpbook` itself are read from disk with the encoding the
 editor uses for that file: an open document's own encoding, otherwise the one

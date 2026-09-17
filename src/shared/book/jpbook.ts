@@ -35,7 +35,8 @@ export interface JpbookRange {
  * - `'coverEntry'` — a `- ` cover path; a front page in the html build ({@link coverPathOf}).
  * - `'coverDuplicate'` — a cover path repeating an earlier one; a Warning, not built.
  * - `{ error }`   — a syntax problem (e.g. backslash, non-`.jpnov`, key-less metadata) to
- *                  surface as an Error. Its value is a {@link LocalizableMessage}.
+ *                  surface as an Error; a book with any such line is not built
+ *                  ({@link firstErrorOf}). Its value is a {@link LocalizableMessage}.
  * - `{ warning }` — a tolerated metadata problem (unknown/duplicate key, bad enum value);
  *                  the line is ignored and the book still builds.
  */
@@ -379,6 +380,19 @@ export function metaRegionOf(
   }
   const close = lines.find((pl) => pl.kind === 'fence' && pl.line > first.line);
   return { open: first.line, close: close?.line ?? null };
+}
+
+/**
+ * The first `{ error }` line's message in document order, or null when there is none; warnings
+ * and duplicates never count. A book with one is not built.
+ */
+export function firstErrorOf(lines: readonly ParsedLine[]): LocalizableMessage | null {
+  for (const pl of lines) {
+    if (typeof pl.kind === 'object' && 'error' in pl.kind) {
+      return pl.kind.error;
+    }
+  }
+  return null;
 }
 
 /**
