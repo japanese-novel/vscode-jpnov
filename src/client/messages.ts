@@ -83,6 +83,10 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('unterminated block annotation (missing ［＃ここで…終わり］)');
     case 'syntax.danglingBlockEnd':
       return vscode.l10n.t('block-end annotation without a matching start');
+    case 'syntax.unterminatedSpan':
+      return vscode.l10n.t('unterminated start/end annotation (missing ［＃…終わり］)');
+    case 'syntax.danglingSpanEnd':
+      return vscode.l10n.t('end annotation without a matching start');
     case 'syntax.postfixTargetMissing':
       return vscode.l10n.t('annotation target "{0}" is not on this line, or is not aligned to a character boundary', s(0));
     case 'syntax.unterminatedTcy':

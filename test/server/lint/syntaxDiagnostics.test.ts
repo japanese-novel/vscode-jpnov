@@ -94,7 +94,7 @@ test('a balanced block pair yields no diagnostics', () => {
   );
 });
 
-test('見出し blocks ride the same pairing Warnings; inline 見出し spans stay silent', () => {
+test('見出し blocks ride the same pairing Warnings; the inline pair takes the span codes', () => {
   const un = annotationDiagnostics(doc('［＃ここから大見出し］\n題'));
   assert.equal(un.length, 1);
   assert.deepEqual(un[0]?.data, { code: 'syntax.unterminatedBlock' });
@@ -105,9 +105,39 @@ test('見出し blocks ride the same pairing Warnings; inline 見出し spans st
     annotationDiagnostics(doc('［＃ここから大見出し］\n題\n［＃ここで大見出し終わり］')),
     [],
   );
-  // The inline pair — even an unterminated opener — never warns, exactly like ［＃太字］.
+  // The inline pair pairs like ［＃太字］; an unterminated opener is the inline Warning.
   assert.deepEqual(annotationDiagnostics(doc('［＃大見出し］題［＃大見出し終わり］')), []);
-  assert.deepEqual(annotationDiagnostics(doc('［＃大見出し］題')), []);
+  const sp = annotationDiagnostics(doc('［＃大見出し］題'));
+  assert.equal(sp.length, 1);
+  assert.deepEqual(sp[0]?.data, { code: 'syntax.unterminatedSpan' });
+});
+
+test('an unterminated inline opener and a dangling inline 終わり yield the span Warnings', () => {
+  const un = annotationDiagnostics(doc('本文［＃太字］題'));
+  assert.equal(un.length, 1);
+  const u = un[0];
+  assert.ok(u);
+  assert.equal(u.severity, DiagnosticSeverity.Warning);
+  assert.deepEqual(u.data, { code: 'syntax.unterminatedSpan' });
+  assert.equal(u.message, 'unterminated start/end annotation (missing ［＃…終わり］)');
+  assert.deepEqual(u.range, {
+    start: { line: 0, character: 2 },
+    end: { line: 0, character: 7 }, // ［＃太字］
+  });
+  const dg = annotationDiagnostics(doc('題\n［＃傍点終わり］'));
+  assert.equal(dg.length, 1);
+  const d = dg[0];
+  assert.ok(d);
+  assert.equal(d.severity, DiagnosticSeverity.Warning);
+  assert.deepEqual(d.data, { code: 'syntax.danglingSpanEnd' });
+  assert.equal(d.message, 'end annotation without a matching start');
+  assert.deepEqual(d.range, {
+    start: { line: 1, character: 0 },
+    end: { line: 1, character: 8 }, // ［＃傍点終わり］
+  });
+  // Forms pair by channel, as the render does: neither mixed pair warns.
+  assert.deepEqual(annotationDiagnostics(doc('［＃ここから太字］\n題\n［＃太字終わり］')), []);
+  assert.deepEqual(annotationDiagnostics(doc('［＃太字］題［＃ここで太字終わり］')), []);
 });
 
 test('a same-channel re-open replaces the slot (last-wins) — balanced, no Warning', () => {
@@ -121,7 +151,7 @@ test('a same-channel re-open replaces the slot (last-wins) — balanced, no Warn
   );
 });
 
-test('lexical Errors come first, then block Warnings', () => {
+test('lexical Errors come first, then span Warnings', () => {
   const diags = annotationDiagnostics(doc('［＃ここから太字］\n壊れ［＃こわれ'));
   assert.deepEqual(
     diags.map((d) => d.severity),

@@ -51,6 +51,8 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'syntax.unclosedAnnotation': [],
   'syntax.unterminatedBlock': [],
   'syntax.danglingBlockEnd': [],
+  'syntax.unterminatedSpan': [],
+  'syntax.danglingSpanEnd': [],
   'syntax.postfixTargetMissing': ['対象'],
   'syntax.unterminatedTcy': [],
   'syntax.danglingTcyEnd': [],

@@ -3,9 +3,9 @@
  * compiler's lenient recovery, in two tiers mirroring the damage:
  *   - Lexically broken (an unclosed ［＃, swallowed to its line end and rendered as literal text
  *     by the layout) is an ERROR, like an unterminated string literal in a programming language.
- *   - Structurally unpaired blocks (a ［＃ここから…］ open at EOF, or a ［＃ここで…終わり］ with no
- *     open block) are WARNINGS: every bracket is well-formed and the render stays lenient (EOF
- *     auto-close / dangling no-op), the pairing is just incomplete.
+ *   - Structurally unpaired spans (a start — inline ［＃太字］ or block ［＃ここから…］ — open at EOF,
+ *     or an end with nothing open in its channel) are WARNINGS: every bracket is well-formed and
+ *     the render stays lenient (EOF auto-close / dangling no-op), the pairing is just incomplete.
  * A lone 《 / ］ / 》 is NOT an error (the tokenizer keeps them literal).
  *
  * Unconditional by design: unlike the prose lint (selection-gated Warnings through the lint
@@ -22,16 +22,17 @@ import { findPostfixTargetIssues } from '../shared/compiler/layout.ts';
 import {
   findBrokenAnnotations,
   findTcyIssues,
-  findUnpairedBlocks,
+  findUnpairedSpans,
 } from '../shared/compiler/tokenizer.ts';
 
 import { diagnostic } from './diagnostics.ts';
 
-// findUnpairedBlocks / findTcyIssues return a STRUCTURAL kind, not a protocol code — the
-// tokenizer stays message-code-free. The kind→MsgCode mappings live here, server-side.
-const BLOCK_WARNING_CODE = {
-  unterminated: 'syntax.unterminatedBlock',
-  dangling: 'syntax.danglingBlockEnd',
+// findUnpairedSpans / findTcyIssues return a STRUCTURAL kind, not a protocol code — the
+// tokenizer stays message-code-free. The kind→MsgCode mappings live here, server-side; the span
+// table is keyed by the annotation's own form.
+const SPAN_WARNING_CODE = {
+  block: { unterminated: 'syntax.unterminatedBlock', dangling: 'syntax.danglingBlockEnd' },
+  inline: { unterminated: 'syntax.unterminatedSpan', dangling: 'syntax.danglingSpanEnd' },
 } as const;
 
 const TCY_WARNING_CODE = {
@@ -41,7 +42,7 @@ const TCY_WARNING_CODE = {
 } as const;
 
 /**
- * One Error per unclosed ［＃, then Warnings: unpaired blocks, structural 縦中横 issues, and
+ * One Error per unclosed ［＃, then Warnings: unpaired spans, structural 縦中横 issues, and
  * corner-target postfixes whose target is absent or not unit-aligned (the latter derived by
  * running the layout itself, so the Warning surface always matches the render).
  */
@@ -54,8 +55,12 @@ export function annotationDiagnostics(doc: TextDocument): Diagnostic[] {
   const errors = findBrokenAnnotations(text).map((span) =>
     diagnostic(rangeOf(span), { code: 'syntax.unclosedAnnotation' }, DiagnosticSeverity.Error),
   );
-  const warnings = findUnpairedBlocks(text).map((span) =>
-    diagnostic(rangeOf(span), { code: BLOCK_WARNING_CODE[span.kind] }, DiagnosticSeverity.Warning),
+  const warnings = findUnpairedSpans(text).map((span) =>
+    diagnostic(
+      rangeOf(span),
+      { code: SPAN_WARNING_CODE[span.block ? 'block' : 'inline'][span.kind] },
+      DiagnosticSeverity.Warning,
+    ),
   );
   const tcyWarnings = findTcyIssues(text).map((span) =>
     diagnostic(rangeOf(span), { code: TCY_WARNING_CODE[span.kind] }, DiagnosticSeverity.Warning),

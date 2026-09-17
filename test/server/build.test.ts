@@ -148,6 +148,34 @@ test('a front-matter divider lands between heading-less chapters in BOTH artifac
   assert.match(html.content, /\.midashi\{font-family:sans-serif;font-weight:bold\}/);
 });
 
+test('a span left open at a chapter end is closed at the .txt seam, matching the HTML reset', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, 'vol1/index.jpbook', 'vol1/a.jpnov\nvol1/b.jpnov');
+  await writeUnder(ws.dir, 'vol1/a.jpnov', '［＃太字］あ');
+  await writeUnder(ws.dir, 'vol1/b.jpnov', 'い');
+
+  const txtResult: BuildResult = await handleBuild(ctx, {
+    format: 'txt',
+    settings: SETTINGS,
+    projectDirs: projectsFor(ws.uri),
+  });
+  const txt = txtResult.artifacts[0];
+  assert.ok(txt?.kind === 'txt');
+  assert.equal(txt.content, '［＃太字］あ\n［＃ここで太字終わり］\n\nい');
+
+  // buildRows runs per chapter in the HTML build, so chapter 2 is plain there; the .txt agrees.
+  const htmlResult = await handleBuild(ctx, {
+    format: 'html',
+    settings: SETTINGS,
+    projectDirs: projectsFor(ws.uri),
+  });
+  const html = htmlResult.artifacts[0];
+  assert.ok(html?.kind === 'html');
+  assert.ok(html.content.includes('<span class="b">あ</span>'), 'chapter 1 is bold');
+  assert.ok(html.content.includes('<div class="line" data-line="0">い</div>'), 'chapter 2 opens plain');
+});
+
 test('build stays lenient on an unclosed ［＃: ok, artifacts emitted, tail visible as literal text', async () => {
   // Preview/build cohesion: a syntax error is an EDITOR diagnostic, never a build gate. The
   // swallowed tail must appear verbatim in the HTML (same shared buildRows arm the preview uses).

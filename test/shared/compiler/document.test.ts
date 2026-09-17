@@ -269,6 +269,46 @@ test('concatBookText interleaves the divider; author edge blanks stack literally
   );
 });
 
+/** Chapters that leave a span open, with the exact `.txt` each concatenates to (cpl 8: a ＊ divider
+ *  centres as ［＃３字下げ］＊). The dual-invariant test re-renders every one of these. */
+const SEAM_CASES: readonly [book: BookInput, txt: string][] = [
+  [two('［＃太字］一', '二'), '［＃太字］一\n［＃ここで太字終わり］\n\n二'],
+  [
+    two('［＃ここから２字下げ］\n一', '二', '＊'),
+    '［＃ここから２字下げ］\n一\n［＃ここで字下げ終わり］\n\n［＃３字下げ］＊\n\n二', // closer line, blank, divider
+  ],
+  [two('［＃傍点］一', '二', '＊'), '［＃傍点］一\n［＃傍点終わり］\n［＃３字下げ］＊\n\n二'],
+  [two('［＃大見出し］一', '二'), '［＃大見出し］一\n［＃ここで大見出し終わり］\n\n二'],
+  [two('［＃ここから大見出し］\n一', '二'), '［＃ここから大見出し］\n一\n［＃ここで大見出し終わり］\n\n二'],
+  [
+    // All six channels: the ここで line, then the inline remainder on the blank line.
+    two('［＃ここから２字下げ］\n［＃ここから太字］\n［＃ここから斜体］\n［＃ここから中見出し］\n［＃左に傍点］［＃傍線］一', '二'),
+    '［＃ここから２字下げ］\n［＃ここから太字］\n［＃ここから斜体］\n［＃ここから中見出し］\n［＃左に傍点］［＃傍線］一\n' +
+      '［＃ここで字下げ終わり］［＃ここで太字終わり］［＃ここで斜体終わり］［＃ここで中見出し終わり］\n［＃左に傍点終わり］［＃傍線終わり］\n二',
+  ],
+  [two('［＃太字］一\n\n', '二'), '［＃太字］一\n\n［＃ここで太字終わり］\n\n二'], // the author's blank stays first
+  [two('［＃太字］一\n［＃改ページ］', '二', '＊'), '［＃太字］一\n［＃改ページ］\n［＃ここで太字終わり］\n\n二'], // divider suppressed
+  [
+    two('［＃傍点］一', '第二章［＃「第二章」は大見出し］\n本文', '＊'),
+    '［＃傍点］一\n［＃傍点終わり］\n第二章［＃「第二章」は大見出し］\n本文',
+  ],
+  [two('［＃太字］第［＃縦中横］12', '二'), '［＃太字］第［＃縦中横］12\n［＃ここで太字終わり］\n\n二'], // the cell flushes bold first
+  [two('［＃傍点］一［＃白ゴマ傍点］二', '三'), '［＃傍点］一［＃白ゴマ傍点］二\n［＃白ゴマ傍点終わり］\n三'], // the surviving variant
+  [two('［＃ここから太字］', '二'), '［＃ここから太字］\n［＃ここで太字終わり］\n\n二'],
+  [two('［＃太字］一［＃太字終わり］', '二'), '［＃太字］一［＃太字終わり］\n\n二'], // closed: untouched
+  [two('［＃太字］一\r\n', '二\r\n'), '［＃太字］一\r\n［＃ここで太字終わり］\r\n\r\n二'],
+  [
+    book({ files: [{ name: 'a.jpnov', src: '［＃太字］一' }, { name: 'b.jpnov', src: '二' }, { name: 'c.jpnov', src: '［＃斜体］三' }] }),
+    '［＃太字］一\n［＃ここで太字終わり］\n\n二\n\n［＃斜体］三', // the last chapter ends the book, not a seam
+  ],
+];
+
+test('concatBookText closes the spans a chapter leaves open at the seam (txt follows HTML)', () => {
+  for (const [b, txt] of SEAM_CASES) {
+    assert.equal(concatBookText(b, 'none', 8), txt);
+  }
+});
+
 test('renderBook inserts the divider line + one blank as synthetic (anchor-less) rows', () => {
   const html = renderBook({
     books: [two('第一', '第二', '＊')],
@@ -316,6 +356,7 @@ test('dual invariant: per-file render + glue == rendering the concatenated .txt'
     two('あ', 'か'), // no divider configured
     two('あ', 'か', '［＃３字下げ］◇'), // indented divider
     two('あ\r\n\r\nい\r\n', 'か\r\n', '＊'), // CRLF chapters
+    ...SEAM_CASES.map(([b]) => b), // spans left open at a seam (closed by concatBookText)
   ];
   const strip = (h: string): string => bodyOf(h).replace(/ data-line="\d+"/g, '');
   for (const b of matrix) {

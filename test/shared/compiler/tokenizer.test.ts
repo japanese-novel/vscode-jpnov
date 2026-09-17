@@ -1,13 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  closingAnnotation,
   findBrokenAnnotations,
   findTcyIssues,
-  findUnpairedBlocks,
+  findUnpairedSpans,
   splitLines,
   tokenize,
+  unterminatedOpeners,
   VALUE_NAMES,
   valueAnnotation,
+  type SpanOpener,
   type Token,
 } from '../../../src/shared/compiler/tokenizer.ts';
 import { buildRows } from '../../../src/shared/compiler/layout.ts';
@@ -575,75 +578,132 @@ test('findTcyIssues: an inner ruby raw joins the cell literally and counts as co
   ]);
 });
 
-// --------------------------------------------------------------- findUnpairedBlocks
+// --------------------------------------------------------------- findUnpairedSpans
 
-test('findUnpairedBlocks flags an unterminated ここから over the start annotation', () => {
-  assert.deepEqual(findUnpairedBlocks('［＃ここから２字下げ］\nA'), [
-    { start: 0, end: 11, kind: 'unterminated' },
+test('findUnpairedSpans flags an unterminated ここから over the start annotation', () => {
+  assert.deepEqual(findUnpairedSpans('［＃ここから２字下げ］\nA'), [
+    { start: 0, end: 11, kind: 'unterminated', block: true },
   ]);
 });
 
-test('findUnpairedBlocks flags a dangling ここで…終わり over the end annotation', () => {
-  assert.deepEqual(findUnpairedBlocks('A\n［＃ここで字下げ終わり］'), [
-    { start: 2, end: 14, kind: 'dangling' },
+test('findUnpairedSpans flags a dangling ここで…終わり over the end annotation', () => {
+  assert.deepEqual(findUnpairedSpans('A\n［＃ここで字下げ終わり］'), [
+    { start: 2, end: 14, kind: 'dangling', block: true },
   ]);
 });
 
-test('findUnpairedBlocks: balanced pairs and cross-channel overlap are clean', () => {
-  assert.deepEqual(findUnpairedBlocks('［＃ここから太字］\nA\n［＃ここで太字終わり］'), []);
+test('findUnpairedSpans: balanced pairs and cross-channel overlap are clean', () => {
+  assert.deepEqual(findUnpairedSpans('［＃ここから太字］\nA\n［＃ここで太字終わり］'), []);
   assert.deepEqual(
-    findUnpairedBlocks(
+    findUnpairedSpans(
       '［＃ここから２字下げ］\n［＃ここから太字］\nA\n［＃ここで太字終わり］\n［＃ここで字下げ終わり］',
     ),
     [],
   );
 });
 
-test('findUnpairedBlocks: a same-channel re-open replaces the slot (last-wins, no warning)', () => {
+test('findUnpairedSpans: a same-channel re-open replaces the slot (last-wins, no warning)', () => {
   assert.deepEqual(
-    findUnpairedBlocks('［＃ここから２字下げ］\n［＃ここから４字下げ］\nA\n［＃ここで字下げ終わり］'),
+    findUnpairedSpans('［＃ここから２字下げ］\n［＃ここから４字下げ］\nA\n［＃ここで字下げ終わり］'),
     [],
   );
 });
 
-test('findUnpairedBlocks: only a SECOND end of the same channel dangles', () => {
+test('findUnpairedSpans: only a SECOND end of the same channel dangles', () => {
   assert.deepEqual(
-    findUnpairedBlocks('［＃ここから太字］\nA\n［＃ここで太字終わり］\n［＃ここで太字終わり］'),
-    [{ start: 24, end: 35, kind: 'dangling' }],
+    findUnpairedSpans('［＃ここから太字］\nA\n［＃ここで太字終わり］\n［＃ここで太字終わり］'),
+    [{ start: 24, end: 35, kind: 'dangling', block: true }],
   );
 });
 
-test('findUnpairedBlocks: inline spans never participate in block pairing', () => {
-  assert.deepEqual(findUnpairedBlocks('［＃太字］A'), []);
-  assert.deepEqual(findUnpairedBlocks('［＃太字］A［＃ここで太字終わり］'), [
-    { start: 6, end: 17, kind: 'dangling' },
-  ]);
-  assert.deepEqual(findUnpairedBlocks('［＃大見出し］A'), []);
+test('findUnpairedSpans: inline spans pair per channel, whatever the form (as the render does)', () => {
+  // An unterminated inline opener is the inline Warning (block: false picks its message).
+  assert.deepEqual(findUnpairedSpans('［＃太字］A'), [{ start: 0, end: 5, kind: 'unterminated', block: false }]);
+  assert.deepEqual(findUnpairedSpans('［＃大見出し］A'), [{ start: 0, end: 7, kind: 'unterminated', block: false }]);
+  // Mixed forms pair: the render clears the channel whichever form the end takes.
+  assert.deepEqual(findUnpairedSpans('［＃太字］A［＃ここで太字終わり］'), []);
+  assert.deepEqual(findUnpairedSpans('［＃ここから太字］\nA\n［＃太字終わり］'), []);
+  assert.deepEqual(findUnpairedSpans('［＃傍点］A［＃傍点終わり］'), []);
 });
 
-test('findUnpairedBlocks: 見出し blocks ride their own channel', () => {
-  assert.deepEqual(findUnpairedBlocks('［＃ここから大見出し］\nA'), [
-    { start: 0, end: 11, kind: 'unterminated' },
+test('findUnpairedSpans: a dangling inline 終わり warns; channels pair, not variants', () => {
+  assert.deepEqual(findUnpairedSpans('A［＃傍点終わり］'), [{ start: 1, end: 9, kind: 'dangling', block: false }]);
+  // Same channel, another variant: one slot, so it pairs.
+  assert.deepEqual(findUnpairedSpans('［＃傍点］A［＃白ゴマ傍点終わり］'), []);
+  // The left-side spelling resolves through the span form's bare 左に.
+  assert.deepEqual(findUnpairedSpans('［＃左に傍点］A［＃傍点終わり］'), []);
+  // Another channel: the opener stays unterminated AND the end dangles.
+  assert.deepEqual(findUnpairedSpans('［＃傍点］A［＃傍線終わり］'), [
+    { start: 0, end: 5, kind: 'unterminated', block: false },
+    { start: 6, end: 14, kind: 'dangling', block: false },
   ]);
-  assert.deepEqual(findUnpairedBlocks('A\n［＃ここで大見出し終わり］'), [
-    { start: 2, end: 15, kind: 'dangling' },
+  // 縦中横 is line-local: findTcyIssues owns it.
+  assert.deepEqual(findUnpairedSpans('［＃縦中横］12'), []);
+});
+
+test('findUnpairedSpans: 見出し blocks ride their own channel', () => {
+  assert.deepEqual(findUnpairedSpans('［＃ここから大見出し］\nA'), [
+    { start: 0, end: 11, kind: 'unterminated', block: true },
+  ]);
+  assert.deepEqual(findUnpairedSpans('A\n［＃ここで大見出し終わり］'), [
+    { start: 2, end: 15, kind: 'dangling', block: true },
   ]);
   assert.deepEqual(
-    findUnpairedBlocks('［＃ここから大見出し］\nA\n［＃ここで大見出し終わり］'),
+    findUnpairedSpans('［＃ここから大見出し］\nA\n［＃ここで大見出し終わり］'),
     [],
   );
   // Cross-channel overlap with 字下げ is clean; all three levels share the ONE heading
   // channel, so a re-open is a level change and a mismatched-level end still pairs.
   assert.deepEqual(
-    findUnpairedBlocks(
+    findUnpairedSpans(
       '［＃ここから２字下げ］\n［＃ここから大見出し］\nA\n［＃ここで大見出し終わり］\n［＃ここで字下げ終わり］',
     ),
     [],
   );
   assert.deepEqual(
-    findUnpairedBlocks('［＃ここから大見出し］\n［＃ここから中見出し］\nA\n［＃ここで小見出し終わり］'),
+    findUnpairedSpans('［＃ここから大見出し］\n［＃ここから中見出し］\nA\n［＃ここで小見出し終わり］'),
     [],
   );
+});
+
+// --------------------------------------------------------------- unterminatedOpeners / closingAnnotation
+
+/** The one opener `src` leaves open (each source below opens exactly one channel). */
+const openerOf = (src: string): SpanOpener => {
+  const openers = unterminatedOpeners(src);
+  assert.equal(openers.length, 1);
+  const first = openers[0];
+  assert.ok(first);
+  return first;
+};
+
+test('unterminatedOpeners: survivors in channel order; a re-open supersedes; an end clears', () => {
+  const six =
+    '［＃ここから２字下げ］\n［＃ここから太字］\n［＃ここから斜体］\n［＃ここから中見出し］\n［＃左に傍点］［＃傍線］一';
+  assert.deepEqual(
+    unterminatedOpeners(six).map((t) => t.raw),
+    ['［＃ここから２字下げ］', '［＃ここから太字］', '［＃ここから斜体］', '［＃ここから中見出し］', '［＃左に傍点］', '［＃傍線］'],
+  );
+  assert.equal(openerOf('［＃傍点］一［＃白ゴマ傍点］二').raw, '［＃白ゴマ傍点］');
+  assert.deepEqual(unterminatedOpeners('［＃太字］一［＃太字終わり］'), []);
+  assert.deepEqual(unterminatedOpeners('［＃縦中横］12'), []);
+});
+
+test('closingAnnotation: the ここで form wherever the channel has one, the inline form for 傍点/傍線', () => {
+  const cases: readonly [opener: string, text: string, block: boolean][] = [
+    ['［＃ここから２字下げ］', '［＃ここで字下げ終わり］', true],
+    ['［＃太字］', '［＃ここで太字終わり］', true],
+    ['［＃ここから斜体］', '［＃ここで斜体終わり］', true],
+    ['［＃中見出し］', '［＃ここで中見出し終わり］', true],
+    ['［＃ここから小見出し］', '［＃ここで小見出し終わり］', true],
+    ['［＃左に傍点］', '［＃左に傍点終わり］', false],
+    ['［＃波線］', '［＃波線終わり］', false],
+  ];
+  for (const [opener, text, block] of cases) {
+    assert.deepEqual(closingAnnotation(openerOf(opener)), { text, block });
+    // Self-consistency: the closer re-tokenizes to the end that pairs this opener.
+    assert.deepEqual(findUnpairedSpans(`${opener}\n${text}`), []);
+  }
 });
 
 // --------------------------------------------------------------- splitLines
