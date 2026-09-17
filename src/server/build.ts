@@ -4,6 +4,8 @@
  *   is a book (dot-folders, `node_modules` and the resolved output dir are never scanned);
  * - two book files that derive the same output path (`jpbookOutRel`) are a build error and
  *   neither is emitted;
+ * - a `.jpbook` with an Error line is that book's build error (the first such line's message);
+ *   the book is never built partially;
  * - `.jpbook` entries resolve against the WORKSPACE FOLDER ROOT (the same base the live editor
  *   features use), and page furniture comes from each book's OWN front matter
  *   (`composeBookChrome`), so one batch build carries a different header per volume;
@@ -18,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken, WorkDoneProgressReporter } from 'vscode-languageserver/node';
 
-import { composeBookChrome, coverPathOf, jpbookOutRel, parseJpbook } from '#/shared/book/jpbook.ts';
+import { composeBookChrome, coverPathOf, firstErrorOf, jpbookOutRel, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedLine } from '#/shared/book/jpbook.ts';
 import { concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { BookInput } from '#/shared/compiler/document.ts';
@@ -128,10 +130,10 @@ async function* walkJpbooks(dirUri: string, dirPath: string, dirRel: string, out
 
 /**
  * Reads the `ok` entries of one parsed `.jpbook` in order (skipping blank/front-matter/
- * duplicate/error lines), each resolved relative to the WORKSPACE FOLDER ROOT and read
- * through the client, into the shape {@link renderBook} consumes. Throws on the first escaping/
- * unreadable/missing entry so the caller can convert it into a per-book build error (the
- * diagnostic is published separately).
+ * duplicate lines; an Error line has already failed the book in {@link buildRoot}), each
+ * resolved relative to the WORKSPACE FOLDER ROOT and read through the client, into the shape
+ * {@link renderBook} consumes. Throws on the first escaping/unreadable/missing entry so the
+ * caller can convert it into a per-book build error (the diagnostic is published separately).
  */
 async function readBookFiles(
   ctx: ServerContext,
@@ -284,8 +286,9 @@ function emitArtifact(
  * book order. `selection.books` (when set) restricts WHICH books are built, but the
  * output-path collision map is still computed over ALL of them — a selected book that
  * collides with an UNSELECTED one still errors, so a later full build can never silently
- * clobber it. A throw while compiling one book is that book's own failure: it becomes the
- * book's error and the remaining books still build.
+ * clobber it. A manifest with an Error line fails before any chapter is read. A throw while
+ * compiling one book is that book's own failure: it becomes the book's error and the
+ * remaining books still build.
  */
 async function* buildRoot(
   ctx: ServerContext,
@@ -327,10 +330,17 @@ async function* buildRoot(
       }
 
       void ctx.connection.sendDiagnostics({ uri: fl.uri, diagnostics: lineDiags });
+      // An Error line fails the book whatever the format; the first one is the root cause (an
+      // unclosed front matter reports its fence, not the chapter lines it swallowed).
+      const lineError = firstErrorOf(parsed.lines);
+      if (lineError !== null) {
+        yield { kind: 'error', error: { book: fl.fileRel, uri: fl.uri, ...lineError } };
+        continue;
+      }
       // The divider and the タイトル／ペンネーム values are BODY-side inputs and ride the
       // BookInput (the title fallback is the EPUB dc:title rule); composeBookChrome carries
-      // only the page furniture. Covers are html-only, so a broken cover reference cannot fail
-      // a txt/epub build; chapters read first, so a book missing both reports the same error
+      // only the page furniture. Covers are html-only, so a missing cover file cannot fail a
+      // txt/epub build; chapters read first, so a book missing both reports the same error
       // whichever format is built.
       const bookFiles = await readBookFiles(ctx, target.rootUri, parsed.lines, token);
       const coverFiles = selection.format === 'html' ? await readCoverFiles(ctx, target.rootUri, parsed.lines, token) : [];

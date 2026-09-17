@@ -7,6 +7,7 @@ import {
   composeDividerValue,
   COVER_ITEM_MARKS,
   coverPathOf,
+  firstErrorOf,
   FRONT_MATTER_KEYS,
   isCover,
   jpbookOutRel,
@@ -346,6 +347,31 @@ test('metaRegionOf: closed block, unterminated block, and no block', () => {
   assert.deepEqual(metaRegionOf(parseJpbook('\n---\ntitle: t').lines), { open: 1, close: null });
   assert.equal(metaRegionOf(parseJpbook('a.jpnov').lines), null);
   assert.equal(metaRegionOf(parseJpbook('').lines), null);
+});
+
+// --- firstErrorOf ------------------------------------------------------------
+
+test('firstErrorOf: null for an empty manifest and for one with only warnings and duplicates', () => {
+  assert.equal(firstErrorOf(parseJpbook('').lines), null);
+  const tolerated = '---\npublisher: x\ntitle: a\ntitle: b\nfooterAlign: bad\n---\na.jpnov\na.jpnov';
+  assert.equal(firstErrorOf(parseJpbook(tolerated).lines), null);
+});
+
+test('firstErrorOf: the first Error line in document order (the root cause, not its cascade)', () => {
+  // An unterminated block reports its patched fence, not the chapter lines it swallowed.
+  assert.deepEqual(firstErrorOf(parseJpbook('---\ntitle: t\na.jpnov\nb.jpnov').lines), {
+    code: 'jpbook.metaUnterminated',
+    args: [],
+  });
+  assert.deepEqual(firstErrorOf(parseJpbook('a.jpnov\nb.txt\nc\\d.jpnov').lines), {
+    code: 'jpbook.notJpnov',
+    args: ['b.txt'],
+  });
+  // A `cover: value` line comes before the orphan items it leaves behind.
+  assert.deepEqual(firstErrorOf(parseJpbook('---\ncover: x.jpnov\n- y.jpnov\n---\na.jpnov').lines), {
+    code: 'jpbook.coverNeedsList',
+    args: ['cover: x.jpnov'],
+  });
 });
 
 // --- composeBookChrome --------------------------------------------------------
