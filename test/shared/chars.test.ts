@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { composeKana } from '../../src/shared/chars.ts';
+import { composeKana, isCombiningKanaMark } from '../../src/shared/chars.ts';
 
 const MARKS = ['\u3099', '\u309A'] as const;
 
@@ -56,4 +56,11 @@ test('composes in context, by code point, one pair at a time', () => {
   assert.equal(composeKana('\u304B\u3099\u3099'), 'が\u3099');
   assert.equal(composeKana('\u306F\u3099\u309A'), 'ば\u309A');
   assert.equal(composeKana('\u304B\u3099\u0301'), 'が\u0301');
+});
+
+test('isCombiningKanaMark: the two combining marks only — not the spacing or half-width forms', () => {
+  assert.ok(isCombiningKanaMark(0x3099) && isCombiningKanaMark(0x309a));
+  for (const cp of [0x309b, 0x309c, 0xff9e, 0xff9f, 0x0301, 0x3098, 0x304b]) {
+    assert.equal(isCombiningKanaMark(cp), false, cp.toString(16));
+  }
 });

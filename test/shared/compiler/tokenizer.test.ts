@@ -882,3 +882,16 @@ test('findTcyIssues: a CRLF \\r is neither content nor inside the range', () => 
     { start: 6, end: 10, kind: 'tooLong' },
   ]);
 });
+
+// --------------------------------------------------------------- NFD kana (#125)
+
+test('findTcyIssues counts composed kana like the render: an NFD pair is one code point', () => {
+  const D = '\u3099';
+  const spanned = (content: string): string => `［＃縦中横］${content}［＃縦中横終わり］`;
+  // Relational, so the threshold stays a private tuning value; a comment inside splits nothing.
+  assert.deepEqual(findTcyIssues(spanned(`か${D}きく`)), findTcyIssues(spanned('がきく')));
+  assert.deepEqual(findTcyIssues(spanned(`か［＃x］${D}きく`)), findTcyIssues(spanned('が［＃x］きく')));
+  assert.deepEqual(findTcyIssues(`か${D}きく［＃「か${D}きく」は縦中横］`), []);
+  // Over the limit the range stays in SOURCE offsets — the decomposed mark counts there.
+  assert.deepEqual(findTcyIssues(spanned(`か${D}きくけ`)), [{ start: 6, end: 6 + `か${D}きくけ`.length, kind: 'tooLong' }]);
+});

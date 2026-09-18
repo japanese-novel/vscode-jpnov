@@ -13,7 +13,7 @@
  * ぶら下げ of a trailing 句読点, then the leftward 追い出し nudge of the break point.
  * ［＃改ページ］ forces a new page.
  */
-import { DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../chars.ts';
+import { composeKana, DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../chars.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
 import type { BuildChrome, FooterAlign } from './chrome.ts';
 import { resolveStyle } from './emphasis.ts';
@@ -33,7 +33,10 @@ type PostfixToken = Extract<
 export interface Unit {
   cells: number;
   html: string;
-  /** Plain text for postfix-emphasis matching; '' for zero-width units (comments). */
+  /**
+   * Plain text for postfix-emphasis matching; '' for zero-width units (comments). Kana are
+   * composed ({@link composeKana}): the displayed form, never a source slice.
+   */
   text: string;
   /**
    * Space-separated on-demand stylesheet classes baked inside `html` (tcy / rr / lr / br /
@@ -43,7 +46,8 @@ export interface Unit {
   cssClass?: string | undefined;
   /**
    * Structured readings for a ruby unit — `html` is regenerated from this when a 左ルビ later
-   * attaches a left reading, so the pre-baked html never needs re-parsing.
+   * attaches a left reading, so the pre-baked html never needs re-parsing. Base and readings are
+   * composed like `text`.
    */
   ruby?: { base: string; right?: string | undefined; left?: string | undefined } | undefined;
   // Four INDEPENDENT presentation channels. Field name == emphasis.ts Channel, so a resolved
@@ -356,7 +360,9 @@ function applyPostfix(
  * the Warnings can never disagree with what was applied. `opts.values` supplies the
  * ［＃ここに「…」の値を表示］ substitutions by name (the html build's cover compile); a name it
  * lacks, or an omitted map, renders the name itself ({@link valueOf}) — so `Unit.text`
- * carries the SUBSTITUTED characters for these units.
+ * carries the SUBSTITUTED characters for these units. Every unit's text (prose, ruby base and
+ * readings, 縦中横 content, postfix targets) is composed by {@link composeKana} HERE, so an NFD
+ * kana takes one cell; the tokens stay verbatim for the offset-accumulating consumers.
  */
 export function buildRows(
   tokens: readonly Token[],
@@ -405,9 +411,9 @@ export function buildRows(
   // wins, as everywhere), filled in from the base units for a span closed inside the base — the
   // unit is atomic, so a span touching any of the base marks the whole ruby.
   const rubyUnit = (base: string, right: string, baseUnits: readonly Unit[]): Unit => {
-    const ruby = { base, right };
+    const ruby = { base: composeKana(base), right: composeKana(right) };
     const cells = rubyCells(ruby); // safe whole-cell advance; the settle pass may tighten
-    const u = mk(cells, '', base);
+    const u = mk(cells, '', ruby.base);
     for (const b of baseUnits) {
       u.emph ??= b.emph;
       u.line ??= b.line;
@@ -429,21 +435,22 @@ export function buildRows(
         : (): void => {
             issues.push(ti);
           };
+    const target = composeKana(token.target); // match in the units' composed form
     switch (token.kind) {
       case 'rubyLeftPostfix':
-        applyLeftRuby(cur, token.target, token.reading, token.raw, miss);
+        applyLeftRuby(cur, target, composeKana(token.reading), token.raw, miss);
         break;
       case 'emphasisPostfix':
-        applyPostfix(cur, token.target, token.variant, token.raw, miss);
+        applyPostfix(cur, target, token.variant, token.raw, miss);
         break;
       case 'tcyPostfix':
-        applyTcyPostfix(cur, token.target, token.raw, miss);
+        applyTcyPostfix(cur, target, token.raw, miss);
         break;
       case 'headingPostfix':
         // Line-level effect: a resolved target marks THIS logical line as a heading. Binding
         // shares {@link matchTarget} so postfix semantics/diagnostics never diverge; a miss
         // degrades + reports exactly like the unit-level appliers.
-        if (matchTarget(cur, token.target) !== null) {
+        if (matchTarget(cur, target) !== null) {
           curHeading = token.level;
         } else {
           miss?.();
@@ -470,7 +477,8 @@ export function buildRows(
   const flushTcy = (): void => {
     if (tcyBuf !== null) {
       if (tcyBuf !== '') {
-        const u = mk(1, `<span class="tcy">${escapeHtml(tcyBuf)}</span>`, tcyBuf);
+        const text = composeKana(tcyBuf); // the whole buffer: a pair split by a comment composes too
+        const u = mk(1, `<span class="tcy">${escapeHtml(text)}</span>`, text);
         u.cssClass = 'tcy';
         cur.push(u);
       }
@@ -565,7 +573,7 @@ export function buildRows(
           if (tcyBuf !== null) {
             tcyBuf += part;
           } else {
-            for (const ch of part) {
+            for (const ch of composeKana(part)) {
               // 縦中横 and ルビ cells build their own html — a dash inside one stays the source glyph.
               cur.push(textUnit(ch));
             }
@@ -588,7 +596,7 @@ export function buildRows(
         const baseUnits = cur.splice(start);
         const base = baseUnits.map((b) => b.text).join('');
         if (base === '') {
-          for (const ch of raw + token.raw) {
+          for (const ch of composeKana(raw + token.raw)) {
             cur.push(textUnit(ch)); // nothing visible (an empty value): the markup prints as typed
           }
         } else {
@@ -676,7 +684,7 @@ export function buildRows(
         // Unclosed ［＃… (swallowed to its line end): visible literal text, so the preview/build
         // never silently drop prose — the editor diagnostic is the error surface. raw never
         // contains a line break, so no endLine handling is needed here.
-        for (const ch of token.raw) {
+        for (const ch of composeKana(token.raw)) {
           cur.push(mk(1, escapeHtml(ch), ch));
         }
         break;
@@ -692,7 +700,7 @@ export function buildRows(
           tcyBuf += substituted;
           break;
         }
-        for (const ch of substituted) {
+        for (const ch of composeKana(substituted)) {
           cur.push(textUnit(ch));
         }
         break;

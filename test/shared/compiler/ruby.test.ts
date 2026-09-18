@@ -88,3 +88,28 @@ test('片仮名: the 中黒 ・ is a 記号 and ends the run (whole-name rubies 
     rest: 'バッファロー・',
   });
 });
+
+// --------------------------------------------------------- NFD kana (#125)
+
+const D = '\u3099'; // combining 濁点
+const H = '\u309A'; // combining 半濁点
+
+test('NFD: a combining mark that composes with the kana before it joins that kana\'s run', () => {
+  assert.deepEqual(detectImplicitBase(`カ${D}ラス`), { base: `カ${D}ラス`, rest: '' });
+  assert.deepEqual(detectImplicitBase(`王都カ${D}ラス`), { base: `カ${D}ラス`, rest: '王都' });
+  assert.deepEqual(detectImplicitBase(`聖剣か${D}`), { base: `か${D}`, rest: '聖剣' });
+  assert.deepEqual(detectImplicitBase(`は${H}`), { base: `は${H}`, rest: '' });
+  assert.deepEqual(detectImplicitBase(`ウ${D}`), { base: `ウ${D}`, rest: '' });
+});
+
+test('NFD: a mark that composes nothing is no base character, exactly as before', () => {
+  const marks = [D, `あ${D}`, `ー${D}`, `カー${D}`, `ヶ${D}`, `々${D}`, `Ａ${D}`, `\uFF76${D}`, `か${D}${D}`, `が${D}`, `ゝ${D}`];
+  for (const s of marks) {
+    assert.deepEqual(detectImplicitBase(s), { base: '', rest: s }, JSON.stringify(s));
+  }
+});
+
+test('NFD: the implicit ruby token keeps the source spelling — the layout composes, the tokenizer never does', () => {
+  const src = `カ${D}ラス《か${D}らす》`;
+  assert.deepEqual(tokenize(src), [{ kind: 'rubyImplicit', raw: src, base: `カ${D}ラス`, reading: `か${D}らす` }]);
+});
