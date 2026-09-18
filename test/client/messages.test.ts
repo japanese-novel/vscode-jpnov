@@ -57,6 +57,8 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'syntax.unterminatedTcy': [],
   'syntax.danglingTcyEnd': [],
   'syntax.tcyTooLong': [],
+  'syntax.rubyBaseMissing': ['よみ'],
+  'syntax.rubyReadingEmpty': [],
   'lint.common.sentenceLength': [],
   'lint.common.maxTen': [],
   'lint.common.maxKanjiRun': [],

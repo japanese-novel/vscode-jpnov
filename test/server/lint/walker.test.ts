@@ -366,3 +366,29 @@ test('extents are per line: an opener never reaches the next line; CRLF and astr
   assert.deepEqual(outer(astral, 0), [['　彼は𠮷', '　彼は𠮷《よし》']]);
   assert.deepEqual(outer(astral, 1), [['次', '次']]);
 });
+
+test('a ｜ base holding annotations: its pieces sit inside ｜…《》, the last one takes the reading', () => {
+  const postfix = '｜山田［＃「山田」に傍点］《やまだ》';
+  assert.deepEqual(outer(postfix), [['山田', postfix]]);
+  const split = 'あ｜山田［＃x］太郎《やまだたろう》は';
+  assert.deepEqual(outer(split), [
+    ['あ', 'あ'],
+    ['山田', '｜山田'],
+    ['太郎', '太郎《やまだたろう》'],
+    ['は', 'は'],
+  ]);
+  const [l] = lines(split);
+  assert.ok(l);
+  assert.deepEqual(l.pieces.map((p) => p.rubyBase), [false, false, true, false]);
+  assert.deepEqual(l.rubies, [{ text: 'やまだたろう', srcStart: split.indexOf('やまだたろう') }]);
+  // A base of no prose (a value field alone) drops its ｜: the next piece does not inherit it.
+  assert.deepEqual(outer('｜［＃ここに「タイトル」の値を表示］《たいとる》は'), [['は', 'は']]);
+});
+
+test('a ｜ base of no prose passes nothing on; an opener inside the base belongs to the ruby', () => {
+  assert.deepEqual(outer('あ｜［＃ここに「タイトル」の値を表示］《た》は'), [['あ', 'あ'], ['は', 'は']]);
+  assert.deepEqual(outer('｜山田［＃傍点］《やまだ》太郎［＃傍点終わり］'), [
+    ['山田', '｜山田［＃傍点］《やまだ》'],
+    ['太郎', '太郎［＃傍点終わり］'],
+  ]);
+});

@@ -33,6 +33,7 @@ export function materializeAutoTcy(src: string): string {
   const tokens = tokenize(src);
   let out = '';
   let inSpan = false; // inside a manual ［＃縦中横］ … (終わり or line end)
+  let inBase = false; // inside a ｜ base (its text is a ruby base, not body text)
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
     if (token === undefined) {
@@ -42,7 +43,11 @@ export function materializeAutoTcy(src: string): string {
       inSpan = true;
     } else if (token.kind === 'tcySpanEnd') {
       inSpan = false;
-    } else if (token.kind === 'text') {
+    } else if (token.kind === 'rubyStart') {
+      inBase = true;
+    } else if (token.kind === 'rubyEnd') {
+      inBase = false;
+    } else if (token.kind === 'text' && !inBase) {
       // A pair at the very end of this token may already be covered by an immediately
       // following postfix — the exact shape this pass emits (idempotency).
       const next = tokens[i + 1];

@@ -57,6 +57,8 @@ test('E10: full-width ！？ never trigger (half-width 0x21/0x3F only)', () => {
 test('E11: a pair serving as a ruby base or reading is not body text — untouched', () => {
   const explicitBase = '｜!?《はてな》';
   assert.equal(materializeAutoTcy(explicitBase), explicitBase);
+  const heldBase = '｜!?［＃x］《はてな》'; // a ｜ base holding an annotation is a base all the same
+  assert.equal(materializeAutoTcy(heldBase), heldBase);
   const insideReading = '漢《!?》';
   assert.equal(materializeAutoTcy(insideReading), insideReading);
 });

@@ -237,7 +237,7 @@
     "ruby": {
       "patterns": [
         {
-          "comment": "Ruby reading 《…》 incl. both brackets — greyed like the semantic marker; the base (親文字) before it keeps the default foreground. Empty 《》 / a lone 《 are left default (the tokenizer treats them literally).",
+          "comment": "Ruby reading 《…》 incl. both brackets — greyed like the semantic marker; the base (親文字) before it keeps the default foreground. Empty 《》 / a lone 《 are left default (the tokenizer treats them literally). A reading with no base before it is literal in the tokenizer too but stays greyed by this context-free rule; the server's syntax Warnings mark it and the empty 《》 (syntax.rubyBaseMissing, syntax.rubyReadingEmpty).",
           "match": "《[^》]+》",
           "name": "comment.other.ruby.jpnov"
         },

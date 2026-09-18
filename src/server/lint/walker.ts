@@ -39,16 +39,17 @@ import type { LintLine, Piece, ProseUnit, ProseView, RubyReading } from './types
  *  neither kanji nor kana by the tokenizer, so it cannot trip a run/width rule. */
 const SENTINEL = '〇';
 
-/** What a token does to the outer extents: `open` wraps the piece after it; `attach` (a postfix,
- *  a value field) extends the piece before it; `close` (a span end) does too unless its own opener
- *  is still pending; `reading` (an implicit ruby's 《…》) extends it and marks a ruby base; `ruby`
- *  (an explicit ｜…《…》) opens at the ｜ as well; `neutral` binds nothing (a line-head ［＃N字下げ］
- *  must stay at the head). Exhaustive: a new token kind is a compile error. */
-type ExtentRole = 'open' | 'close' | 'attach' | 'reading' | 'ruby' | 'neutral';
+/** What a token does to the outer extents: `open` wraps the piece after it (a span start, a
+ *  ruby's ｜); `attach` (a postfix, a value field) extends the piece before it; `close` (a span end)
+ *  does too unless its own opener is still pending; `reading` (a ruby's 《…》) extends it and marks
+ *  a ruby base; `neutral` binds nothing (a line-head ［＃N字下げ］ must stay at the head).
+ *  Exhaustive: a new token kind is a compile error. */
+type ExtentRole = 'open' | 'close' | 'attach' | 'reading' | 'neutral';
 const EXTENT_ROLE: Record<Token['kind'], ExtentRole> = {
   text: 'neutral',
-  rubyExplicit: 'ruby',
   rubyImplicit: 'reading',
+  rubyStart: 'open',
+  rubyEnd: 'reading',
   rubyLeftPostfix: 'attach',
   emphasisPostfix: 'attach',
   emphasisSpanStart: 'open',
@@ -68,10 +69,15 @@ const EXTENT_ROLE: Record<Token['kind'], ExtentRole> = {
   valueField: 'attach',
 };
 
+/** The pending key of a ruby's ｜, dropped by its 《reading》 (see LineBuilder.reading). */
+const RUBY_KEY = 'ruby';
+
 /** The pairing key of an opener or span end: emphasis by variant, one slot for the heading levels,
- *  one for 縦中横; a ruby's ｜ opens a key nothing closes. */
+ *  one for 縦中横, {@link RUBY_KEY} for a ruby's ｜. */
 function spanKey(token: Token): string {
   switch (token.kind) {
+    case 'rubyStart':
+      return RUBY_KEY;
     case 'emphasisSpanStart':
     case 'emphasisSpanEnd':
       return `emphasis:${token.variant}`;
@@ -152,10 +158,16 @@ class LineBuilder {
     }
   }
 
-  /** A ruby reading ending at `end`: its base was just pushed, so it always attaches. */
+  /** A ruby's 《reading》 ending at `end`: the base's last piece takes it. A ｜ still pending means
+   *  no piece opened inside the base (a value field alone), so nothing takes it; whatever else is
+   *  pending was opened inside the base and belongs to the ruby, never to the piece after it. */
   reading(end: number): void {
-    this.attach(end);
-    this.curRubyBase = true;
+    const unopened = this.pending.delete(RUBY_KEY);
+    this.pending.clear();
+    if (!unopened && this.curText !== '') {
+      this.curAfter = end;
+      this.curRubyBase = true;
+    }
   }
 
   /** A span end at `end` ends its own pending opener (an empty span), else extends the open piece;
@@ -325,8 +337,8 @@ export function* walkLines(src: string): Generator<LintLine, void, undefined> {
   for (const token of tokenize(src)) {
     const role = EXTENT_ROLE[token.kind];
     const end = offset + token.raw.length;
-    if (role === 'open' || role === 'ruby') {
-      builder.open(spanKey(token), offset); // before the switch pushes a ruby's base
+    if (role === 'open') {
+      builder.open(spanKey(token), offset); // before the switch pushes the piece it wraps
     }
     switch (token.kind) {
       case 'text': {
@@ -346,13 +358,14 @@ export function* walkLines(src: string): Generator<LintLine, void, undefined> {
         }
         break;
       }
-      case 'rubyExplicit': // raw = ｜ base 《 reading 》
-        appendBase(token.base, offset + 1);
-        builder.rubies.push({ text: token.reading, srcStart: offset + 1 + token.base.length + 1 });
-        break;
       case 'rubyImplicit': // raw = base 《 reading 》
         appendBase(token.base, offset);
         builder.rubies.push({ text: token.reading, srcStart: offset + token.base.length + 1 });
+        break;
+      case 'rubyStart': // raw = ｜ (opened above); the base tokens follow as themselves
+        break;
+      case 'rubyEnd': // raw = 《 reading 》; the base pieces are already pushed
+        builder.rubies.push({ text: token.reading, srcStart: offset + 1 });
         break;
       case 'indent': // line-head only (tokenizer-gated); overrides this line, 0 included
         lineIndent = token.amount;
@@ -396,7 +409,7 @@ export function* walkLines(src: string): Generator<LintLine, void, undefined> {
       builder.close(spanKey(token), end);
     } else if (role === 'attach') {
       builder.attach(end);
-    } else if (role === 'ruby' || role === 'reading') {
+    } else if (role === 'reading') {
       builder.reading(end);
     }
     offset = end;

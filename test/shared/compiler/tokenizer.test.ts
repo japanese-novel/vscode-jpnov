@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   closingAnnotation,
   findBrokenAnnotations,
+  findRubyIssues,
   findTcyIssues,
   findUnpairedSpans,
   splitLines,
@@ -10,6 +11,7 @@ import {
   unterminatedOpeners,
   VALUE_NAMES,
   valueAnnotation,
+  type RubyIssue,
   type SpanOpener,
   type Token,
 } from '../../../src/shared/compiler/tokenizer.ts';
@@ -32,11 +34,13 @@ test('tokenize keeps 「」 dialogue as ordinary text (never a comment)', () => 
   assert.deepEqual(kinds(toks), ['text']);
 });
 
-test('tokenize splits an explicit-base ruby with a ｜ marker', () => {
+test('tokenize splits an explicit-base ruby with a ｜ marker into its span', () => {
   const toks = tokenize('彼は｜走《はし》った');
   assert.deepEqual(toks, [
     { kind: 'text', raw: '彼は', text: '彼は' },
-    { kind: 'rubyExplicit', raw: '｜走《はし》', base: '走', reading: 'はし' },
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'text', raw: '走', text: '走' },
+    { kind: 'rubyEnd', raw: '《はし》', reading: 'はし' },
     { kind: 'text', raw: 'った', text: 'った' },
   ]);
 });
@@ -68,7 +72,9 @@ test('tokenize keeps the ｜ when the explicit base is empty (｜《よみ》)',
 test('tokenize lets the last ｜ win and keeps earlier ｜ as literal text', () => {
   assert.deepEqual(tokenize('a｜b｜c《r》'), [
     { kind: 'text', raw: 'a｜b', text: 'a｜b' },
-    { kind: 'rubyExplicit', raw: '｜c《r》', base: 'c', reading: 'r' },
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'text', raw: 'c', text: 'c' },
+    { kind: 'rubyEnd', raw: '《r》', reading: 'r' },
   ]);
 });
 
@@ -575,6 +581,159 @@ test('findTcyIssues: over-long content warns in both forms (>3 code points)', ()
 test('findTcyIssues: an inner ruby raw joins the cell literally and counts as content', () => {
   assert.deepEqual(findTcyIssues('［＃縦中横］漢《かん》［＃縦中横終わり］'), [
     { start: 6, end: 11, kind: 'tooLong' },
+  ]);
+});
+
+// --------------------------------------------------------------- findRubyIssues
+
+const missing = (start: number, end: number, reading: string): RubyIssue => ({
+  start,
+  end,
+  kind: 'baseMissing',
+  reading,
+});
+const empty = (start: number, end: number): RubyIssue => ({ start, end, kind: 'readingEmpty', reading: '' });
+
+/** `[source, expected spans]` — offsets are UTF-16 code units (every character here is BMP). */
+const RUBY_ISSUE_CASES: readonly [string, RubyIssue[]][] = [
+  // No base character before the reading: line start, punctuation, a space, another ruby.
+  ['《ごう》', [missing(0, 4, 'ごう')]],
+  ['　行くぞ。《ごう》', [missing(5, 9, 'ごう')]],
+  ['行く　《ごう》', [missing(3, 7, 'ごう')]],
+  ['漢字《かんじ》《かんじ》', [missing(7, 12, 'かんじ')]],
+  // Without a ｜, an annotation flushes the text before it and a value field is not a base.
+  ['山田［＃「山田」に傍点］《やまだ》', [missing(12, 17, 'やまだ')]],
+  ['［＃ここに「タイトル」の値を表示］《たいとる》', [missing(17, 23, 'たいとる')]],
+  // A ｜ with nothing visible before its 《 reports from the ｜ (the last ｜ wins); a ｜ never
+  // survives a line break.
+  ['｜《よみ》', [missing(0, 5, 'よみ')]],
+  ['あ｜《よみ》', [missing(1, 6, 'よみ')]],
+  ['｜｜《よみ》', [missing(1, 6, 'よみ')]],
+  ['｜［＃メモ］《よみ》', [missing(0, 10, 'よみ')]],
+  ['｜［＃傍点］《よみ》', [missing(0, 10, 'よみ')]],
+  ['｜［＃縦中横］12［＃縦中横終わり］《じゅうに》', [missing(18, 24, 'じゅうに')]],
+  ['｜語\n《ルビ》', [missing(3, 7, 'ルビ')]],
+  // Document order; a CRLF end stays before the \r; inside 縦中横 the run is literal as well.
+  ['。《あ》\n｜《い》', [missing(1, 4, 'あ'), missing(5, 9, 'い')]],
+  ['《よみ》\r\n次', [missing(0, 4, 'よみ')]],
+  ['あ。\r\n《よみ》', [missing(4, 8, 'よみ')]],
+  ['［＃縦中横］《１》［＃縦中横終わり］', [missing(6, 9, '１')]],
+  // An empty 《》 is a reading that never came: reported over the 《》 wherever it sits.
+  ['《》', [empty(0, 2)]],
+  ['漢字《》です', [empty(2, 4)]],
+  ['｜漢字《》', [empty(3, 5)]],
+  ['《》《ab》', [empty(0, 2), missing(2, 6, 'ab')]],
+  // Pairing follows the tokenizer: the first 》 closes; a 》 is not a base.
+  ['》《ab》', [missing(1, 5, 'ab')]],
+  ['《a《b》', [missing(0, 5, 'a《b')]],
+  // Valid rubies (a ｜ base may hold annotations) and an unclosed 《 are clean.
+  ['漢字《かんじ》', []],
+  ['｜お茶の間《おちゃのま》', []],
+  ['｜あ。《よみ》', []],
+  ['漢字《か｜んじ》', []],
+  ['立《た》ち', []],
+  ['｜山田［＃「山田」に傍点］《やまだ》', []],
+  ['｜［＃ここに「タイトル」の値を表示］《たいとる》', []],
+  ['《ひらき', []],
+];
+
+test('findRubyIssues reports every 《…》 the tokenizer kept literal: no base, or no reading', () => {
+  for (const [src, expected] of RUBY_ISSUE_CASES) {
+    assert.deepEqual(findRubyIssues(src), expected, JSON.stringify(src));
+  }
+});
+
+test('the issues sink leaves the token stream unchanged', () => {
+  for (const [src] of RUBY_ISSUE_CASES) {
+    assert.deepEqual(tokenize(src, { issues: [] }), tokenize(src), JSON.stringify(src));
+  }
+});
+
+// --------------------------------------------------------------- span-form explicit ruby
+
+/** An explicit ruby is a span — the ｜, the base tokens in source order, the 《reading》 — so a base
+ *  may hold annotations; a ｜ that meets no reading on its line comes out as it was typed. */
+const SPAN_FORM_CASES: readonly [string, Token[]][] = [
+  ['｜山田［＃「山田」に傍点］《やまだ》', [
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'text', raw: '山田', text: '山田' },
+    { kind: 'emphasisPostfix', raw: '［＃「山田」に傍点］', target: '山田', variant: '傍点' },
+    { kind: 'rubyEnd', raw: '《やまだ》', reading: 'やまだ' },
+  ]],
+  ['｜［＃ここに「タイトル」の値を表示］《たいとる》', [
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'valueField', raw: '［＃ここに「タイトル」の値を表示］', name: 'タイトル' },
+    { kind: 'rubyEnd', raw: '《たいとる》', reading: 'たいとる' },
+  ]],
+  ['あ｜山田［＃x］太郎《やまだたろう》は', [
+    { kind: 'text', raw: 'あ', text: 'あ' },
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'text', raw: '山田', text: '山田' },
+    { kind: 'comment', raw: '［＃x］', inner: 'x' },
+    { kind: 'text', raw: '太郎', text: '太郎' },
+    { kind: 'rubyEnd', raw: '《やまだたろう》', reading: 'やまだたろう' },
+    { kind: 'text', raw: 'は', text: 'は' },
+  ]],
+  ['｜［＃傍点］山田［＃傍点終わり］《やまだ》', [
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'emphasisSpanStart', raw: '［＃傍点］', variant: '傍点' },
+    { kind: 'text', raw: '山田', text: '山田' },
+    { kind: 'emphasisSpanEnd', raw: '［＃傍点終わり］', variant: '傍点' },
+    { kind: 'rubyEnd', raw: '《やまだ》', reading: 'やまだ' },
+  ]],
+  // No reading on the line, an empty 《》, a later ｜ (last wins), a broken ［＃, or nothing
+  // visible before the 《: the ｜ and what followed it come out as typed.
+  ['｜山田［＃x］\n次', [
+    { kind: 'text', raw: '｜山田', text: '｜山田' },
+    { kind: 'comment', raw: '［＃x］', inner: 'x' },
+    { kind: 'text', raw: '\n次', text: '\n次' },
+  ]],
+  ['｜a［＃x］《》b', [
+    { kind: 'text', raw: '｜a', text: '｜a' },
+    { kind: 'comment', raw: '［＃x］', inner: 'x' },
+    { kind: 'text', raw: '《》b', text: '《》b' },
+  ]],
+  ['｜a［＃x］｜b《r》', [
+    { kind: 'text', raw: '｜a', text: '｜a' },
+    { kind: 'comment', raw: '［＃x］', inner: 'x' },
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'text', raw: 'b', text: 'b' },
+    { kind: 'rubyEnd', raw: '《r》', reading: 'r' },
+  ]],
+  ['｜山田［＃こわれ《やまだ》', [
+    { kind: 'text', raw: '｜山田', text: '｜山田' },
+    { kind: 'brokenAnnotation', raw: '［＃こわれ《やまだ》' },
+  ]],
+  // A 縦中横 span edge ends the base: the ｜ turns literal on either side of it.
+  ['［＃縦中横］｜1［＃縦中横終わり］2《いち》', [
+    { kind: 'tcySpanStart', raw: '［＃縦中横］' },
+    { kind: 'text', raw: '｜1', text: '｜1' },
+    { kind: 'tcySpanEnd', raw: '［＃縦中横終わり］' },
+    { kind: 'rubyImplicit', raw: '2《いち》', base: '2', reading: 'いち' },
+  ]],
+  ['｜［＃縦中横］12［＃縦中横終わり］《じゅうに》', [
+    { kind: 'text', raw: '｜', text: '｜' },
+    { kind: 'tcySpanStart', raw: '［＃縦中横］' },
+    { kind: 'text', raw: '12', text: '12' },
+    { kind: 'tcySpanEnd', raw: '［＃縦中横終わり］' },
+    { kind: 'text', raw: '《じゅうに》', text: '《じゅうに》' },
+  ]],
+  ['｜［＃メモ］《よみ》', [
+    { kind: 'text', raw: '｜', text: '｜' },
+    { kind: 'comment', raw: '［＃メモ］', inner: 'メモ' },
+    { kind: 'text', raw: '《よみ》', text: '《よみ》' },
+  ]],
+];
+
+test('an explicit ruby tokenizes as rubyStart … rubyEnd, annotations inside included; a ｜ without a reading stays typed', () => {
+  for (const [src, expected] of SPAN_FORM_CASES) {
+    assert.deepEqual(tokenize(src), expected, JSON.stringify(src));
+  }
+});
+
+test('findTcyIssues: an explicit ruby inside 縦中横 counts its markup as content, like the implicit form', () => {
+  assert.deepEqual(findTcyIssues('［＃縦中横］｜1［＃x］2《いち》［＃縦中横終わり］'), [
+    { start: 6, end: 17, kind: 'tooLong' }, // ｜12《いち》 = 7 code points, the comment adds none
   ]);
 });
 

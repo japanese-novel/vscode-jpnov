@@ -201,16 +201,18 @@ export function buildSemanticTokens(
         appendBody(token.text, offset);
         break;
       }
-      case 'rubyExplicit': {
-        mark(offset, ONE, 'marker'); // ｜
-        appendBody(token.base, offset + ONE); // 親文字 base flows into the recognized run
-        mark(offset + ONE + token.base.length, ONE + token.reading.length, 'marker'); // 《ルビ
-        mark(last, ONE, 'marker'); // 》 ( reading kept default, not recognized )
-        break;
-      }
       case 'rubyImplicit': {
         appendBody(token.base, offset); // base flows into the recognized run
         mark(offset + token.base.length, ONE + token.reading.length, 'marker'); // 《ルビ
+        mark(last, ONE, 'marker'); // 》
+        break;
+      }
+      case 'rubyStart': {
+        mark(offset, ONE, 'marker'); // ｜ — the base tokens follow as ordinary text/annotations
+        break;
+      }
+      case 'rubyEnd': {
+        mark(offset, ONE + token.reading.length, 'marker'); // 《ルビ
         mark(last, ONE, 'marker'); // 》
         break;
       }
