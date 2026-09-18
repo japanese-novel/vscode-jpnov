@@ -15,12 +15,17 @@
 import { test, mock, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { PreviewInit } from '../../src/client/protocol.ts';
+import type { RenderFileParams } from '../../src/shared/protocol.ts';
+
 import {
   buildVscode,
+  ConfigurationTarget,
   createFakePanel,
   createMockState,
   doc,
   resetMockState,
+  Uri,
   ViewColumn,
   type FakeWebviewPanel,
 } from './_vscodeMock.ts';
@@ -31,6 +36,7 @@ const state = createMockState();
 mock.module('vscode', { namedExports: buildVscode(state) });
 
 const { Preview } = await import('../../src/client/preview/preview.ts');
+const { WIDGET_CSS } = await import('../../src/client/preview/webviewBundle.generated.ts');
 
 beforeEach(() => {
   resetMockState(state);
@@ -46,6 +52,11 @@ function tick(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
 }
 
+/** Waits out the render debounce that edits and widget changes share. */
+function settle(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 150));
+}
+
 const SERVER_HTML =
   '<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{color:red}</style></head><body><p>本文</p></body></html>';
 
@@ -56,16 +67,30 @@ function firstPanel() {
   return panel;
 }
 
-/** A fake client that counts renders, for asserting reveal-only paths. */
-function countingClient(html: string): { renders: number; sendRequest: () => Promise<{ html: string }> } {
+/** A fake client that keeps every renderFile request's params (its length = the render count). */
+function capturingClient(html: string): {
+  params: RenderFileParams[];
+  sendRequest: (type: unknown, params: unknown) => Promise<{ html: string }>;
+} {
   const client = {
-    renders: 0,
-    sendRequest: (): Promise<{ html: string }> => {
-      client.renders += 1;
+    params: [] as RenderFileParams[],
+    sendRequest: (_type: unknown, params: unknown): Promise<{ html: string }> => {
+      client.params.push(params as RenderFileParams);
       return Promise.resolve({ html });
     },
   };
   return client;
+}
+
+/** A fake client that counts renders, for asserting reveal-only paths. */
+function countingClient(html: string): { readonly renders: number; sendRequest: (...args: unknown[]) => Promise<{ html: string }> } {
+  const client = capturingClient(html);
+  return {
+    get renders() {
+      return client.params.length;
+    },
+    sendRequest: (...args: unknown[]) => client.sendRequest(args[0], args[1]),
+  };
 }
 
 async function openPreviewWith(html: string) {
@@ -76,6 +101,8 @@ async function openPreviewWith(html: string) {
 async function openWith(client: { sendRequest: (...args: unknown[]) => Promise<{ html: string }> }) {
   // The constructor type is LanguageClient; the runtime only needs sendRequest.
   const preview = new Preview(client as never);
+  // The widget's save button goes through the command (extension.ts registers it in production).
+  state.registeredCommands.set('jpnov.preview.saveLayout', () => preview.saveLayout());
 
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'これは本文です。');
   state.textDocuments.push(d);
@@ -638,4 +665,370 @@ test('refresh() with nothing shown is a no-op', async () => {
   preview.refresh(); // must not throw and must not create a panel
   await tick();
   assert.equal(state.panels.length, 0);
+});
+
+// #71 — the layout widget's preview-only overrides (charsPerLine / linesPerPage).
+
+/** The `__INIT` bootstrap the latest render baked into `panel`'s html. */
+function readInit(panel: FakeWebviewPanel): PreviewInit {
+  const json = /window\.__INIT=(\{.*?\});<\/script>/.exec(panel.webview.html)?.[1];
+  assert.ok(json, '__INIT bootstrap present');
+  return JSON.parse(json) as PreviewInit;
+}
+
+/** The last value the preview set the `jpnov.previewAdjusted` context key to; undefined if never. */
+function lastAdjustedContext(): unknown {
+  const calls = state.executedCommands.filter((c) => c.command === 'setContext' && c.args[0] === 'jpnov.previewAdjusted');
+  return calls.at(-1)?.args[1];
+}
+
+/** A widget message as the webview posts it; `receive` delivers it to the host's listener. */
+function layoutMessage(key: string, value: unknown): { type: 'layout'; key: string; value: unknown } {
+  return { type: 'layout', key, value };
+}
+
+test('the render carries the layout widget: its nonced stylesheet and the settings values in __INIT', async () => {
+  state.config['jpnov.layout.charsPerLine'] = 100; // hand-edited out of range: the widget shows what the server renders
+  const { panel } = await openPreviewWith(SERVER_HTML);
+  const html = panel.webview.html;
+  const cspNonce = /style-src 'nonce-([^']+)'/.exec(html)?.[1];
+  assert.ok(cspNonce);
+  assert.ok(html.includes(`<style nonce="${cspNonce}">${WIDGET_CSS}</style></head>`), 'widget stylesheet before </head>');
+  assert.doesNotMatch(html, /nonce="[^"]*"[^>]*nonce=/, 'no tag carries two nonces');
+  assert.match(html, /<p>本文<\/p><script /, 'the bootstrap still opens the body scripts');
+
+  const { layout } = readInit(panel);
+  const { labels, ...values } = layout;
+  assert.deepEqual(values, { charsPerLine: 64, linesPerPage: 34, adjusted: false, min: 16, max: 64 });
+  assert.deepEqual(labels, {
+    chars: 'chars',
+    lines: 'lines',
+    charsPerLine: 'Characters per line',
+    linesPerPage: 'Lines per page',
+    hint: 'Characters per line × lines per page. Changes here apply to the preview only.',
+    reset: 'Reset Preview Layout to Settings',
+    save: 'Save Preview Layout to Settings…',
+    show: 'Show Preview Layout Controls',
+  });
+  assert.equal(lastAdjustedContext(), false, 'every render mirrors the context key');
+});
+
+test('a widget change re-renders with the override, re-focuses its input once, and marks the preview adjusted', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { panel, document } = await openWith(client);
+
+  panel.webview.receive(layoutMessage('charsPerLine', 41));
+  panel.webview.receive(layoutMessage('charsPerLine', 42)); // a held spinner: one render for the burst
+  await settle();
+
+  assert.equal(client.params.length, 2);
+  const second = client.params[1];
+  assert.ok(second);
+  assert.equal(second.settings.charsPerLine, 42);
+  assert.equal(second.settings.linesPerPage, 34);
+  const { layout } = readInit(panel);
+  assert.equal(layout.charsPerLine, 42);
+  assert.equal(layout.adjusted, true);
+  assert.equal(layout.focus, 'charsPerLine');
+  assert.equal(layout.labels.hint, 'Preview only. The settings are still 40 chars × 34 lines.');
+  assert.equal(lastAdjustedContext(), true);
+
+  // An edit-driven render keeps the override but must not pull focus into the widget.
+  state.onDidChangeDoc.fire({ document });
+  await settle();
+  assert.equal(client.params.length, 3);
+  assert.equal(client.params[2]?.settings.charsPerLine, 42);
+  assert.equal(readInit(panel).layout.focus, undefined);
+});
+
+test('malformed, out-of-range or unknown widget messages are dropped', async () => {
+  const client = countingClient(SERVER_HTML);
+  const { panel } = await openWith(client);
+  const bogus: unknown[] = [
+    layoutMessage('charsPerLine', 65),
+    layoutMessage('charsPerLine', 15),
+    layoutMessage('charsPerLine', 40.5),
+    layoutMessage('charsPerLine', '42'),
+    layoutMessage('fontFamily', 42),
+    { type: 'bogus' },
+    'layout',
+    null,
+  ];
+  for (const m of bogus) {
+    panel.webview.receive(m);
+  }
+  await settle();
+  assert.equal(client.renders, 1);
+  assert.equal(lastAdjustedContext(), false);
+});
+
+test('a widget change while the shown document is closed renders nothing and leaks no focus into the next render', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { panel } = await openWith(client);
+  state.textDocuments.length = 0; // the chapter tab was closed; the panel keeps its last render
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  await settle();
+  assert.equal(client.params.length, 1, 'nothing to render');
+
+  assert.equal(lastAdjustedContext(), true, 'the override is armed, so the palette offers reset/save');
+
+  const other = doc('file:///proj/src/b.jpnov', 'jpnov', '二');
+  state.textDocuments.push(other);
+  state.onDidChangeActiveEditor.fire({ document: other });
+  await tick();
+  assert.equal(client.params.length, 2);
+  const { layout } = readInit(panel);
+  assert.equal(layout.charsPerLine, 42, "the override is the panel's: the next document renders with it");
+  assert.equal(layout.focus, undefined);
+});
+
+test('a render that was in flight keeps showing what it laid out, not a change made meanwhile', async () => {
+  let resolveRender: (r: { html: string }) => void = () => undefined;
+  const params: RenderFileParams[] = [];
+  const client = {
+    sendRequest: (_type: unknown, p: unknown): Promise<{ html: string }> => {
+      params.push(p as RenderFileParams);
+      if (params.length === 1) {
+        return Promise.resolve({ html: SERVER_HTML });
+      }
+      return new Promise((resolve) => {
+        resolveRender = resolve;
+      });
+    },
+  };
+  const { panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 41));
+  await settle(); // render A (41) is now in flight
+  panel.webview.receive(layoutMessage('charsPerLine', 42)); // render B scheduled
+  resolveRender({ html: SERVER_HTML });
+  await tick();
+  assert.equal(params[1]?.settings.charsPerLine, 41);
+  assert.equal(readInit(panel).layout.charsPerLine, 41, 'A shows the value A rendered');
+
+  await settle();
+  resolveRender({ html: SERVER_HTML });
+  await tick();
+  assert.equal(params[2]?.settings.charsPerLine, 42);
+  assert.equal(readInit(panel).layout.charsPerLine, 42);
+});
+
+test('reset cancels a widget render still pending, so nothing re-opens the chip afterwards', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  panel.webview.receive({ type: 'reset' }); // within the debounce window
+  await settle();
+  assert.equal(client.params.length, 2, 'the reset render only');
+  const { layout } = readInit(panel);
+  assert.equal(layout.adjusted, false);
+  assert.equal(layout.focus, undefined);
+});
+
+test('a widget value equal to the resolved setting is no override; the wire still ships the raw setting', async () => {
+  state.config['jpnov.layout.linesPerPage'] = 200; // the server clamps it to 64, so 64 is "the setting"
+  const client = capturingClient(SERVER_HTML);
+  const { panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('linesPerPage', 30));
+  await settle();
+  assert.equal(readInit(panel).layout.adjusted, true);
+
+  panel.webview.receive(layoutMessage('linesPerPage', 64));
+  await settle();
+  assert.equal(client.params.length, 3);
+  assert.equal(client.params[2]?.settings.linesPerPage, 200);
+  const { layout } = readInit(panel);
+  assert.equal(layout.adjusted, false);
+  assert.equal(layout.linesPerPage, 64);
+  assert.equal(lastAdjustedContext(), false);
+});
+
+test('a render retires an override whose setting moved and keeps the others', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { preview, panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  panel.webview.receive(layoutMessage('linesPerPage', 30));
+  await settle();
+  const grid = (): [number | undefined, number | undefined] =>
+    [client.params.at(-1)?.settings.charsPerLine, client.params.at(-1)?.settings.linesPerPage];
+
+  state.config['jpnov.layout.fontFamily'] = 'serif'; // an unrelated setting: both overrides stay
+  preview.refresh();
+  await tick();
+  assert.deepEqual(grid(), [42, 30]);
+
+  state.config['jpnov.layout.linesPerPage'] = 36; // the author edits the setting behind an override
+  preview.refresh();
+  await tick();
+  assert.deepEqual(grid(), [42, 36]);
+  assert.equal(readInit(panel).layout.adjusted, true);
+  assert.equal(lastAdjustedContext(), true);
+
+  state.config['jpnov.layout.charsPerLine'] = 42; // the setting catches up with the override
+  preview.refresh();
+  await tick();
+  assert.deepEqual(grid(), [42, 36]);
+  assert.equal(readInit(panel).layout.adjusted, false);
+  assert.equal(lastAdjustedContext(), false);
+});
+
+test('reset (the widget button or the command) drops every override and re-renders from the settings', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { preview, panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  panel.webview.receive(layoutMessage('linesPerPage', 30));
+  await settle();
+
+  panel.webview.receive({ type: 'reset' });
+  await tick();
+  assert.deepEqual(
+    [client.params.at(-1)?.settings.charsPerLine, client.params.at(-1)?.settings.linesPerPage],
+    [40, 34],
+  );
+  assert.equal(readInit(panel).layout.adjusted, false);
+  assert.equal(lastAdjustedContext(), false);
+
+  const renders = client.params.length;
+  preview.resetLayout(); // nothing to reset: no render either
+  await tick();
+  assert.equal(client.params.length, renders);
+});
+
+test('save without a folder offers the user settings only and writes just the overridden keys', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { preview, panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  await settle();
+
+  state.quickPickQueue.push({ target: ConfigurationTarget.Global });
+  panel.webview.receive({ type: 'save' });
+  await tick();
+
+  const [call] = state.quickPickCalls;
+  assert.ok(call);
+  const items = call.items as { label: string; description: string; detail?: string; target: number }[];
+  assert.deepEqual(items.map((i) => [i.label, i.description, i.detail, i.target]), [
+    ['User Settings', 'Applies to every folder you open', undefined, ConfigurationTarget.Global],
+  ]);
+  assert.deepEqual(call.options, { placeHolder: 'Select where to save' });
+  assert.deepEqual(state.configUpdates, [
+    { key: 'jpnov.layout.charsPerLine', value: 42, target: ConfigurationTarget.Global },
+  ]);
+
+  // The write's change event re-renders (extension.ts); the setting now holds the value, so the override retires.
+  preview.refresh();
+  await tick();
+  assert.equal(client.params.at(-1)?.settings.charsPerLine, 42);
+  assert.equal(readInit(panel).layout.adjusted, false);
+  assert.equal(lastAdjustedContext(), false);
+});
+
+test('a save to the user settings that a workspace value shadows keeps the override, and the pick says so', async () => {
+  state.workspaceFolders = [{ uri: Uri.parse('file:///proj'), name: 'proj', index: 0 }];
+  state.inspectResults.set('|jpnov.layout.charsPerLine', { workspaceValue: 40 });
+  const client = capturingClient(SERVER_HTML);
+  const { preview, panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  await settle();
+
+  state.quickPickQueue.push({ target: ConfigurationTarget.Global });
+  panel.webview.receive({ type: 'save' });
+  await tick();
+  const items = state.quickPickCalls[0]?.items as { label: string; detail?: string }[];
+  assert.equal(items[0]?.detail, 'A workspace setting already exists and takes precedence');
+  assert.deepEqual(state.configUpdates, [
+    { key: 'jpnov.layout.charsPerLine', value: 42, target: ConfigurationTarget.Global },
+  ]);
+
+  state.config['jpnov.layout.charsPerLine'] = 40; // the workspace value still wins
+  preview.refresh();
+  await tick();
+  const { layout } = readInit(panel);
+  assert.equal(layout.adjusted, true, 'the preview keeps showing the value the settings do not');
+  assert.equal(layout.labels.hint, 'Preview only. The settings are still 40 chars × 34 lines.');
+  assert.equal(client.params.at(-1)?.settings.charsPerLine, 42);
+});
+
+test('save with a folder open offers the workspace too, and flags a user value a workspace value would shadow', async () => {
+  state.workspaceFolders = [{ uri: Uri.parse('file:///proj'), name: 'proj', index: 0 }];
+  state.inspectResults.set('|jpnov.layout.charsPerLine', { workspaceValue: 40 });
+  const client = capturingClient(SERVER_HTML);
+  const { preview, panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  panel.webview.receive(layoutMessage('linesPerPage', 30));
+  await settle();
+
+  state.quickPickQueue.push({ target: ConfigurationTarget.Workspace });
+  panel.webview.receive({ type: 'save' });
+  await tick();
+
+  const items = state.quickPickCalls[0]?.items as { label: string; description: string; detail?: string; target: number }[];
+  assert.deepEqual(items.map((i) => [i.label, i.description, i.detail, i.target]), [
+    ['User Settings', 'Applies to every folder you open', 'A workspace setting already exists and takes precedence', ConfigurationTarget.Global],
+    ['Workspace Settings', 'Applies to the open folder only', undefined, ConfigurationTarget.Workspace],
+  ]);
+  assert.deepEqual(state.configUpdates, [
+    { key: 'jpnov.layout.charsPerLine', value: 42, target: ConfigurationTarget.Workspace },
+    { key: 'jpnov.layout.linesPerPage', value: 30, target: ConfigurationTarget.Workspace },
+  ]);
+  preview.refresh();
+  await tick();
+  assert.equal(readInit(panel).layout.adjusted, false);
+});
+
+test('cancelling the save pick writes nothing and keeps the override', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  await settle();
+  const renders = client.params.length;
+
+  state.quickPickQueue.push(undefined);
+  panel.webview.receive({ type: 'save' });
+  await tick();
+
+  assert.equal(state.quickPickCalls.length, 1);
+  assert.equal(state.configUpdates.length, 0);
+  assert.equal(client.params.length, renders);
+  assert.equal(readInit(panel).layout.adjusted, true);
+  assert.equal(lastAdjustedContext(), true);
+});
+
+test('a save picked after the panel closed still writes the values that were pending', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  await settle();
+
+  let choose: (pick: unknown) => void = () => undefined;
+  state.quickPickQueue.push(new Promise<unknown>((resolve) => {
+    choose = resolve;
+  }));
+  panel.webview.receive({ type: 'save' });
+  await tick();
+  panel.dispose(); // teardown() clears the overrides while the pick is still open
+  assert.equal(lastAdjustedContext(), false);
+
+  choose({ target: ConfigurationTarget.Global });
+  await tick();
+  assert.deepEqual(state.configUpdates, [
+    { key: 'jpnov.layout.charsPerLine', value: 42, target: ConfigurationTarget.Global },
+  ]);
+});
+
+test('closing the panel drops the overrides: the next panel renders from the settings', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { preview, panel } = await openWith(client);
+  panel.webview.receive(layoutMessage('charsPerLine', 42));
+  await settle();
+  assert.equal(lastAdjustedContext(), true);
+
+  panel.dispose();
+  assert.equal(lastAdjustedContext(), false);
+
+  preview.open(true);
+  await tick();
+  const second = state.panels[1];
+  assert.ok(second, 'a fresh panel');
+  assert.equal(client.params.at(-1)?.settings.charsPerLine, 40);
+  assert.equal(readInit(second).layout.adjusted, false);
 });

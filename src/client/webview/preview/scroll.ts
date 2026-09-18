@@ -9,6 +9,8 @@
  */
 import type { PreviewInit } from '../../protocol.ts';
 
+import { api } from './api.ts';
+
 /**
  * Viewport fraction (from the left edge) where the active column's centre parks; vertical-rl reads
  * right-to-left, so >0.5 keeps the larger share of the pane ahead (left) of the cursor line.
@@ -18,7 +20,6 @@ const REVEAL_RATIO = 0.6180339887498949;
 /** Per-frame fraction of the remaining distance the glide covers (~150ms to settle at 60fps). */
 const REVEAL_EASE = 0.3;
 
-const api = acquireVsCodeApi();
 const init = window.__INIT as PreviewInit;
 
 // Each html swap is a same-URL navigation: Chromium may async-replay the previous document's scroll

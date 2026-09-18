@@ -5,6 +5,8 @@
   "command.preview.title": "プレビューを開く",
   "command.openGuide.title": "ガイドを開く",
   "command.previewToSide.title": "プレビューを横に開く",
+  "command.preview.resetLayout.title": "文字数と行数を設定の値に戻す",
+  "command.preview.saveLayout.title": "文字数と行数を設定に保存…",
   "language.jpnov.alias": "小説",
   "language.jpbook.alias": "小説の本",
   "view.container.title": "小説",

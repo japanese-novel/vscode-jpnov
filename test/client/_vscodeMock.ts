@@ -154,6 +154,7 @@ export class MarkdownString {
 
 export const ViewColumn = { One: 1, Two: 2, Three: 3, Beside: -2 } as const;
 export const ProgressLocation = { SourceControl: 1, Window: 10, Notification: 15 } as const;
+export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 } as const;
 
 export interface FakeTextDocument {
   uri: Uri;
@@ -272,6 +273,8 @@ export interface MockState {
     string,
     { globalValue?: unknown; workspaceValue?: unknown; workspaceFolderValue?: unknown }
   >;
+  /** `getConfiguration().update()` calls (full key, value, `ConfigurationTarget`), which also land in `config`. */
+  configUpdates: { key: string; value: unknown; target: unknown }[];
   /** `workspace.fs.readDirectory` responses: uri string → entries, or 'error' to reject. */
   readDirectoryResults: Map<string, [string, number][] | 'error'>;
   /** `workspace.findFiles` responses: base folder uri string → matches ([] when absent), or 'error'. */
@@ -323,6 +326,7 @@ export function createMockState(): MockState {
     config: {},
     scopedConfig: new Map<string, unknown>(),
     inspectResults: new Map(),
+    configUpdates: [],
     readDirectoryResults: new Map<string, [string, number][] | 'error'>(),
     findFilesResults: new Map<string, Uri[] | 'error'>(),
     findFilesCalls: [],
@@ -371,6 +375,7 @@ export function resetMockState(s: MockState): void {
   s.config = {};
   s.scopedConfig.clear();
   s.inspectResults.clear();
+  s.configUpdates.length = 0;
   s.readDirectoryResults.clear();
   s.findFilesResults.clear();
   s.findFilesCalls.length = 0;
@@ -569,6 +574,13 @@ export function buildVscode(state: MockState): Record<string, unknown> {
           | undefined {
           return state.inspectResults.get(`${scopeKey}|${fullKey(key)}`);
         },
+        // Recorded, and applied to `state.config` so a later `get` reads the written value (no
+        // change event fires: the mock has no onDidChangeConfiguration).
+        update(key: string, value: unknown, target: unknown): Promise<void> {
+          state.configUpdates.push({ key: fullKey(key), value, target });
+          state.config[fullKey(key)] = value;
+          return Promise.resolve();
+        },
       };
     },
     applyEdit(edit: WorkspaceEdit): Promise<boolean> {
@@ -675,6 +687,7 @@ export function buildVscode(state: MockState): Record<string, unknown> {
     EventEmitter,
     ViewColumn,
     ProgressLocation,
+    ConfigurationTarget,
   };
 }
 

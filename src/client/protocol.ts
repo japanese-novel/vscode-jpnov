@@ -3,7 +3,7 @@
  * preview). PURE types + no imports (a type-only mirror of a shared literal union is fine, an
  * import is not): this module is compiled into BOTH the Node host bundle
  * (view.ts / preview.ts, which post and receive these) and the browser webview bundles
- * (webview/book/main.ts, webview/preview/scroll.ts, which are the other end). It must therefore
+ * (webview/book/main.ts, webview/preview/*, which are the other end). It must therefore
  * stay vscode-free, node-free and DOM-free — only shapes crossing `postMessage`'s structured
  * clone, plus the `__INIT` bootstrap each webview reads synchronously on first paint.
  *
@@ -195,11 +195,54 @@ export interface RevealMessage {
   readonly line: number;
 }
 
+/** The two `jpnov.layout.*` grid keys the preview's layout widget adjusts in place. */
+export type PreviewLayoutKey = 'charsPerLine' | 'linesPerPage';
+
+/** Every message the preview webview dispatches back to the host (the layout widget's verbs). */
+export type PreviewOutbound =
+  | { readonly type: 'layout'; readonly key: PreviewLayoutKey; readonly value: number }
+  | { readonly type: 'reset' }
+  | { readonly type: 'save' };
+
+/** Localized strings the layout widget renders; baked into `__INIT` like the Books panel's Labels. */
+export interface PreviewLayoutLabels {
+  /** Unit text after each input (字 / 行). */
+  readonly chars: string;
+  readonly lines: string;
+  /** Accessible names of the two inputs. */
+  readonly charsPerLine: string;
+  readonly linesPerPage: string;
+  /** The widget's tooltip: what the values mean, or, while adjusted, what the settings still say. */
+  readonly hint: string;
+  /** Tooltips of the reset / save buttons (the command titles). */
+  readonly reset: string;
+  readonly save: string;
+  /** Accessible name of the folded widget's summary (clicking it opens the controls). */
+  readonly show: string;
+}
+
+/**
+ * The layout widget's bootstrap: the values to show (a preview-only override where set, else the
+ * resolved setting), whether any override is active, the inputs' bounds, and the input to
+ * re-focus after the swap when its own change caused this render.
+ */
+export interface PreviewLayoutInit {
+  readonly charsPerLine: number;
+  readonly linesPerPage: number;
+  readonly adjusted: boolean;
+  readonly min: number;
+  readonly max: number;
+  readonly focus?: PreviewLayoutKey;
+  readonly labels: PreviewLayoutLabels;
+}
+
 /**
  * The preview webview's `__INIT` bootstrap: the previewed document URI (persisted through the
- * webview state API for the window-reload serializer) and the line to park on the first paint.
+ * webview state API for the window-reload serializer), the line to park on the first paint, and
+ * the layout widget's state.
  */
 export interface PreviewInit {
   readonly uri: string;
   readonly line: number;
+  readonly layout: PreviewLayoutInit;
 }

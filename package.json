@@ -630,6 +630,16 @@
         "category": "%command.category%",
         "title": "%command.previewToSide.title%",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "jpnov.preview.resetLayout",
+        "category": "%command.category%",
+        "title": "%command.preview.resetLayout.title%"
+      },
+      {
+        "command": "jpnov.preview.saveLayout",
+        "category": "%command.category%",
+        "title": "%command.preview.saveLayout.title%"
       }
     ],
     "views": {
@@ -672,6 +682,14 @@
         {
           "command": "jpnov.previewToSide",
           "when": "editorLangId == jpnov"
+        },
+        {
+          "command": "jpnov.preview.resetLayout",
+          "when": "jpnov.previewAdjusted"
+        },
+        {
+          "command": "jpnov.preview.saveLayout",
+          "when": "jpnov.previewAdjusted"
         },
         {
           "command": "jpbook.refresh",

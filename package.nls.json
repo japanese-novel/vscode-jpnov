@@ -5,6 +5,8 @@
   "command.preview.title": "Open Preview",
   "command.openGuide.title": "Open the Getting Started Guide",
   "command.previewToSide.title": "Open Preview to the Side",
+  "command.preview.resetLayout.title": "Reset Preview Layout to Settings",
+  "command.preview.saveLayout.title": "Save Preview Layout to Settings…",
   "language.jpnov.alias": "Japanese Novel",
   "language.jpbook.alias": "Japanese Novel Book",
   "view.container.title": "Japanese Novel",
