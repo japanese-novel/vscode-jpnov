@@ -17,8 +17,10 @@
  * {@link Piece}, a contiguous source slice by construction, so it cannot span elided markup; an
  * insert names a prose UNIT and a side, and the engine resolves the offset through the piece's
  * outer extents, past the markup wrapping that unit; an erase names whole blank lines, which the
- * engine verifies hold nothing but line terminators. The view-scan adapter adds the same-piece
- * test and refuses to delete a whole ruby base (rules/adapt.ts).
+ * engine verifies hold nothing but line terminators; a compose names the offset of one combining
+ * mark, and the engine itself composes it with the unit before it, so markup anywhere is safe.
+ * The view-scan adapter adds the same-piece test and refuses to delete a whole ruby base
+ * (rules/adapt.ts).
  *
  * Relative imports only (native test loader); vscode-free.
  */
@@ -88,6 +90,9 @@ export interface LintLine {
   readonly srcStart: number;
   /** Source offset just past the line's last content unit (the terminator, or EOF). */
   readonly srcEnd: number;
+  /** The line's source text, terminator excluded: what a rule scans when it must see the markup
+   *  interiors (a ruby reading, an annotation's target) that every view elides. */
+  readonly raw: string;
   /** Rendered 字下げ of this line (line-head ［＃N字下げ］ override, else the open block's N). */
   readonly indent: number;
   /** The line's 見出し level, when a heading postfix/span/block covers it. */
@@ -109,9 +114,10 @@ export interface SrcSpan {
 }
 
 /**
- * An auto-fix, in the only three safe shapes: replace a range INSIDE one piece (cannot span elided
- * markup by construction), insert before or after one prose UNIT (zero-width; the engine resolves
- * the offset past the markup wrapping the unit, so it can never land inside a ruby or a span), or
+ * An auto-fix, in the only four safe shapes: replace a range INSIDE one piece (cannot span elided
+ * markup by construction), compose one kana + combining-mark pair anywhere (the engine composes it
+ * from the document), insert before or after one prose UNIT (zero-width; the engine resolves the
+ * offset past the markup wrapping the unit, so it can never land inside a ruby or a span), or
  * erase whole blank lines (a span the engine checks holds nothing but line terminators). A
  * synthetic unit (`piece: null`) can never anchor an insert.
  */
@@ -124,6 +130,11 @@ export type FixSpec =
       readonly end: number;
     };
     readonly text: string;
+  }
+  | {
+    /** Source offset of a combining 濁点/半濁点: the two units `[compose - 1, compose + 1)` become
+     *  their NFC composition, computed by the engine from the document itself. */
+    readonly compose: number;
   }
   | { readonly insert: ProseUnit; readonly side: 'before' | 'after'; readonly text: string }
   | { readonly erase: SrcSpan };

@@ -52,7 +52,7 @@
   "jpnov.lint.narration.endPeriod.description": "地の文のうち、句点（。）で終わらない行を警告します（！？と閉じ括弧は許可。三点リーダーやダッシュで止まる行にも句点を求めます）。自動修正可。",
   "jpnov.lint.dialogue.closingPunct.description": "閉じ括弧（」や』）の直前の句読点（。、）を警告します。原稿の作法では、台詞の締めに句読点を打ちません。自動修正可。",
   "jpnov.lint.dialogue.noIndent.description": "台詞の行頭の字下げを警告します。自動修正可。",
-  "jpnov.lint.ruby.kana.description": "ルビの読み《…》が、すべて平仮名かすべて片仮名になっているかを確認します（半角カナ・NFD も警告します）。",
+  "jpnov.lint.ruby.kana.description": "ルビの読み《…》が、すべて平仮名かすべて片仮名になっているかを確認します（半角カナも警告します）。",
   "jpnov.lint.ruby.kana.off.label": "なし",
   "jpnov.lint.ruby.kana.off.description": "読みの仮名の種類を確認しません。",
   "jpnov.lint.ruby.kana.hiragana.label": "すべて平仮名",

@@ -8,7 +8,7 @@
  *
  * Relative imports only (native test loader).
  */
-import { DASH_BY_MODE, DASH_CHARS } from '../../shared/chars.ts';
+import { composeKana, DASH_BY_MODE, DASH_CHARS } from '../../shared/chars.ts';
 import { isHiragana, isKatakana } from '../../shared/compiler/tokenizer.ts';
 import { isDashMode } from '../../shared/config/types.ts';
 import { unencodableChars } from '../../shared/encoding.ts';
@@ -165,11 +165,12 @@ function isAllKana(reading: string, mode: string): boolean {
 /**
  * Flags ONE ruby reading (the whole input text) unless it is entirely the kana type chosen in the
  * setting (`{ mode: 'hiragana' | 'katakana' }`). Requiring all-hiragana or all-katakana also
- * rejects half-width kana and decomposed (NFD) characters, so one drop-down covers all three.
+ * rejects half-width kana, so one drop-down covers both; a decomposed (NFD) kana is composed
+ * first and left to noNfd, which owns that report and its fix.
  */
 export const rubyKanaScan: PreScan = (text, options) => {
   const mode = typeof options === 'object' && 'mode' in options ? options.mode : undefined;
-  if (mode === undefined || text === '' || isAllKana(text, mode)) {
+  if (mode === undefined || text === '' || isAllKana(composeKana(text), mode)) {
     return [];
   }
   return [{ start: 0, end: text.length }];

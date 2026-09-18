@@ -15,7 +15,7 @@
  *     block form marks following lines only, the three levels share one slot, the end token's line
  *     stays a heading. A heading POSTFIX marks its line without re-checking the target text —
  *     a missed target already surfaces as `syntax.postfixTargetMissing` (accepted simplification).
- *   - A broken ［＃ (unclosed) contributes no prose: malformed markup is deliberately not linted.
+ *   - A broken ［＃ (unclosed) contributes no prose; only a raw-line scan (noNfd) sees inside it.
  *   - Outer extents: an opener (［＃傍点］, ［＃縦中横］, a ruby's ｜) pulls the next piece's
  *     `outerStart` before it; a postfix, a value field, a ruby's 《reading》 or a span end pushes
  *     the open piece's `outerEnd` past it. Openers and span ends pair per channel (emphasis by
@@ -229,7 +229,7 @@ class LineBuilder {
   freeze(
     meta: Pick<
       LintLine,
-      'srcLine' | 'srcStart' | 'srcEnd' | 'indent' | 'heading' | 'openDepthAtEnd'
+      'srcLine' | 'srcStart' | 'srcEnd' | 'raw' | 'indent' | 'heading' | 'openDepthAtEnd'
     >,
   ): LintLine {
     const { pieces, prosePlan, narrPlan, diaPlan } = this;
@@ -322,6 +322,7 @@ export function* walkLines(src: string): Generator<LintLine, void, undefined> {
       srcLine,
       srcStart: lineStart,
       srcEnd: terminatorAt,
+      raw: src.slice(lineStart, terminatorAt),
       indent: lineIndent,
       heading: lineHeading,
       openDepthAtEnd: stack.length,
