@@ -141,10 +141,54 @@ test('whatever of a cluster can be written is written', () => {
   // glyph-variant request is dropped — 〓 would cost a square AND lose the character.
   assert.equal(hex('\u8FBB\u{E0100}'), '92 d2');
   assert.equal(encodeTxt('\u8FBB\u{E0100}', 'shiftJis').substitutions, 0);
-  // Same rule, sharper consequence: a decomposed kana loses its mark rather than the whole
-  // character. `noNfd` ships on and auto-fixes this upstream; `shiftJisSafe` reports it either way.
-  assert.equal(hex('\u304B\u3099'), '82 a9'); // か + combining dakuten -> か
-  assert.equal(hex('\u304C'), '82 aa'); // precomposed が is unaffected
+  // A combining mark nothing composes with goes the same way: the base is written, uncounted, and
+  // the noNfd / shiftJisSafe lints are what report it.
+  const leftovers: readonly (readonly [string, string, string])[] = [
+    ['あ + dakuten', '\u3042\u3099', '82 a0'],
+    ['が + a second dakuten', '\u304C\u3099', '82 aa'],
+    ['か + two dakuten', '\u304B\u3099\u3099', '82 aa'],
+    ['か + dakuten + acute', '\u304B\u3099\u0301', '82 aa'],
+    ['half-width ｶ + dakuten', '\uFF76\u3099', 'b6'],
+  ];
+  for (const [name, s, bytes] of leftovers) {
+    assert.equal(hex(s), bytes, name);
+    assert.equal(encodeTxt(s, 'shiftJis').substitutions, 0, name);
+  }
+  // A mark with nothing before it is a cluster of its own, and it has no cell.
+  assert.equal(hex('\u3099'), '81 ac');
+  assert.equal(hex('\r\n\u3099'), '0d 0a 81 ac');
+  assert.equal(encodeTxt('\r\n\u3099', 'shiftJis').substitutions, 1);
+});
+
+test('a decomposed kana is composed before it is encoded', () => {
+  // か + U+3099 is one written character, が (issue #83).
+  assert.equal(hex('\u304B\u3099'), '82 aa');
+  assert.equal(encodeTxt('\u304B\u3099', 'shiftJis').substitutions, 0);
+  assert.equal(hex('\u306F\u309A'), '82 cf'); // は + combining handakuten -> ぱ
+  assert.equal(hex('\u30A6\u3099'), '83 94'); // ウ + combining dakuten -> ヴ
+  assert.equal(hex('\u309D\u3099'), '81 55'); // ゝ -> ゞ
+  assert.equal(hex('\u30FD\u3099'), '81 53'); // ヽ -> ヾ
+  assert.equal(hex('\u3042\u304B\u3099\u304D'), hex('あがき'));
+  // UTF-8 holds the decomposed form as it came.
+  assert.equal(hex('\u304B\u3099', 'utf8'), 'e3 81 8b e3 82 99');
+});
+
+test('a composite Shift JIS lacks costs one 〓 and is counted', () => {
+  // ゔ and ヷヸヹヺ exist only in JIS X 0213, so the composite has no cell and the cluster is one 〓.
+  for (const base of ['\u3046', '\u30EF', '\u30F0', '\u30F1', '\u30F2']) {
+    const s = `${base}\u3099`;
+    assert.equal(hex(s), '81 ac', s);
+    assert.equal(encodeTxt(s, 'shiftJis').substitutions, 1, s);
+  }
+  assert.equal(encodeTxt('\u3042\u3099\u3046\u3099', 'shiftJis').substitutions, 1);
+});
+
+test('only kana compose — the text is never NFC-normalized', () => {
+  // 神 U+FA19 is a compatibility ideograph with its own IBM-extension cell; NFC folds it into
+  // 神 U+795E, a different cell, which would rewrite a personal name on the way to disk.
+  assert.equal(hex('\uFA19'), 'fb 7e');
+  assert.notEqual(hex('\uFA19'), hex('\u795E'));
+  assert.deepEqual(unencodableChars('\uFA19'), []);
 });
 
 test('a cluster is reported once, quoting the whole character', () => {
@@ -161,4 +205,21 @@ test('a cluster is reported once, quoting the whole character', () => {
   assert.equal(tsuji.cp, 0xe0100);
   assert.equal(tsuji.offset, 1); // the selector, not the kanji
   assert.deepEqual(unencodableChars('\u3042\u3044\u3046'), []);
+});
+
+test('the scanner composes kana the same way, so lint and build agree', () => {
+  assert.deepEqual(unencodableChars('\u304B\u3099'), []); // か + U+3099 is written as が
+  // う + U+3099 composes to ゔ, which has no cell: reported on the RAW mark, the same range the
+  // noNfd rule reports, so the engine can de-duplicate the two.
+  const [u] = unencodableChars('\u3046\u3099');
+  assert.ok(u);
+  assert.deepEqual(u, { cluster: '\u3046\u3099', cp: 0x3099, offset: 1, length: 1 });
+  const [astral] = unencodableChars('\u{20BB7}\u3099');
+  assert.ok(astral);
+  assert.equal(astral.cp, 0x20bb7);
+  assert.equal(astral.offset, 0);
+  assert.equal(astral.length, 2);
+  const [lone] = unencodableChars('\u3099\u304B');
+  assert.ok(lone);
+  assert.equal(lone.offset, 0);
 });

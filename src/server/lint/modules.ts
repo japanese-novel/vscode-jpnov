@@ -48,7 +48,8 @@ import type { LineRule, RuleContext } from './types.ts';
  *             state lives in the factory's closure; the engine re-instantiates per run.
  *  - `raw`  — a pure scanner over the DOCUMENT SOURCE, run once per document. For rules that must
  *             see what the prose views drop (annotation interiors — a 左ルビ reading appears in no
- *             view but reaches a built `.txt` verbatim).
+ *             view but reaches a built `.txt` verbatim); a `line` rule can read `LintLine.raw`
+ *             for that too.
  */
 export type RuleImpl =
   | { readonly kind: 'line'; readonly create: (ctx: RuleContext) => LineRule }

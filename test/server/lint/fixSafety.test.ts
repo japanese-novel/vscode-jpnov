@@ -1,7 +1,10 @@
 /**
  * The exhaustive fix-safety guard: NO auto-fix may overwrite the markup between two clean
  * characters (a fix once silently deleted an annotation — a data-loss bug class), and NO insert
- * may land inside a ruby or an annotation span (an inserted 。 once split 山田《やまだ》 — #72).
+ * may land inside a ruby or an annotation span (an inserted 。 once split 山田《やまだ》 — #72). The
+ * `compose` fix is the one edit allowed inside markup, and only as kana composition: the markup
+ * token stream is compared modulo {@link composeKana}. A corpus whose composition changes what the
+ * markup MEANS (a decomposed keyword becoming a real annotation) belongs in engine.test.ts, not here.
  *
  * `FIX_CORPUS` is a `Record<CatalogId, …>`, so adding a catalog rule without deciding its entry is
  * a COMPILE error: list at least one corpus that produces a fix, or declare `null` (rule has no
@@ -13,6 +16,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { composeKana } from '../../../src/shared/chars.ts';
 import { tokenize } from '../../../src/shared/compiler/tokenizer.ts';
 import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
 import type { CatalogId } from '../../../src/shared/lint/catalog.ts';
@@ -33,7 +37,12 @@ const FIX_CORPUS: Record<CatalogId, readonly string[] | null> = {
   blankRun: ['あ。\n\n\nい。'],
   noUnmatchedPair: null,
   noHankakuKana: ['　はｱｲだ。', '　はｶﾞだ。'],
-  noNfd: ['　か\u3099き。'],
+  noNfd: [
+    '　か\u3099き。',
+    '　山田《やまた\u3099》。',
+    '　た\u3099め［＃「た\u3099め」に傍点］。',
+    '　聖剣《せいけん》［＃「聖剣」の左に「つるき\u3099」のルビ］。',
+  ],
   noZeroWidth: ['　あ\u200bい。'],
   noControlChar: ['　あ\u0007い。'],
   shiftJisSafe: null,
@@ -64,13 +73,15 @@ function enable(id: CatalogId): RawLintConfigWire {
 }
 
 /** The markup token stream: every non-text token by kind and raw text, a ruby by kind and reading
- *  (a fix may legitimately rewrite characters of its base). */
+ *  (a fix may legitimately rewrite characters of its base) — both modulo kana composition, the one
+ *  edit a `compose` fix makes inside markup. */
 function shape(src: string): string[] {
   return tokenize(src).flatMap((t) => {
     if (t.kind === 'text') {
       return [];
     }
-    return [t.kind === 'rubyImplicit' ? `${t.kind}:${t.reading}` : `${t.kind}:${t.raw}`];
+    const inner = t.kind === 'rubyImplicit' ? t.reading : t.raw;
+    return [`${t.kind}:${composeKana(inner)}`];
   });
 }
 

@@ -708,7 +708,7 @@ test('shiftJisSafe off reports nothing', () => {
 });
 
 test('shiftJisSafe stays quiet where an always-on hygiene rule already reports', () => {
-  // All three ship ON, and everything they flag is unencodable by construction, so without the
+  // All three ship ON, and what they flag has no Shift JIS cell of its own, so without the
   // engine's range de-dup every default-configuration user would see two warnings on one character.
   const shipped: RawLintConfigWire = {
     ...SJIS,
@@ -719,7 +719,8 @@ test('shiftJisSafe stays quiet where an always-on hygiene rule already reports',
   assert.deepEqual(lint('あ\u200bい', shipped), [
     { code: 'lint.common.noZeroWidth', text: '\u200b' },
   ]);
-  assert.deepEqual(lint('か\u3099', shipped), [
+  // う + U+3099 composes to ゔ, which Shift JIS lacks, so the raw scan still reports the mark here.
+  assert.deepEqual(lint('う\u3099', shipped), [
     { code: 'lint.common.noNfd', text: '\u3099' },
   ]);
   assert.deepEqual(lint('あ\u0085い', shipped), [
@@ -729,6 +730,54 @@ test('shiftJisSafe stays quiet where an always-on hygiene rule already reports',
 
 test('noNfd fixes by composing the base+mark pair', () => {
   assert.equal(applied('か\u3099き', { 'jpnov.lint.common.noNfd': true }), 'がき');
+});
+
+test('shiftJisSafe stays quiet on a decomposed kana the .txt composes', () => {
+  // か + U+3099 is written as が (issue #83), so with noNfd off there is nothing to report; a
+  // composite Shift JIS lacks (ゔ) still is. Inside a ruby reading likewise; noNfd owns that report.
+  assert.deepEqual(lint('か\u3099', SJIS), []);
+  assert.deepEqual(lint('う\u3099', SJIS), [
+    { code: 'lint.common.shiftJisSafe', text: '\u3099' },
+  ]);
+  assert.deepEqual(lint('山田《やまた\u3099》', SJIS), []);
+});
+
+test('noNfd scans the raw line: readings, annotation targets and keywords included', () => {
+  const NFD: RawLintConfigWire = { 'jpnov.lint.common.noNfd': true };
+  // The views elide a reading and every annotation interior, so the rule reads the raw line; the
+  // fix names the mark's offset and the engine composes it with the unit before — safe anywhere.
+  assert.deepEqual(lint('山田《やまた\u3099》', NFD), [{ code: 'lint.common.noNfd', text: '\u3099' }]);
+  assert.equal(applied('山田《やまた\u3099》', NFD), '山田《やまだ》');
+  assert.equal(applied('「山田《やまた\u3099》」', NFD), '「山田《やまだ》」');
+  assert.equal(
+    applied('｜カ\u3099ラス戸《か\u3099らすと\u3099》か\u3099開いた。', NFD),
+    '｜ガラス戸《がらすど》が開いた。',
+  );
+  // Prose and the postfix target quoting it compose together, so the annotation still binds.
+  assert.equal(
+    applied('　た\u3099めた\u3099［＃「た\u3099めた\u3099」に傍点］、と言った。', NFD),
+    '　だめだ［＃「だめだ」に傍点］、と言った。',
+  );
+  assert.equal(
+    applied('聖剣《せいけん》［＃「聖剣」の左に「つるき\u3099」のルビ］', NFD),
+    '聖剣《せいけん》［＃「聖剣」の左に「つるぎ」のルビ］',
+  );
+  // An annotation whose KEYWORD is decomposed is unrecognized; composing it brings it back.
+  assert.equal(applied('［＃５字下け\u3099］あ', NFD), '［＃５字下げ］あ');
+  // A mark nothing composes with, or with nothing before it, is reported without a fix.
+  for (const src of ['山田《あ\u3099》', '山田《\u3099か》', '\u3099か', 'か［＃「か」に傍点］\u3099']) {
+    const hits = lintAll(src, NFD);
+    assert.equal(hits.length, 1, src);
+    assert.equal(hits[0]?.fix, undefined, src);
+  }
+  // Shipped defaults: the raw shiftJisSafe finding on ゔ's mark de-duplicates against this one.
+  assert.deepEqual(lint('山田《う\u3099》', { ...SJIS, ...NFD }), [
+    { code: 'lint.common.noNfd', text: '\u3099' },
+  ]);
+  // With ruby.kana on, a decomposed reading is still noNfd's alone: rubyKana judges it composed.
+  assert.deepEqual(lint('山田《やまた\u3099》', { ...NFD, 'jpnov.lint.ruby.kana': 'hiragana' }), [
+    { code: 'lint.common.noNfd', text: '\u3099' },
+  ]);
 });
 
 test('shiftJisSafe still reports a variation selector — no sibling rule owns 異体字 loss', () => {
@@ -744,8 +793,8 @@ test('shiftJisSafe still reports a variation selector — no sibling rule owns �
 });
 
 test('the de-dup holds when markup separates in SOURCE what is adjacent in prose', () => {
-  // The view drops the annotation, so noNfd sees "か\u3099" and reports the mark; the raw
-  // scan saw them far apart. Deciding this in the engine (not in a scanner) is what makes it work.
+  // noNfd reports the mark (nothing composes with the ］ before it, so no fix) and shiftJisSafe
+  // lands on the same range. Deciding this in the engine (not in a scanner) is what makes it work.
   const shipped: RawLintConfigWire = { ...SJIS, 'jpnov.lint.common.noNfd': true };
   assert.deepEqual(lint('か［＃「か」に傍点］\u3099', shipped), [
     { code: 'lint.common.noNfd', text: '\u3099' },

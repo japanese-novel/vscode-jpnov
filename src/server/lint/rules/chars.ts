@@ -1,17 +1,18 @@
 /**
- * Character-hygiene rules and the ruby-reading kana rule. The hygiene scans run on the prose
- * view (地の文 and セリフ alike; annotation interiors stay the raw shiftJisSafe rule's job), and
- * every fix is a context-free character substitution — safe to apply verbatim anywhere.
+ * Character-hygiene rules and the ruby-reading kana rule. The hygiene scans run on the prose view
+ * (地の文 and セリフ alike; annotation interiors stay the raw shiftJisSafe rule's job), except
+ * noNfd, which scans the raw line so a ruby reading or an annotation target is composed too.
+ * Every fix is a context-free character substitution, safe to apply verbatim anywhere.
  *
  * Relative imports only (native test loader); vscode-free.
  */
-import { isCjkIdeograph } from '../../../shared/chars.ts';
+import { composeKana, isCjkIdeograph } from '../../../shared/chars.ts';
 
 import { rubyKanaScan } from '../prescan.ts';
 import type { PreScan } from '../prescan.ts';
 import type { LineRule, LintLine, RuleContext } from '../types.ts';
 
-import { viewFix, viewScan, viewSpan } from './adapt.ts';
+import { viewScan } from './adapt.ts';
 
 /** 半角カナ (U+FF61–FF9F: half-width kana, its punctuation and ﾞﾟ): a run normalizes to the
  *  full-width form; NFKC composes ｶ+ﾞ into ガ in one go. */
@@ -33,24 +34,25 @@ const hankakuKanaScan: PreScan = (text) => {
   return out;
 };
 
-/** Decomposed (NFD) kana: the REPORT covers the combining 濁点/半濁点 mark alone (so the raw
- *  shiftJisSafe finding over the same mark de-duplicates against it), while the FIX replaces the
- *  base+mark pair with its NFC composition. A pair NFC cannot compose is flagged without a fix. */
+/** Decomposed (NFD) kana anywhere on the RAW line — prose, ruby readings, annotation targets and
+ *  keywords alike. The REPORT covers the combining 濁点/半濁点 mark alone (so the raw shiftJisSafe
+ *  finding over the same mark de-duplicates against it); the FIX is the engine's `compose` of the
+ *  mark with the unit before it, through the same {@link composeKana} the `.txt` codec runs. A
+ *  mark that composes with nothing is flagged without a fix. */
 export function nfdRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
-      const v = line.prose();
-      for (let i = 0; i < v.text.length; i += 1) {
-        const cp = v.text.charCodeAt(i);
+      const { raw, srcStart } = line;
+      for (let i = 0; i < raw.length; i += 1) {
+        const cp = raw.charCodeAt(i);
         if (cp !== 0x3099 && cp !== 0x309a) {
           continue;
         }
-        const span = viewSpan(v, i, i + 1);
-        const pair = i > 0 ? v.text.slice(i - 1, i + 1) : '';
-        const composed = pair.normalize('NFC');
-        const fix =
-          pair !== '' && composed !== pair ? viewFix(v, i - 1, i + 1, composed) : undefined;
-        ctx.report(span, fix === undefined ? undefined : { fix });
+        const composes = i > 0 && composeKana(raw.slice(i - 1, i + 1)).length === 1;
+        ctx.report(
+          { start: srcStart + i, end: srcStart + i + 1 },
+          composes ? { fix: { compose: srcStart + i } } : undefined,
+        );
       }
     },
   };

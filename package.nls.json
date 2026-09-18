@@ -52,7 +52,7 @@
   "jpnov.lint.narration.endPeriod.description": "Flag a narration line that does not end with 。 (！？ and closing quotes are allowed; a trailing … or dash still wants its 。). Auto-fixable.",
   "jpnov.lint.dialogue.closingPunct.description": "Flag 。 / 、 right before a closing bracket (」』) — dialogue ends without a period. Auto-fixable.",
   "jpnov.lint.dialogue.noIndent.description": "Flag a dialogue line that starts with a full-width space before its 「. Auto-fixable.",
-  "jpnov.lint.ruby.kana.description": "Require every ruby reading 《…》 to be all one kana type (this also rejects half-width kana and NFD).",
+  "jpnov.lint.ruby.kana.description": "Require every ruby reading 《…》 to be all one kana type (this also rejects half-width kana).",
   "jpnov.lint.ruby.kana.off.label": "Off",
   "jpnov.lint.ruby.kana.off.description": "No kana-type check on ruby readings.",
   "jpnov.lint.ruby.kana.hiragana.label": "All hiragana",

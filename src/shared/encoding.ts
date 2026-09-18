@@ -7,7 +7,11 @@
  *
  * Pure + vscode-free: the client encodes artifacts with it, the server's `shiftJisSafe` lint asks
  * it what is representable. Both must agree, so neither may keep a private table.
+ *
+ * Decomposed kana (か + U+3099) are composed per grapheme cluster, on both sides, through the
+ * shared {@link composeKana} — pair-wise composition only, never whole-text NFC.
  */
+import { composeKana } from './chars.ts';
 
 /** `jpnov.layout.txt.encoding` members — the encodings a built `.txt` can be written in. */
 export const TXT_ENCODINGS = ['shiftJis', 'utf8', 'utf8Bom'] as const;
@@ -116,12 +120,13 @@ export function isShiftJisEncodable(cp: number): boolean {
  * One written character Shift JIS cannot hold whole. `❤️` and `👨‍👩‍👦` are single characters built
  * from several code points, so the CLUSTER is what an author sees and what a message must quote,
  * while the offset/length stay on the offending code point — a range no wider than the defect keeps
- * this distinguishable from what a sibling lint rule reports on the same cluster.
+ * this distinguishable from what a sibling lint rule reports on the same cluster. A decomposed kana
+ * whose composition has a cell (か + U+3099 -> が) is not one of these: the codec writes it whole.
  */
 export interface UnencodableChar {
   /** The whole grapheme cluster — quote this. */
   readonly cluster: string;
-  /** The first code point of the cluster with no Shift JIS cell. */
+  /** The first code point of the RAW cluster with no Shift JIS cell. */
   readonly cp: number;
   /** UTF-16 offset of that code point. */
   readonly offset: number;
@@ -131,11 +136,27 @@ export interface UnencodableChar {
 
 const GRAPHEMES = new Intl.Segmenter('ja', { granularity: 'grapheme' });
 
-/** Every written character of `text` Shift JIS cannot hold whole, in order — at most one per cluster. */
+/** True when every code point of `cluster` has a Shift JIS cell. */
+function holdsWhole(cluster: string, map: Map<number, number>): boolean {
+  for (const ch of cluster) {
+    if (!map.has(ch.codePointAt(0) ?? 0)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Every written character of `text` Shift JIS cannot hold whole once its kana are composed, in
+ *  order — at most one per cluster. */
 export function unencodableChars(text: string): UnencodableChar[] {
   const map = shiftJisTable();
   const out: UnencodableChar[] = [];
   for (const { segment, index } of GRAPHEMES.segment(text)) {
+    if (holdsWhole(composeKana(segment), map)) {
+      continue;
+    }
+    // Reported on the RAW code point: the mark itself has no cell, so a cluster whose composition
+    // lacks one always lands here — the offset noNfd reports too, which lets the engine de-duplicate.
     let offset = index;
     for (const ch of segment) {
       const cp = ch.codePointAt(0) ?? 0;
@@ -173,12 +194,12 @@ export function encodeTxt(text: string, encoding: TxtEncoding): EncodedTxt {
   const bytes: number[] = [];
   let substitutions = 0;
   // Per grapheme cluster, because one written character must occupy one square on the page grid:
-  // ❤️ and 👨‍👩‍👦 are 2 and 5 code points but one square each. Whatever of a cluster can be written
-  // is written (辻 survives when only its variation selector is unrepresentable); a cluster that
-  // yields nothing at all becomes a single 〓.
+  // ❤️ and 👨‍👩‍👦 are 2 and 5 code points but one square each. The cluster's kana are composed first
+  // (か + U+3099 writes が); whatever else can be written is written (辻 survives when only its
+  // variation selector is unrepresentable), and a cluster that yields nothing becomes one 〓.
   for (const { segment } of GRAPHEMES.segment(text)) {
     const before = bytes.length;
-    for (const ch of segment) {
+    for (const ch of composeKana(segment)) {
       const packed = map.get(ch.codePointAt(0) ?? 0);
       if (packed === undefined) {
         continue;

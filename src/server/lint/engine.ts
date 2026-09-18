@@ -8,13 +8,14 @@
  * no rule does super-linear work per line (the invariant that lets this stay synchronous; the
  * per-line loop is the natural seam should a yield ever need to come back).
  *
- * Fix materialization is the only place a {@link FixSpec} becomes an LSP range: a `replace` names
- * one PIECE (contiguous source by construction — a fix can never overwrite elided markup), an
- * insert names a prose UNIT and a side (zero-width; the offset is resolved through the piece's
- * outer extents, past a ruby's reading or a closing annotation, and never eats a newline), and an
- * `erase` covers whole blank lines and is checked to hold nothing but line terminators.
- * Out-of-piece arithmetic, an insert on a synthetic unit, or an erase over content is a
- * programming error and throws.
+ * Fix materialization is the only place a {@link FixSpec} becomes an LSP range. A `replace` names
+ * one PIECE (contiguous source by construction, so a fix can never overwrite elided markup). A
+ * `compose` names the offset of one combining 濁点/半濁点; the engine reads the pair from the
+ * document and composes it. An insert names a prose UNIT and a side (zero-width; the offset is
+ * resolved through the piece's outer extents, past a ruby's reading or a closing annotation, and
+ * never eats a newline). An `erase` covers whole blank lines and is checked to hold nothing but
+ * line terminators. Out-of-piece arithmetic, a compose that composes nothing, an insert on a
+ * synthetic unit, or an erase over content is a programming error and throws.
  *
  * A `raw` rule can restate a prose rule's finding over the same characters (an unencodable
  * character that is ALSO decomposed, invisible, …). The prose rule is the more specific one and
@@ -27,6 +28,7 @@ import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { Diagnostic, Range } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
+import { composeKana } from '../../shared/chars.ts';
 import { isSelectionEmpty } from '../../shared/lint/select.ts';
 import type { ActiveRule, RuleSelection } from '../../shared/lint/select.ts';
 import type { LocalizableMessage } from '../../shared/protocol.ts';
@@ -74,7 +76,7 @@ function insertOffset(unit: ProseUnit, side: 'before' | 'after'): number {
   return unit.indexInPiece + 1 < piece.text.length ? unit.src + 1 : piece.outerEnd;
 }
 
-/** Materializes a {@link FixSpec} into source coordinates (see the module header for why the three
+/** Materializes a {@link FixSpec} into source coordinates (see the module header for why the four
  *  shapes are the only safe ones). */
 function materializeFix(spec: FixSpec, doc: TextDocument): LintFix {
   if ('insert' in spec) {
@@ -87,6 +89,19 @@ function materializeFix(spec: FixSpec, doc: TextDocument): LintFix {
       throw new Error(`lint fix erases content: [${String(spec.erase.start)}, ${String(spec.erase.end)})`);
     }
     return { range, newText: '' };
+  }
+  if ('compose' in spec) {
+    const at = spec.compose;
+    if (at < 1) {
+      throw new Error(`lint fix composes nothing at ${String(at)}`);
+    }
+    const range = { start: doc.positionAt(at - 1), end: doc.positionAt(at + 1) };
+    const pair = doc.getText(range);
+    const composed = composeKana(pair);
+    if (pair.length !== 2 || composed.length !== 1) {
+      throw new Error(`lint fix composes nothing at ${String(at)}`);
+    }
+    return { range, newText: composed };
   }
   const { piece, start, end } = spec.replace;
   if (start < 0 || end < start || end > piece.text.length) {

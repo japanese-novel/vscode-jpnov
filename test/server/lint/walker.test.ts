@@ -392,3 +392,12 @@ test('a ｜ base of no prose passes nothing on; an opener inside the base belong
     ['太郎', '太郎［＃傍点終わり］'],
   ]);
 });
+
+test('raw is the line without its terminator, for every terminator and the final line', () => {
+  const src = 'あ\r\nい\rう\nえ';
+  const all = lines(src);
+  assert.deepEqual(all.map((l) => l.raw), ['あ', 'い', 'う', 'え']);
+  for (const l of all) {
+    assert.equal(src.slice(l.srcStart, l.srcEnd), l.raw);
+  }
+});
