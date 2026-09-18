@@ -30,6 +30,11 @@ export function isCjkIdeograph(cp: number): boolean {
 /** Combining 濁点 (U+3099) and 半濁点 (U+309A): what a decomposed (NFD) kana carries after its base. */
 const COMBINING_KANA_MARK = /[\u3099\u309A]/;
 
+/** Whether `cp` is a combining 濁点/半濁点 (the second code point of an NFD kana). */
+export function isCombiningKanaMark(cp: number): boolean {
+  return cp === 0x3099 || cp === 0x309a;
+}
+
 /**
  * `text` with every adjacent kana + combining 濁点/半濁点 pair composed (か + U+3099 -> が). NFC is
  * asked about the PAIR alone: whole-text NFC would also fold the CJK compatibility ideographs
@@ -43,7 +48,7 @@ export function composeKana(text: string): string {
   const out: string[] = [];
   for (const ch of text) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (cp === 0x3099 || cp === 0x309a) {
+    if (isCombiningKanaMark(cp)) {
       const prev = out[out.length - 1];
       const base = prev?.codePointAt(0) ?? 0;
       if (prev !== undefined && base >= 0x3041 && base <= 0x30ff) {

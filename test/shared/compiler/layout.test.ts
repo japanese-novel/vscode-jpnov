@@ -1269,3 +1269,56 @@ test('a postfix inside a ｜ base may target text before the ｜; a 縦中横 sp
     [['｜1', 'tcy'], ['2', 'rr']],
   );
 });
+
+// --------------------------------------------------------------- NFD kana (#125)
+
+const D = '\u3099'; // combining 濁点
+
+test('NFD: a decomposed kana lays out exactly like its NFC twin — one cell, composed text and ruby', () => {
+  const nfd = `　｜カ${D}ラス戸《か${D}らすと${D}》か${D}開いた。`;
+  const nfc = '　｜ガラス戸《がらすど》が開いた。';
+  assert.deepEqual(buildRows(tokenize(nfd)), buildRows(tokenize(nfc)));
+  assert.equal(html(nfd), html(nfc));
+  const ruby = unitsOf(nfd).find((u) => u.ruby !== undefined);
+  assert.deepEqual([ruby?.cells, ruby?.ruby], [4, { base: 'ガラス戸', right: 'がらすど' }]);
+  assert.deepEqual(unitsOf(`か${D}き`).map((u) => [u.text, u.cells]), [['が', 1], ['き', 1]]);
+});
+
+test('NFD: an implicit base and a left reading compose too', () => {
+  const [u] = unitsOf(`カ${D}ラス《か${D}らす》`);
+  assert.deepEqual([u?.text, u?.cells, u?.ruby], ['ガラス', 3, { base: 'ガラス', right: 'がらす' }]);
+  const left = `聖剣《せいけん》［＃「聖剣」の左に「つるき${D}」のルビ］`;
+  assert.equal(unitsOf(left)[0]?.ruby?.left, 'つるぎ');
+  assert.equal(html(left), html('聖剣《せいけん》［＃「聖剣」の左に「つるぎ」のルビ］'));
+});
+
+test('NFD: a postfix target matches its text whichever side is decomposed', () => {
+  for (const src of [`た${D}め［＃「だめ」に傍点］`, `だめ［＃「た${D}め」に傍点］`, `た${D}め［＃「た${D}め」に傍点］`]) {
+    assert.deepEqual(unitsOf(src), unitsOf('だめ［＃「だめ」に傍点］'), src);
+    assert.deepEqual(findPostfixTargetIssues(src), [], src);
+  }
+  const [row] = buildRows(tokenize(`た${D}め［＃「だめ」は大見出し］`));
+  assert.equal(row?.kind === 'line' ? row.heading : undefined, 1);
+  assert.deepEqual(unitsOf(`か${D}き［＃「がき」は縦中横］`).map((u) => [u.text, u.cssClass]), [['がき', 'tcy']]);
+});
+
+test('NFD: 縦中横 content, a value, a broken ［＃ and the empty-base literal compose as well', () => {
+  assert.deepEqual(
+    unitsOf(`［＃縦中横］か${D}き［＃縦中横終わり］`).map((u) => [u.text, u.html]),
+    [['がき', '<span class="tcy">がき</span>']],
+  );
+  const title = new Map([[VALUE_NAMES.title, `か${D}`]]);
+  assert.deepEqual(unitsOf(valueAnnotation(VALUE_NAMES.title), title).map((u) => u.text), ['が']);
+  assert.equal(unitText(`［＃か${D}`), '［＃が');
+  const emptied = new Map([[VALUE_NAMES.title, '']]);
+  assert.deepEqual(
+    unitsOf(`｜${valueAnnotation(VALUE_NAMES.title)}《か${D}》`, emptied).map((u) => u.text),
+    ['｜', '《', 'が', '》'],
+  );
+});
+
+test('NFD: a pair that composes nothing, or is split by markup, keeps its two cells', () => {
+  for (const src of [`あ${D}`, `\uFF76${D}`, `か［＃x］${D}`]) {
+    assert.equal(unitsOf(src).filter((u) => u.text !== '').length, 2, src);
+  }
+});

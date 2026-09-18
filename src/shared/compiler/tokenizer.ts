@@ -29,7 +29,7 @@
  * atomic `rubyImplicit` token.
  */
 
-import { isCjkIdeograph } from '../chars.ts';
+import { composeKana, isCjkIdeograph, isCombiningKanaMark } from '../chars.ts';
 import { resolveStyle, type Channel } from './emphasis.ts';
 
 type TokenKind =
@@ -946,19 +946,19 @@ const TCY_MAX = 3;
  * Source spans of every structural 縦中横 problem, re-derived from {@link tokenize} so the
  * Warnings can never disagree with the (always lenient) render: `unterminated` = no 終わり
  * before the line end (range = the opener), `dangling` = a 終わり with no open span, `tooLong`
- * = content over {@link TCY_MAX} code points (the span form covers its content, the postfix
- * form its annotation). Pairing is LINE-local and the content accounting mirrors buildRows'
- * accumulator exactly.
+ * = content over {@link TCY_MAX} composed code points ({@link composeKana}, as painted; the span
+ * form covers its content, the postfix form its annotation). Pairing is LINE-local and the
+ * content accounting mirrors buildRows' accumulator exactly.
  */
 export function findTcyIssues(src: string): TcyIssue[] {
   const issues: TcyIssue[] = [];
   let open: { start: number; end: number } | null = null; // the ［＃縦中横］ annotation span
   let contentStart = 0;
   let contentEnd = 0;
-  let contentLen = 0; // code points, matching the visible squish
+  let content = ''; // the span's text; composed as one string when counted, like the render's buffer
 
   const reportTooLong = (): void => {
-    if (contentLen > TCY_MAX) {
+    if (Array.from(composeKana(content)).length > TCY_MAX) {
       issues.push({ start: contentStart, end: contentEnd, kind: 'tooLong' });
     }
   };
@@ -979,7 +979,7 @@ export function findTcyIssues(src: string): TcyIssue[] {
           open = { start: offset, end };
           contentStart = end;
           contentEnd = end;
-          contentLen = 0;
+          content = '';
         }
         break;
       case 'tcySpanEnd':
@@ -991,7 +991,7 @@ export function findTcyIssues(src: string): TcyIssue[] {
         }
         break;
       case 'tcyPostfix':
-        if (Array.from(token.target).length > TCY_MAX) {
+        if (Array.from(composeKana(token.target)).length > TCY_MAX) {
           issues.push({ start: offset, end, kind: 'tooLong' });
         }
         break;
@@ -999,7 +999,7 @@ export function findTcyIssues(src: string): TcyIssue[] {
         if (open !== null) {
           const parts = splitLines(token.text);
           const part = parts[0] ?? '';
-          contentLen += Array.from(part).length;
+          content += part;
           contentEnd = offset + part.length;
           if (parts.length > 1) {
             closeAsUnterminated(); // the line break auto-closes the span (line-local)
@@ -1011,7 +1011,7 @@ export function findTcyIssues(src: string): TcyIssue[] {
       case 'rubyEnd':
       case 'brokenAnnotation':
         if (open !== null) {
-          contentLen += Array.from(token.raw).length;
+          content += token.raw;
           contentEnd = end;
         }
         break;
@@ -1019,7 +1019,7 @@ export function findTcyIssues(src: string): TcyIssue[] {
         // Bookless length: the editor compile renders the name; a cover or furniture build
         // may run longer.
         if (open !== null) {
-          contentLen += Array.from(token.name).length;
+          content += token.name;
           contentEnd = end;
         }
         break;
@@ -1049,7 +1049,8 @@ export function findRubyIssues(src: string): RubyIssue[] {
 /**
  * Implicit ruby base (no ｜ marker): the MAXIMAL run of ONE character class — kanji, hiragana,
  * katakana, or alnum of either width — ending at the 《; the last character's class fixes the
- * run and anything else (a class change, whitespace, punctuation, ［) terminates it.
+ * run and anything else (a class change, whitespace, punctuation, ［) terminates it. A combining
+ * 濁点/半濁点 that composes with the kana before it (an NFD が) shares that kana's class.
  */
 type CharClass = 'kanji' | 'hiragana' | 'katakana' | 'alnum' | null;
 
@@ -1110,9 +1111,20 @@ function classOf(ch: string | undefined): CharClass {
 }
 
 export function detectImplicitBase(textBefore: string): { base: string; rest: string } {
-  // Work in code points so astral kanji (SIP) are handled as single units.
+  // Work in code points so astral kanji (SIP) are single units. The slices stay verbatim (the
+  // offset consumers count source units): an NFD mark only borrows its kana's class.
   const chars = Array.from(textBefore);
-  const lastClass = classOf(chars[chars.length - 1]);
+  const classes: CharClass[] = [];
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i] ?? '';
+    const prev = classes[i - 1];
+    const joins =
+      (prev === 'hiragana' || prev === 'katakana') &&
+      isCombiningKanaMark(ch.codePointAt(0) ?? 0) &&
+      composeKana((chars[i - 1] ?? '') + ch).length === 1;
+    classes.push(joins ? prev : classOf(ch));
+  }
+  const lastClass = classes[classes.length - 1] ?? null;
   if (lastClass === null) {
     // Empty, or a trailing char that is not a ruby-base character (space,
     // punctuation, ］, …): there is no implicit base.
@@ -1120,7 +1132,7 @@ export function detectImplicitBase(textBefore: string): { base: string; rest: st
   }
 
   let start = chars.length;
-  while (start > 0 && classOf(chars[start - 1]) === lastClass) {
+  while (start > 0 && classes[start - 1] === lastClass) {
     start -= 1;
   }
 

@@ -159,3 +159,9 @@ test('the kitchen sink emits well-formed XML end to end', () => {
   assert.ok(css.includes('.insep{white-space:nowrap}'));
   assert.ok(css.includes('.indent-2{padding-inline-start:2em}'));
 });
+
+test('NFD kana reach the EPUB composed: base, reading and prose alike', () => {
+  const D = '\u3099';
+  assert.equal(body(`｜カ${D}ラス戸《か${D}らすと${D}》か${D}開いた`), '<p><ruby>ガラス戸<rt>がらすど</rt></ruby>が開いた</p>');
+  assert.equal(body(`聖剣［＃「聖剣」の左に「つるき${D}」のルビ］`), '<p><ruby class="ru">聖剣<rt>つるぎ</rt></ruby></p>');
+});

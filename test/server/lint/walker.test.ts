@@ -401,3 +401,13 @@ test('raw is the line without its terminator, for every terminator and the final
     assert.equal(src.slice(l.srcStart, l.srcEnd), l.raw);
   }
 });
+
+test('NFD: an implicit ruby over a decomposed kana keeps its source offsets (the tokenizer never composes)', () => {
+  const D = '\u3099';
+  const src = `カ${D}ラス《か${D}らす》`;
+  const [l] = lines(src);
+  assert.ok(l);
+  assert.deepEqual(l.pieces.map((p) => [p.text, p.srcStart]), [[`カ${D}ラス`, 0]]);
+  assert.deepEqual(l.rubies, [{ text: `か${D}らす`, srcStart: src.indexOf(`か${D}らす`) }]);
+  assert.deepEqual(outer(src), [[`カ${D}ラス`, src]]);
+});

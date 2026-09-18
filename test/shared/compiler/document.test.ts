@@ -810,6 +810,16 @@ test('cover: the sheet count wraps columns at MANUSCRIPT_SHEET.charsPerLine', ()
   assert.equal(sheets, String(Math.ceil((n * 2) / MANUSCRIPT_SHEET.linesPerPage)));
 });
 
+test('cover: 原稿用紙換算枚数 counts an NFD kana as one cell, like its NFC spelling', () => {
+  const D = '\u3099';
+  // linesPerPage full columns: one sheet composed; decomposed, every column would spill into two.
+  const filled = (kana: string): BookInput =>
+    counted([{ name: 'a.jpnov', src: repeat(MANUSCRIPT_SHEET.linesPerPage, kana.repeat(MANUSCRIPT_SHEET.charsPerLine)) }]);
+  const nfd = countsOf([filled(`か${D}`)]);
+  assert.deepEqual(nfd, countsOf([filled('が')]));
+  assert.equal(nfd.sheets, '1');
+});
+
 test('cover: a 天地中央揃え divider counts from the line head; an author 字下げ passes through', () => {
   // 16 lines + glue (blank, mark, blank) + 1 line = 20 → one sheet. The grid's own centring
   // (indent-17 at cpl 40) would leave the sheet a budget of 1: 5 columns for the mark → 2 sheets.
