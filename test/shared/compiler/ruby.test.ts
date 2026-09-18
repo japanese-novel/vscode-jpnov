@@ -66,7 +66,9 @@ test('欧文: a half-width space ends the implicit base — multi-word bases req
     { kind: 'rubyImplicit', raw: 'Bill《バッファロー・ビル》', base: 'Bill', reading: 'バッファロー・ビル' },
   ]);
   assert.deepEqual(tokenize('｜Au revoir《さらば》'), [
-    { kind: 'rubyExplicit', raw: '｜Au revoir《さらば》', base: 'Au revoir', reading: 'さらば' },
+    { kind: 'rubyStart', raw: '｜' },
+    { kind: 'text', raw: 'Au revoir', text: 'Au revoir' },
+    { kind: 'rubyEnd', raw: '《さらば》', reading: 'さらば' },
   ]);
 });
 

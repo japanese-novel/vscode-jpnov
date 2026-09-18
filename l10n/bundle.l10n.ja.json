@@ -96,6 +96,8 @@
   "unterminated 縦中横 (missing ［＃縦中横終わり］ before the end of the line)": "縦中横が閉じられていません（行末までに「［＃縦中横終わり］」が必要です）",
   "［＃縦中横終わり］ without a matching ［＃縦中横］": "「［＃縦中横終わり］」に対応する「［＃縦中横］」がありません",
   "縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)": "縦中横が長すぎます（3 文字以内にすると字形が崩れません）",
+  "ruby reading 《{0}》 has no base text before it (it prints as typed)": "《{0}》の前にルビのかかる文字がありません（ルビにならず、文字のまま出力されます）",
+  "empty ruby reading 《》 (it prints as typed)": "ルビの読みが空です（《》は文字のまま出力されます）",
   "this sentence is too long": "一文が長すぎます",
   "too many commas (、) in one sentence": "一文に読点（、）が多すぎます",
   "too many consecutive kanji": "漢字が連続しすぎています",

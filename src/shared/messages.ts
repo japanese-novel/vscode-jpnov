@@ -83,6 +83,10 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return '［＃縦中横終わり］ without a matching ［＃縦中横］';
     case 'syntax.tcyTooLong':
       return '縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)';
+    case 'syntax.rubyBaseMissing':
+      return `ruby reading 《${a(0)}》 has no base text before it (it prints as typed)`;
+    case 'syntax.rubyReadingEmpty':
+      return 'empty ruby reading 《》 (it prints as typed)';
     // prose lint (one code per (scope, rule); see lint/catalog.ts).
     // `common` rules run on both 地の文 + セリフ under one code; JA lives in bundle.l10n.ja.json.
     case 'lint.common.sentenceLength':

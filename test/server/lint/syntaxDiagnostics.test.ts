@@ -214,3 +214,82 @@ test('a 見出し postfix rides the same target Warning; a resolved one is clean
   assert.deepEqual(diags[0]?.data, { code: 'syntax.postfixTargetMissing', args: ['別文'] });
   assert.deepEqual(annotationDiagnostics(doc('第一章［＃「第一章」は大見出し］')), []);
 });
+
+// --------------------------------------------------------------- base-less ruby Warnings
+
+test('a closed 《…》 with no base yields one Warning over the run, carrying the reading', () => {
+  const diags = annotationDiagnostics(doc('　行くぞ。《ごう》'));
+  assert.equal(diags.length, 1);
+  const d = diags[0];
+  assert.ok(d);
+  assert.equal(d.severity, DiagnosticSeverity.Warning);
+  assert.equal(d.source, 'jpnov');
+  assert.deepEqual(d.data, { code: 'syntax.rubyBaseMissing', args: ['ごう'] });
+  assert.equal(d.message, 'ruby reading 《ごう》 has no base text before it (it prints as typed)');
+  assert.deepEqual(d.range, {
+    start: { line: 0, character: 5 },
+    end: { line: 0, character: 9 }, // 《ごう》
+  });
+});
+
+test('the ruby Warning range: from a bare ｜, before a CRLF, on the reading\'s own line', () => {
+  const RANGES: readonly [src: string, line: number, from: number, to: number][] = [
+    ['｜《よみ》', 0, 0, 5],
+    ['《よみ》\r\n次', 0, 0, 4],
+    ['｜語\n《ルビ》', 1, 0, 4],
+    // A 縦中横 span edge ends a ｜ base: the reading after it has none and the ｜ stays literal.
+    ['｜［＃縦中横］12［＃縦中横終わり］《じゅうに》', 0, 18, 24],
+  ];
+  for (const [src, line, from, to] of RANGES) {
+    assert.deepEqual(
+      annotationDiagnostics(doc(src)).map((d) => d.range),
+      [{ start: { line, character: from }, end: { line, character: to } }],
+      JSON.stringify(src),
+    );
+  }
+});
+
+test('a valid ruby and an unclosed 《 raise no ruby Warning; an empty 《》 is a Warning of its own', () => {
+  assert.deepEqual(annotationDiagnostics(doc('漢字《かんじ》')), []);
+  assert.deepEqual(annotationDiagnostics(doc('《ひらき')), []);
+  const diags = annotationDiagnostics(doc('｜漢字《》'));
+  assert.equal(diags.length, 1);
+  const d = diags[0];
+  assert.ok(d);
+  assert.equal(d.severity, DiagnosticSeverity.Warning);
+  assert.deepEqual(d.data, { code: 'syntax.rubyReadingEmpty' });
+  assert.equal(d.message, 'empty ruby reading 《》 (it prints as typed)');
+  assert.deepEqual(d.range, {
+    start: { line: 0, character: 3 },
+    end: { line: 0, character: 5 }, // 《》
+  });
+});
+
+test('ruby Warnings come after the postfix-target Warnings', () => {
+  const diags = annotationDiagnostics(doc('別の文［＃「無」に傍点］《x》'));
+  assert.deepEqual(
+    diags.map((d): unknown => d.data),
+    [
+      { code: 'syntax.postfixTargetMissing', args: ['無'] },
+      { code: 'syntax.rubyBaseMissing', args: ['x'] },
+    ],
+  );
+  assert.deepEqual(
+    diags.map((d) => [d.range.start.character, d.range.end.character]),
+    [[3, 12], [12, 15]],
+  );
+});
+
+test('a ｜ base holding annotations is a ruby; a ｜ with nothing visible before its 《 warns from the ｜', () => {
+  assert.deepEqual(annotationDiagnostics(doc('｜山田［＃「山田」に傍点］《やまだ》')), []);
+  assert.deepEqual(annotationDiagnostics(doc('｜［＃ここに「タイトル」の値を表示］《たいとる》')), []);
+  const diags = annotationDiagnostics(doc('｜［＃メモ］《よみ》'));
+  assert.equal(diags.length, 1);
+  const d = diags[0];
+  assert.ok(d);
+  assert.deepEqual(d.data, { code: 'syntax.rubyBaseMissing', args: ['よみ'] });
+  assert.deepEqual(d.range, {
+    start: { line: 0, character: 0 },
+    end: { line: 0, character: 10 }, // ｜［＃メモ］《よみ》
+  });
+});

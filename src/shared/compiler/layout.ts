@@ -20,6 +20,12 @@ import { resolveStyle } from './emphasis.ts';
 import { escapeComment, escapeHtml } from './escape.ts';
 import { splitLines, tokenize, VALUE_NAMES, type HeadingLevel, type Token } from './tokenizer.ts';
 
+/** The corner-target postfixes: ［＃「対象」…］ forms bound to the units before them. */
+type PostfixToken = Extract<
+  Token,
+  { kind: 'rubyLeftPostfix' | 'emphasisPostfix' | 'tcyPostfix' | 'headingPostfix' }
+>;
+
 /**
  * One laid-out glyph group: a char (1 cell), a ruby unit (base char count, atomic), or a
  * 縦中横 cell (ALWAYS 1 cell however many half-width chars it combines, atomic).
@@ -391,6 +397,72 @@ export function buildRows(
     style: active.style,
   });
 
+  // One plain text character: the configured dash is emitted as DASH_GLYPH while `text` keeps the
+  // source character, so postfix targets, 分離禁止 and the lint scanner still match it.
+  const textUnit = (ch: string): Unit => mk(1, ch === want ? DASH_GLYPH : escapeHtml(ch), ch);
+
+  // One ruby unit: `base` under `right`. The channels are the state at the 《 (the latest opener
+  // wins, as everywhere), filled in from the base units for a span closed inside the base — the
+  // unit is atomic, so a span touching any of the base marks the whole ruby.
+  const rubyUnit = (base: string, right: string, baseUnits: readonly Unit[]): Unit => {
+    const ruby = { base, right };
+    const cells = rubyCells(ruby); // safe whole-cell advance; the settle pass may tighten
+    const u = mk(cells, '', base);
+    for (const b of baseUnits) {
+      u.emph ??= b.emph;
+      u.line ??= b.line;
+      u.weight ??= b.weight;
+      u.style ??= b.style;
+    }
+    u.ruby = ruby;
+    u.cssClass = rubyLane(ruby, cells); // rr (+ rh-N); 左ルビ may upgrade to br
+    u.html = rubyHtml(ruby, cells);
+    return u;
+  };
+
+  // Binds a corner-target postfix to the units built so far; a miss degrades the annotation to a
+  // comment and reports its token index through the `issues` sink.
+  const bindPostfix = (token: PostfixToken, ti: number): void => {
+    const miss =
+      issues === undefined
+        ? undefined
+        : (): void => {
+            issues.push(ti);
+          };
+    switch (token.kind) {
+      case 'rubyLeftPostfix':
+        applyLeftRuby(cur, token.target, token.reading, token.raw, miss);
+        break;
+      case 'emphasisPostfix':
+        applyPostfix(cur, token.target, token.variant, token.raw, miss);
+        break;
+      case 'tcyPostfix':
+        applyTcyPostfix(cur, token.target, token.raw, miss);
+        break;
+      case 'headingPostfix':
+        // Line-level effect: a resolved target marks THIS logical line as a heading. Binding
+        // shares {@link matchTarget} so postfix semantics/diagnostics never diverge; a miss
+        // degrades + reports exactly like the unit-level appliers.
+        if (matchTarget(cur, token.target) !== null) {
+          curHeading = token.level;
+        } else {
+          miss?.();
+          cur.push(commentUnit(token.raw));
+        }
+        break;
+    }
+  };
+
+  // The explicit ｜ base under construction (LINE-local): where its units start in `cur`, the ｜
+  // itself, and the corner-target postfixes met inside it. Those bind only once the base is one
+  // ruby unit — exactly as if written after the 《reading》, so a partial target misses like on
+  // any atomic unit and a 縦中横 replaces the ruby as it does there.
+  let openBase: {
+    readonly start: number;
+    readonly raw: string;
+    readonly postfixes: { ti: number; token: PostfixToken }[];
+  } | null = null;
+
   // 縦中横 span accumulator (LINE-local): body text goes into the buffer and flushes as ONE
   // 1-cell combined unit. No nesting — a ruby token contributes its raw literally, other
   // annotations keep their normal handling.
@@ -458,6 +530,7 @@ export function buildRows(
       rows.push(line());
     }
     cur = [];
+    openBase = null; // a ｜ base is line-local
     isPageBreak = false;
     lineSuppressed = false;
     curIndent = activeIndent; // next line inherits the block indent (0 if none)
@@ -467,6 +540,16 @@ export function buildRows(
   for (let ti = 0; ti < tokens.length; ti += 1) {
     const token = tokens[ti];
     if (token === undefined) {
+      continue;
+    }
+    if (
+      tcyBuf !== null &&
+      (token.kind === 'rubyImplicit' ||
+        token.kind === 'rubyStart' ||
+        token.kind === 'rubyEnd' ||
+        token.kind === 'brokenAnnotation')
+    ) {
+      tcyBuf += token.raw; // no nesting inside 縦中横: ruby markup and a broken ［＃ join the cell literally
       continue;
     }
     switch (token.kind) {
@@ -483,65 +566,48 @@ export function buildRows(
             tcyBuf += part;
           } else {
             for (const ch of part) {
-              // The configured dash is emitted as DASH_GLYPH; `text` keeps the source char so
-              // postfix targets, 分離禁止 and the lint scanner still match it. 縦中横 and ルビ
-              // cells build their own html — a dash inside one stays the source glyph.
-              cur.push(mk(1, ch === want ? DASH_GLYPH : escapeHtml(ch), ch));
+              // 縦中横 and ルビ cells build their own html — a dash inside one stays the source glyph.
+              cur.push(textUnit(ch));
             }
           }
         }
         break;
       }
-      case 'rubyExplicit':
-      case 'rubyImplicit': {
-        if (tcyBuf !== null) {
-          tcyBuf += token.raw; // no nesting inside 縦中横 — the ruby markup stays literal
-          break;
+      case 'rubyImplicit':
+        cur.push(rubyUnit(token.base, token.reading, []));
+        break;
+      case 'rubyStart':
+        openBase = { start: cur.length, raw: token.raw, postfixes: [] };
+        break;
+      case 'rubyEnd': {
+        if (openBase === null) {
+          throw new Error('buildRows: rubyEnd without its rubyStart'); // the tokenizer pairs them on one line
         }
-        const ruby = { base: token.base, right: token.reading };
-        const cells = rubyCells(ruby); // safe whole-cell advance; the settle pass may tighten
-        const u = mk(cells, '', token.base);
-        u.ruby = ruby;
-        u.cssClass = rubyLane(ruby, cells); // rr (+ rh-N); 左ルビ may upgrade to br
-        u.html = rubyHtml(u.ruby, cells);
-        cur.push(u);
+        const { start, raw, postfixes } = openBase;
+        openBase = null;
+        const baseUnits = cur.splice(start);
+        const base = baseUnits.map((b) => b.text).join('');
+        if (base === '') {
+          for (const ch of raw + token.raw) {
+            cur.push(textUnit(ch)); // nothing visible (an empty value): the markup prints as typed
+          }
+        } else {
+          cur.push(rubyUnit(base, token.reading, baseUnits));
+        }
+        cur.push(...baseUnits.filter((b) => b.text === '')); // zero-width units (comments) survive
+        for (const p of postfixes) {
+          bindPostfix(p.token, p.ti);
+        }
         break;
       }
       case 'rubyLeftPostfix':
-        applyLeftRuby(
-          cur,
-          token.target,
-          token.reading,
-          token.raw,
-          issues === undefined ? undefined : () => issues.push(ti),
-        );
-        break;
       case 'emphasisPostfix':
-        applyPostfix(
-          cur,
-          token.target,
-          token.variant,
-          token.raw,
-          issues === undefined ? undefined : () => issues.push(ti),
-        );
-        break;
       case 'tcyPostfix':
-        applyTcyPostfix(
-          cur,
-          token.target,
-          token.raw,
-          issues === undefined ? undefined : () => issues.push(ti),
-        );
-        break;
       case 'headingPostfix':
-        // Line-level effect: a resolved target marks THIS logical line as a heading. Binding
-        // shares {@link matchTarget} so postfix semantics/diagnostics never diverge; a miss
-        // degrades + reports exactly like the unit-level appliers.
-        if (matchTarget(cur, token.target) !== null) {
-          curHeading = token.level;
+        if (openBase !== null) {
+          openBase.postfixes.push({ ti, token }); // binds once the base is one unit (see rubyEnd)
         } else {
-          issues?.push(ti);
-          cur.push(commentUnit(token.raw));
+          bindPostfix(token, ti);
         }
         break;
       case 'headingSpanStart':
@@ -610,10 +676,6 @@ export function buildRows(
         // Unclosed ［＃… (swallowed to its line end): visible literal text, so the preview/build
         // never silently drop prose — the editor diagnostic is the error surface. raw never
         // contains a line break, so no endLine handling is needed here.
-        if (tcyBuf !== null) {
-          tcyBuf += token.raw; // literal text joins the combined cell like any other prose
-          break;
-        }
         for (const ch of token.raw) {
           cur.push(mk(1, escapeHtml(ch), ch));
         }
@@ -631,7 +693,7 @@ export function buildRows(
           break;
         }
         for (const ch of substituted) {
-          cur.push(mk(1, ch === want ? DASH_GLYPH : escapeHtml(ch), ch));
+          cur.push(textUnit(ch));
         }
         break;
       }

@@ -14,9 +14,19 @@
  *     swallowing ［＃ up to the line end — never the '\n', nor the '\r' of a '\r\n'. It is
  *     a compile ERROR: {@link findBrokenAnnotations} hands the exact spans to the editor
  *     diagnostics, while the layout renders the raw as visible literal text.
- *   - An unmatched 《 (no 》 on its line) stays lenient: literal text, no error. A pending
- *     ｜ base marker is cleared at a line break, so it never pairs with a later-line 《…》.
+ *   - An unmatched 《 (no 》 on its line) stays lenient: literal text, no error. A ｜ base is
+ *     dropped at a line break, so it never pairs with a later-line 《…》.
+ *   - A closed 《…》 with no base before it (line start, after punctuation, a space or an
+ *     annotation, or a ｜ with nothing visible before the 《) and an empty 《》 are literal text
+ *     too; {@link findRubyIssues} hands those spans to the editor diagnostics as Warnings.
  *   - A standalone ］ or 》 is ordinary text.
+ *
+ * An explicit ｜ base runs up to the 《 whatever sits inside it — the spec offers a written ｜ as
+ * the processing clue for reproducing the ruby (https://www.aozora.gr.jp/annotation/etc.html#ruby),
+ * so it overrides the class-run guess; only a 縦中横 span edge ends it, that span being one cell
+ * of its own. The explicit ruby is a span — `rubyStart` (the ｜), the base tokens in source
+ * order, `rubyEnd` (the reading) — merged into one unit by the layout; the implicit ruby is one
+ * atomic `rubyImplicit` token.
  */
 
 import { isCjkIdeograph } from '../chars.ts';
@@ -24,8 +34,9 @@ import { resolveStyle, type Channel } from './emphasis.ts';
 
 type TokenKind =
   | 'text'
-  | 'rubyExplicit'
   | 'rubyImplicit'
+  | 'rubyStart'
+  | 'rubyEnd'
   | 'rubyLeftPostfix'
   | 'emphasisPostfix'
   | 'emphasisSpanStart'
@@ -55,15 +66,24 @@ export interface TextToken extends TokenBase {
   readonly text: string;
 }
 
-export interface RubyExplicitToken extends TokenBase {
-  readonly kind: 'rubyExplicit';
+/** An implicit ruby 漢字《かんじ》: the base is the class run before the 《 (see detectImplicitBase). */
+export interface RubyImplicitToken extends TokenBase {
+  readonly kind: 'rubyImplicit';
   readonly base: string;
   readonly reading: string;
 }
 
-export interface RubyImplicitToken extends TokenBase {
-  readonly kind: 'rubyImplicit';
-  readonly base: string;
+/**
+ * The ｜ of an explicit ruby: the base tokens follow in source order — text, annotations, a value
+ * field (｜山田［＃「山田」に傍点］《やまだ》) — up to the {@link RubyEndToken} on the same line.
+ */
+export interface RubyStartToken extends TokenBase {
+  readonly kind: 'rubyStart';
+}
+
+/** The 《reading》 closing a {@link RubyStartToken} base; the layout merges the base into one ruby. */
+export interface RubyEndToken extends TokenBase {
+  readonly kind: 'rubyEnd';
   readonly reading: string;
 }
 
@@ -228,8 +248,9 @@ export interface ValueFieldToken extends TokenBase {
 
 export type Token =
   | TextToken
-  | RubyExplicitToken
   | RubyImplicitToken
+  | RubyStartToken
+  | RubyEndToken
   | RubyLeftPostfixToken
   | EmphasisPostfixToken
   | EmphasisSpanStartToken
@@ -564,18 +585,56 @@ export function splitLines(text: string): string[] {
   return text.split(/\r?\n/);
 }
 
-export function tokenize(src: string): Token[] {
+/**
+ * A 《…》 that made no ruby, as absolute source UTF-16 offsets `[start, end)`: `baseMissing` — a
+ * closed reading with no base text before it (from the ｜ when one opened the base);
+ * `readingEmpty` — an empty 《》. The render prints the run as typed.
+ */
+export interface RubyIssue {
+  readonly start: number;
+  readonly end: number;
+  readonly kind: 'baseMissing' | 'readingEmpty';
+  /** The reading; empty for `readingEmpty`. */
+  readonly reading: string;
+}
+
+/**
+ * The token stream of `src`. `opts.issues` collects the 《…》 the lenient recovery keeps as literal
+ * text (see {@link findRubyIssues}); the stream itself is the same with or without the sink.
+ */
+export function tokenize(src: string, opts?: { readonly issues?: RubyIssue[] }): Token[] {
   const tokens: Token[] = [];
+  const issues = opts?.issues;
   let textBuf = '';
-  // Index into textBuf where the most recent explicit ｜ base marker sits, or -1.
-  let baseMark = -1;
+  // The explicit base opened by the latest ｜, held until its 《reading》: the text before the ｜,
+  // the ｜'s offset, and the tokens since it (text pieces and annotations); the text after the
+  // last of them is still in textBuf.
+  let held: { readonly before: string; readonly at: number; readonly tokens: Token[] } | null = null;
+
+  const text = (s: string): Token => ({ kind: 'text', raw: s, text: s });
 
   const flushText = (): void => {
     if (textBuf !== '') {
-      tokens.push({ kind: 'text', raw: textBuf, text: textBuf });
+      tokens.push(text(textBuf));
       textBuf = '';
     }
-    baseMark = -1;
+  };
+
+  // No reading followed the ｜: it is literal text, and what was held comes out as it was.
+  const releaseHeld = (): void => {
+    if (held === null) {
+      return;
+    }
+    const lead = held.before + BASE_MARK;
+    const [first, ...rest] = held.tokens;
+    if (first === undefined) {
+      textBuf = lead + textBuf; // nothing between: the ｜ rejoins its text
+    } else if (first.kind === 'text') {
+      tokens.push(text(lead + first.text), ...rest);
+    } else {
+      tokens.push(text(lead), ...held.tokens);
+    }
+    held = null;
   };
 
   let i = 0;
@@ -591,6 +650,7 @@ export function tokenize(src: string): Token[] {
       if (close === -1 || close >= lineEnd) {
         // No ］ before the line break — the broken annotation swallows ［＃ up to (never past)
         // the end of THIS line; findBrokenAnnotations() reports the span as a compile error.
+        releaseHeld();
         flushText();
         tokens.push({ kind: 'brokenAnnotation', raw: src.slice(i, lineEnd) });
         i = lineEnd;
@@ -605,18 +665,31 @@ export function tokenize(src: string): Token[] {
         i === 0 || src.charAt(i - 1) === '\n' || src.charAt(i - 1) === '\r';
       const inner = src.slice(i + 2, close);
       const raw = src.slice(i, close + 1);
+      const annotation = classifyAnnotation(inner, raw, atLineStart);
+      if (annotation.kind === 'tcySpanStart' || annotation.kind === 'tcySpanEnd') {
+        releaseHeld(); // a 縦中横 span is one cell of its own: a ｜ base never crosses its edge
+      }
+      if (held !== null) {
+        // Inside a ｜ base the annotation is part of it (｜山田［＃「山田」に傍点］《やまだ》).
+        if (textBuf !== '') {
+          held.tokens.push(text(textBuf));
+          textBuf = '';
+        }
+        held.tokens.push(annotation);
+        i = close + 1;
+        continue;
+      }
       flushText();
-      tokens.push(classifyAnnotation(inner, raw, atLineStart));
+      tokens.push(annotation);
       i = close + 1;
       continue;
     }
 
-    // Explicit ruby base marker ｜ — record its index, but KEEP it in textBuf so a ｜
-    // that never forms a valid ruby survives as literal text. It is sliced out only on
-    // a successful explicit-base match below.
+    // Explicit ruby base marker ｜: opens a held base. The last ｜ before a 《 wins.
     if (ch === BASE_MARK) {
-      baseMark = textBuf.length;
-      textBuf += ch;
+      releaseHeld();
+      held = { before: textBuf, at: i, tokens: [] };
+      textBuf = '';
       i += 1;
       continue;
     }
@@ -634,32 +707,36 @@ export function tokenize(src: string): Token[] {
       const rubyRaw = src.slice(i, close + 1);
 
       if (reading === '') {
-        // Empty 《》 => literal text, no <ruby>. Any pending ｜ stays literal in textBuf.
+        // Empty 《》 => literal text, no ruby; a held ｜ turns literal with it.
+        issues?.push({ start: i, end: close + 1, kind: 'readingEmpty', reading });
+        releaseHeld();
         textBuf += rubyRaw;
-        baseMark = -1;
         i = close + 1;
         continue;
       }
 
-      if (baseMark >= 0) {
-        // Explicit base: from just AFTER the ｜ marker up to 《 (baseMark indexes the ｜).
-        const base = textBuf.slice(baseMark + 1);
-        const before = textBuf.slice(0, baseMark);
-        if (base === '') {
-          // ｜《reading》 with nothing between => the ｜ stays literal in textBuf; emit
-          // the 《reading》 run literally too.
+      if (held !== null) {
+        const visible =
+          textBuf !== '' || held.tokens.some((t) => t.kind === 'text' || t.kind === 'valueField');
+        if (!visible) {
+          // Nothing between the ｜ and the 《 that a reading could sit on: no base.
+          issues?.push({ start: held.at, end: close + 1, kind: 'baseMissing', reading });
+          releaseHeld();
           textBuf += rubyRaw;
-          baseMark = -1;
           i = close + 1;
           continue;
         }
-        if (before !== '') {
-          tokens.push({ kind: 'text', raw: before, text: before });
+        // The explicit ruby: the ｜, the base tokens in source order, the reading.
+        if (held.before !== '') {
+          tokens.push(text(held.before));
         }
-        const explicitRaw = BASE_MARK + base + rubyRaw;
-        tokens.push({ kind: 'rubyExplicit', raw: explicitRaw, base, reading });
-        textBuf = '';
-        baseMark = -1;
+        tokens.push({ kind: 'rubyStart', raw: BASE_MARK }, ...held.tokens);
+        if (textBuf !== '') {
+          tokens.push(text(textBuf));
+          textBuf = '';
+        }
+        tokens.push({ kind: 'rubyEnd', raw: rubyRaw, reading });
+        held = null;
         i = close + 1;
         continue;
       }
@@ -668,12 +745,13 @@ export function tokenize(src: string): Token[] {
       const { base, rest } = detectImplicitBase(textBuf);
       if (base === '') {
         // No base char precedes => leave 《reading》 as literal text.
+        issues?.push({ start: i, end: close + 1, kind: 'baseMissing', reading });
         textBuf += rubyRaw;
         i = close + 1;
         continue;
       }
       if (rest !== '') {
-        tokens.push({ kind: 'text', raw: rest, text: rest });
+        tokens.push(text(rest));
       }
       tokens.push({ kind: 'rubyImplicit', raw: base + rubyRaw, base, reading });
       textBuf = '';
@@ -683,13 +761,13 @@ export function tokenize(src: string): Token[] {
 
     // Ordinary character (includes 「」 dialogue, newlines, spaces).
     if (ch === '\n') {
-      // A pending ｜ explicit-base marker never survives a line break (ruby is line-local).
-      baseMark = -1;
+      releaseHeld(); // a ｜ base never survives a line break (ruby is line-local)
     }
     textBuf += ch;
     i += 1;
   }
 
+  releaseHeld();
   flushText();
   return tokens;
 }
@@ -928,8 +1006,9 @@ export function findTcyIssues(src: string): TcyIssue[] {
           }
         }
         break;
-      case 'rubyExplicit':
       case 'rubyImplicit':
+      case 'rubyStart':
+      case 'rubyEnd':
       case 'brokenAnnotation':
         if (open !== null) {
           contentLen += Array.from(token.raw).length;
@@ -950,6 +1029,18 @@ export function findTcyIssues(src: string): TcyIssue[] {
     offset = end;
   }
   closeAsUnterminated(); // an open span at EOF closes with its (last) line
+  return issues;
+}
+
+// Ruby markup that made no ruby (Warning diagnostics)
+
+/**
+ * Source spans of every 《…》 that made no ruby, in document order — derived by RUNNING
+ * {@link tokenize} itself, so the Warning surface can never disagree with what the render prints.
+ */
+export function findRubyIssues(src: string): RubyIssue[] {
+  const issues: RubyIssue[] = [];
+  tokenize(src, { issues });
   return issues;
 }
 

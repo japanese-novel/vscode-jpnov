@@ -1003,10 +1003,15 @@ test('block 太字: the directive lines vanish and the body lines carry the b cl
 
 // --------------------------------------------------------------- 値の表示 (value substitution)
 
+/** Every unit of `src` in flow order, rendered bookless unless `values` are given. */
+const unitsOf = (src: string, values?: ReadonlyMap<string, string>) =>
+  buildRows(tokenize(src), values === undefined ? undefined : { values }).flatMap((row) =>
+    row.kind === 'line' ? row.units : [],
+  );
+
 /** Every unit's text across the rows, concatenated — what the layout measured. */
 const unitText = (src: string, values?: ReadonlyMap<string, string>): string =>
-  buildRows(tokenize(src), values === undefined ? undefined : { values })
-    .flatMap((row) => (row.kind === 'line' ? row.units : []))
+  unitsOf(src, values)
     .map((u) => u.text)
     .join('');
 
@@ -1193,4 +1198,74 @@ test('CRLF: a \\r\\n source lays out exactly like its LF twin', () => {
   assert.equal(pages('あいう\r\n', 3).flat().length, 1);
   assert.doesNotMatch(html(crlf), /data-line="1"/);
   assert.match(html(crlf), /<span class="tcy">12<\/span>/);
+});
+
+// --------------------------------------------------------------- explicit ruby ｜…《》
+
+test('a ｜ base holding a postfix, a span or a left ruby renders exactly like the same mark after the ruby', () => {
+  assert.equal(html('｜山田［＃「山田」に傍点］《やまだ》'), html('山田《やまだ》［＃「山田」に傍点］'));
+  assert.equal(html('｜［＃傍点］山田［＃傍点終わり］《やまだ》'), html('［＃傍点］山田《やまだ》［＃傍点終わり］'));
+  assert.equal(
+    html('｜山田［＃「山田」の左に「やまだ」のルビ］《ヤマダ》'),
+    html('山田《ヤマダ》［＃「山田」の左に「やまだ」のルビ］'),
+  );
+  // A comment inside splits the base text, not the ruby: one unit over the whole base.
+  const [u] = unitsOf('｜山田［＃x］太郎《やまだたろう》');
+  assert.deepEqual([u?.text, u?.cells, u?.ruby], ['山田太郎', 4, { base: '山田太郎', right: 'やまだたろう' }]);
+});
+
+test('a ｜ base of a value field puts the ruby over the substituted value (the name when bookless)', () => {
+  const src = '｜［＃ここに「タイトル」の値を表示］《たいとる》';
+  assert.deepEqual(unitsOf(src, new Map([['タイトル', '作品名']])).map((u) => [u.text, u.ruby?.base]), [
+    ['作品名', '作品名'],
+  ]);
+  assert.deepEqual(unitsOf(src).map((u) => [u.text, u.ruby?.base]), [['タイトル', 'タイトル']]);
+  // An empty value leaves nothing to attach to: the markup prints as typed, ｜ included.
+  assert.deepEqual(unitsOf(src, new Map([['タイトル', '']])).map((u) => u.text), [
+    '｜', '《', 'た', 'い', 'と', 'る', '》',
+  ]);
+});
+
+test('inside 縦中横 an explicit ruby stays literal, like the implicit form', () => {
+  assert.equal(
+    html('［＃縦中横］｜1［＃x］2《いち》［＃縦中横終わり］'),
+    html('［＃縦中横］｜12《いち》［＃x］［＃縦中横終わり］'),
+  );
+});
+
+test('a postfix inside a ｜ base binds once the base is one unit: exactly as if written after the reading', () => {
+  const same = (inside: string, after: string): void => {
+    assert.equal(html(inside), html(after), inside);
+    assert.deepEqual(
+      findPostfixTargetIssues(inside).map((i) => i.target),
+      findPostfixTargetIssues(after).map((i) => i.target),
+      inside,
+    );
+  };
+  // 縦中横 replaces the ruby (手動縦中横 > ルビ); an inner mark overrides the enclosing span.
+  same('｜12［＃「12」は縦中横］《じゅうに》', '12《じゅうに》［＃「12」は縦中横］');
+  same('［＃傍点］｜山田［＃「山田」に丸傍点］《やまだ》［＃傍点終わり］', '［＃傍点］山田《やまだ》［＃「山田」に丸傍点］［＃傍点終わり］');
+  // A target covering part of the base cuts into the atomic ruby: a miss, reported.
+  same('｜山田太郎［＃「山田」に傍点］《やまだたろう》', '山田太郎《やまだたろう》［＃「山田」に傍点］');
+  same('｜山田太郎［＃「山田」の左に「やまだ」のルビ］《やまだたろう》', '山田太郎《やまだたろう》［＃「山田」の左に「やまだ」のルビ］');
+  assert.equal(findPostfixTargetIssues('｜山田太郎［＃「山田」に傍点］《やまだたろう》').length, 1);
+  // A heading postfix and a comment inside the base keep their meaning (the comment survives).
+  same('｜序章［＃「序章」は大見出し］《じょしょう》', '序章《じょしょう》［＃「序章」は大見出し］');
+  same('｜山田［＃x］《やまだ》', '山田《やまだ》［＃x］');
+});
+
+test('a postfix inside a ｜ base may target text before the ｜; a 縦中横 span edge ends the base', () => {
+  assert.deepEqual(
+    unitsOf('12｜三［＃「12」は縦中横］《さん》').map((u) => [u.text, u.cssClass, u.ruby?.base]),
+    [['12', 'tcy', undefined], ['三', 'rr', '三']],
+  );
+  assert.deepEqual(
+    unitsOf('青空｜文庫［＃「青空」の左に「あおぞら」のルビ］《ぶんこ》').map((u) => [u.text, u.ruby]),
+    [['青空', { base: '青空', left: 'あおぞら' }], ['文庫', { base: '文庫', right: 'ぶんこ' }]],
+  );
+  // The ｜ inside the span stays literal in the combined cell; 2《いち》 is an ordinary implicit ruby.
+  assert.deepEqual(
+    unitsOf('［＃縦中横］｜1［＃縦中横終わり］2《いち》').map((u) => [u.text, u.cssClass]),
+    [['｜1', 'tcy'], ['2', 'rr']],
+  );
 });

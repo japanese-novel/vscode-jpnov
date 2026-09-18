@@ -95,6 +95,10 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('［＃縦中横終わり］ without a matching ［＃縦中横］');
     case 'syntax.tcyTooLong':
       return vscode.l10n.t('縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)');
+    case 'syntax.rubyBaseMissing':
+      return vscode.l10n.t('ruby reading 《{0}》 has no base text before it (it prints as typed)', s(0));
+    case 'syntax.rubyReadingEmpty':
+      return vscode.l10n.t('empty ruby reading 《》 (it prints as typed)');
     // prose lint (kept byte-identical to renderEnglish).
     case 'lint.common.sentenceLength':
       return vscode.l10n.t('this sentence is too long');

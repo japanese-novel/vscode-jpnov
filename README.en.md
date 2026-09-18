@@ -170,8 +170,12 @@ form uses bare `左に` (`［＃左に傍点］…［＃左に傍点終わり］
 connector **は**. Indent counts (`○`) are **full-width digits** (２, １０); the block indent
 also indents wrapped continuation lines. An unclosed start / end or block annotation
 (`［＃太字］` or `ここから…` with no `…終わり`) still renders to the end of the file but
-raises an editor **Warning**, as does a `…終わり` with nothing open; an unclosed `［＃`
-is an **Error**. Italic relies on the browser synthesising an oblique for Japanese fonts.
+raises an editor **Warning**, as does a `…終わり` with nothing open and a `《…》` reading
+with no base text before it or an empty `《》` (both print as typed); an unclosed `［＃`
+is an **Error**. An
+explicit `｜` base runs up to the `《` even across annotations inside it
+(`｜山田［＃「山田」に傍点］《やまだ》` is one ruby, dotted). Italic relies on the browser
+synthesising an oblique for Japanese fonts.
 
 **Left ruby** puts a reading on the left of the preceding text; pair it with an
 ordinary right ruby for 両側ルビ (`青空文庫《あおぞらぶんこ》［＃「青空文庫」の左に
@@ -451,8 +455,8 @@ counts as one run — the checks see the text the way a reader will.
   `maxTen`, `maxKanjiRun`, `arabicDigits`), blank lines in a row
   (`blankRun`, auto-fixable), the `！？`-pair style, and the ruby-kana rule.
 
-Syntax problems (an unclosed `［＃` annotation, a dangling block end) are
-always reported, independent of lint settings.
+Syntax problems (an unclosed `［＃` annotation, a dangling block end, a ruby
+with no base or no reading) are always reported, independent of lint settings.
 
 ![A lint squiggle with its quick-fix menu open](docs/images/vscode-lint-quickfix.png)
 

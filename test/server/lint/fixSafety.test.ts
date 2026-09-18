@@ -70,7 +70,7 @@ function shape(src: string): string[] {
     if (t.kind === 'text') {
       return [];
     }
-    return [t.kind === 'rubyExplicit' || t.kind === 'rubyImplicit' ? `${t.kind}:${t.reading}` : `${t.kind}:${t.raw}`];
+    return [t.kind === 'rubyImplicit' ? `${t.kind}:${t.reading}` : `${t.kind}:${t.raw}`];
   });
 }
 
@@ -88,6 +88,8 @@ const WEDGES: readonly Wedge[] = [
   { open: '［＃「z」に傍点］', close: '', wraps: 0 },
   { open: '［＃メモ］', close: '', wraps: 0 },
   { open: '｜', close: '《z》', wraps: 1 },
+  { open: '｜', close: '［＃メモ］《z》', wraps: 1 }, // a ｜ base holding an annotation
+  { open: '｜［＃メモ］', close: '《z》', wraps: 1 },
   { open: '［＃縦中横］', close: '［＃縦中横終わり］', wraps: 1 },
   { open: '［＃傍点］', close: '［＃傍点終わり］', wraps: 1 },
   { open: '［＃丸傍点］', close: '［＃丸傍点終わり］', wraps: 1 },

@@ -327,3 +327,20 @@ test('a multi-line block keeps its body lines free of markup colouring', () => {
   assert.deepEqual(at(toks, 2, 7), { line: 2, char: 7, len: 3, type: MARKER }); // 終わり
   assert.ok(!toks.some((t) => t.line === 1)); // 本文 stays default body colour
 });
+
+test('a ｜ base holding an annotation: ｜, the annotation and 《》 are markers; the base is body text', () => {
+  // ｜(0) 山(1) 田(2) ［(3) ＃(4) x(5) ］(6) 太(7) 郎(8) 《(9) た(10) ろ(11) う(12) 》(13) は(14)
+  // The comment ends a recognition run exactly as it does outside a ruby, so the subject
+  // 太郎は after it is what the recogniser sees.
+  const toks = decode(buildSemanticTokens(doc('｜山田［＃x］太郎《たろう》は'), rec).data);
+  assert.equal(at(toks, 0, 0)?.type, MARKER); // ｜
+  assert.equal(at(toks, 0, 0)?.len, 1);
+  assert.equal(at(toks, 0, 3)?.type, MARKER); // ［＃x］ (comment, whole)
+  assert.equal(at(toks, 0, 3)?.len, 4);
+  assert.equal(at(toks, 0, 7)?.type, CHARACTER); // 太郎, base text after the comment
+  assert.equal(at(toks, 0, 7)?.len, 2);
+  assert.equal(at(toks, 0, 9)?.type, MARKER); // 《たろう
+  assert.equal(at(toks, 0, 9)?.len, 4);
+  assert.equal(at(toks, 0, 13)?.type, MARKER); // 》
+  assert.ok(!covers(toks, 10, CHARACTER)); // the reading is not recognised
+});
