@@ -286,6 +286,10 @@ export function activate(context: vscode.ExtensionContext): void {
     serverCommand('jpbook.createFile', (arg?: unknown) => createFile(booksView, arg)),
     serverCommand('jpnov.preview', () => preview?.open(false)),
     serverCommand('jpnov.previewToSide', () => preview?.open(true)),
+    // The preview's layout widget verbs (plain: an override exists only once the preview has
+    // rendered, and `preview?.` covers the pre-start case). The palette lists them while adjusted.
+    command('jpnov.preview.resetLayout', () => preview?.resetLayout()),
+    command('jpnov.preview.saveLayout', () => preview?.saveLayout()),
     // Plain command (no server needed): the Books panel's welcome views link here. The id
     // is resolved at runtime so the walkthrough opens under any publisher, including the
     // Extension Development Host's `undefined_publisher`.

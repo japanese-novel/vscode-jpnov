@@ -26,6 +26,8 @@ import type {
   WelcomeAction,
 } from '../../protocol.ts';
 
+import { svgGlyph } from '../svg.ts';
+
 /** Every glyph the panel draws; `cbOff`/`cbOn` are the selection checkbox's two states. */
 type IconName =
   | 'chevR' | 'chevL' | 'up' | 'down' | 'err' | 'pick' | 'newFile' | 'close' | 'edit' | 'grip' | 'cbOff' | 'cbOn';
@@ -164,20 +166,10 @@ const GLYPH = {
   },
 } as const;
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 /** An h()-composable SVG glyph; SVG needs createElementNS, which h() (HTML-only) cannot do. */
 function glyph(name: keyof typeof GLYPH): SVGSVGElement {
   const mark = GLYPH[name];
-  const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('viewBox', mark.viewBox);
-  svg.setAttribute('fill', 'currentColor');
-  svg.setAttribute('aria-hidden', 'true');
-  for (const d of mark.d) {
-    const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('d', d);
-    svg.append(path);
-  }
-  return svg;
+  return svgGlyph(mark.viewBox, mark.d);
 }
 
 /** `data-fk` is required — every icon button participates in the focus-restore system. */

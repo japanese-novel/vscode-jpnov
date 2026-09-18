@@ -1,0 +1,24 @@
+/* The layout widget (chars per line × lines per page): a chip fixed over the preview's top-right
+   corner (the text starts there; new lines grow leftward), themed by the --vscode-* variables. The
+   document root is vertical-rl with a vh-fit font-size, so the chip pins its own writing mode and
+   px sizes; the strict CSP rules out style attributes, so every state is a class or data attribute. */
+.jw{position:fixed;top:4px;right:8px;z-index:10;display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:4px;writing-mode:horizontal-tb;font:12px var(--vscode-font-family,sans-serif);line-height:normal;color:var(--vscode-editorWidget-foreground,var(--vscode-editor-foreground));background:var(--vscode-editorWidget-background,#252526);border:1px solid var(--vscode-editorWidget-border,var(--vscode-widget-border,transparent));box-shadow:0 0 8px var(--vscode-widget-shadow,rgba(0,0,0,.36));user-select:none;}
+/* An override is active: the input-validation warning look (the settings still hold the old values). */
+.jw[data-adjusted]{border-color:var(--vscode-inputValidation-warningBorder,#b89500);background:var(--vscode-inputValidation-warningBackground,#352a05);}
+.jw-field{display:inline-flex;align-items:center;gap:2px;}
+.jw input{width:3.4em;box-sizing:content-box;margin:0;padding:1px 2px;font:inherit;text-align:right;user-select:text;color:var(--vscode-input-foreground,inherit);background:var(--vscode-input-background,transparent);border:1px solid var(--vscode-input-border,transparent);border-radius:2px;}
+.jw input:focus{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px;}
+.jw-x{color:var(--vscode-descriptionForeground,inherit);}
+.jw-btn{display:inline-flex;align-items:center;margin:0;padding:2px;border:none;border-radius:4px;background:none;color:inherit;cursor:pointer;}
+.jw-btn:hover{background:var(--vscode-toolbar-hoverBackground,var(--vscode-list-hoverBackground));}
+.jw-btn:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px;}
+.jw-btn svg{width:14px;height:14px;display:block;}
+/* Folded (whenever focus is outside the chip): only the small summary stays, framed yellow while
+   adjusted; clicking it opens the controls. */
+.jw-summary{margin:0;padding:0;border:none;background:none;font:inherit;color:inherit;cursor:pointer;}
+.jw-summary:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:1px;}
+.jw:not(.jw-collapsed)>.jw-summary{display:none;}
+.jw-collapsed{font-size:10px;padding:2px 5px;}
+.jw-collapsed>:not(.jw-summary){display:none;}
+/* The native spinners follow the colour scheme; VS Code marks the theme kind on <body>. */
+body.vscode-dark .jw,body.vscode-high-contrast .jw{color-scheme:dark;}

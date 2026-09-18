@@ -214,6 +214,13 @@ builds use, and shows `［＃改ページ］` as a labelled dashed marker. Line 
 (on by default, restarting at every page break) and manuscript-paper column rules
 are toggled under **Japanese Novel — Layout & Output**.
 
+A small chip at the preview's top right shows `40 chars × 34 lines`. Click it to
+open the controls and change the characters per line and lines per page on the spot.
+The values apply to the preview only. While they differ from the settings the chip
+turns yellow and gains two buttons: save writes them to your user settings or the
+open folder's workspace settings, reset restores the values from the settings. Click anywhere else and the
+chip folds back to the one-line summary.
+
 ## Building books
 
 The **Books** view in the Activity Bar lists every discovered `.jpbook` as
@@ -538,6 +545,7 @@ All under the **Japanese Novel** category.
 | --- | --- |
 | Open Preview to the Side | Editor title bar on `.jpnov`, Command Palette |
 | Open Preview | Command Palette |
+| Reset Preview Layout to Settings, Save Preview Layout to Settings… | Buttons on the preview's layout chip, Command Palette (both only while the values differ from the settings) |
 | Create a Book… | Books view title bar (`+`), Command Palette |
 | Print / Save as PDF, Build to Text, Build to EPUB | Buttons at the bottom of the Books view |
 | Select All Books, Deselect All Books | Links at the bottom of the Books view |

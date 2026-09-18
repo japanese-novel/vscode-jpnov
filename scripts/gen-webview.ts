@@ -1,6 +1,6 @@
 /**
  * Codegen for the browser-context programs under `src/client/webview/`. Each module has a TS
- * entry (compiled to a self-executing IIFE by esbuild) and optionally a `.css`; this
+ * entry (compiled to a self-executing IIFE by esbuild) and any number of `.css` files; this
  * bundles/reads them into string modules their hosts inline into a `<script>`/`<style>`:
  * the webviews (`book/webviewHtml.ts`, `preview/preview.ts` — a strict CSP forbids loadable
  * scripts) and the compiler's paginated outputs (css.ts `emrProbe()`). Also vendors the
@@ -32,8 +32,8 @@ interface WebviewModule {
   /** Browser TS entry point, bundled to an IIFE string export `jsExport`. */
   readonly entry: string;
   readonly jsExport: string;
-  /** Optional CSS file, inlined verbatim (trimmed) as string export `cssExport`. */
-  readonly css?: { readonly file: string; readonly cssExport: string };
+  /** CSS files, each inlined verbatim (trimmed) as the string export `cssExport`. */
+  readonly css?: readonly { readonly file: string; readonly cssExport: string }[];
   /** The committed-shape `*.generated.ts` this module writes. */
   readonly out: string;
 }
@@ -42,13 +42,16 @@ const MODULES: readonly WebviewModule[] = [
   {
     entry: join(ROOT, 'src/client/webview/book/main.ts'),
     jsExport: 'BOOKS_JS',
-    css: { file: join(ROOT, 'src/client/webview/book/styles.css'), cssExport: 'BOOKS_CSS' },
+    css: [{ file: join(ROOT, 'src/client/webview/book/styles.css'), cssExport: 'BOOKS_CSS' }],
     out: join(ROOT, 'src/client/book/webviewBundle.generated.ts'),
   },
   {
-    entry: join(ROOT, 'src/client/webview/preview/scroll.ts'),
-    jsExport: 'SCROLL_JS',
-    css: { file: join(ROOT, 'src/client/webview/preview/loading.css'), cssExport: 'LOADING_CSS' },
+    entry: join(ROOT, 'src/client/webview/preview/main.ts'),
+    jsExport: 'PREVIEW_JS',
+    css: [
+      { file: join(ROOT, 'src/client/webview/preview/loading.css'), cssExport: 'LOADING_CSS' },
+      { file: join(ROOT, 'src/client/webview/preview/widget.css'), cssExport: 'WIDGET_CSS' },
+    ],
     out: join(ROOT, 'src/client/preview/webviewBundle.generated.ts'),
   },
   {
@@ -83,13 +86,13 @@ async function bundleScript(entry: string, production: boolean): Promise<string>
   return file.text;
 }
 
-/** Renders one generated module's full text (JS bundle + optional verbatim CSS, as string exports). */
+/** Renders one generated module's full text (JS bundle + the verbatim CSS files, as string exports). */
 async function renderModule(mod: WebviewModule, production: boolean): Promise<string> {
   const js = await bundleScript(mod.entry, production);
   let cssDecl = '';
-  if (mod.css !== undefined) {
-    const css = (await readFile(mod.css.file, 'utf8')).trim();
-    cssDecl = `export const ${mod.css.cssExport} = ${JSON.stringify(css)};\n`;
+  for (const { file, cssExport } of mod.css ?? []) {
+    const css = (await readFile(file, 'utf8')).trim();
+    cssDecl += `export const ${cssExport} = ${JSON.stringify(css)};\n`;
   }
   return HEADER + cssDecl + `export const ${mod.jsExport} = ${JSON.stringify(js)};\n`;
 }

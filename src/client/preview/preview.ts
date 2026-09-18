@@ -3,11 +3,12 @@
  * live (dirty) buffer. The SERVER renders (`jpnov/renderFile`); this class decides WHEN to
  * render, follows the editor's top-most cursor, and owns webview security: the server HTML must
  * be hardened (strict CSP `<meta>`, a per-render nonce on the inline `<style>`, the nonce'd
- * cursor-follow script) before it is assigned to `webview.html`. The panel survives window
- * reloads through the serializer in extension.ts — `adopt()` must stay synchronous through its
- * first paint and never throw. A lifetime listener follows editor switches and remembers the
- * last `.jpnov` document, so the preview command has something to show even when issued from
- * a non-text editor such as the walkthrough page.
+ * bundle: cursor follow + the layout widget) before it is assigned to `webview.html`. The panel
+ * survives window reloads through the serializer in extension.ts — `adopt()` must stay
+ * synchronous through its first paint and never throw. A lifetime listener follows editor
+ * switches and remembers the last `.jpnov` document, so the preview command has something to
+ * show even when issued from a non-text editor such as the walkthrough page. The layout widget's
+ * preview-only grid overrides live here as well: per panel, never persisted.
  */
 import * as vscode from 'vscode';
 
@@ -15,18 +16,27 @@ import type { LanguageClient } from 'vscode-languageclient/node';
 
 import { errorText } from '#/shared/errors.ts';
 import { escapeHtml } from '#/shared/compiler/escape.ts';
+import { resolvePreviewSettings } from '#/shared/config/settings.ts';
+import { CHARS_MAX, CHARS_MIN } from '#/shared/config/types.ts';
 import {
   RenderFileRequest,
+  type PreviewSettings,
   type RenderFileParams,
   type RenderFileResult,
 } from '#/shared/protocol.ts';
 
-import type { PreviewInit, RevealMessage } from '../protocol.ts';
+import type {
+  PreviewInit,
+  PreviewLayoutInit,
+  PreviewLayoutKey,
+  PreviewLayoutLabels,
+  RevealMessage,
+} from '../protocol.ts';
 
 import { bootScript, cspMeta, makeNonce } from '../nonce.ts';
 import { lastPathSegment } from '../paths.ts';
 import { buildPreviewSettings } from '../renderConfig.ts';
-import { LOADING_CSS, SCROLL_JS } from './webviewBundle.generated.ts';
+import { LOADING_CSS, PREVIEW_JS, WIDGET_CSS } from './webviewBundle.generated.ts';
 
 /**
  * Trailing-edge debounce for edit-driven re-renders. Every keystroke otherwise ships the whole
@@ -35,6 +45,19 @@ import { LOADING_CSS, SCROLL_JS } from './webviewBundle.generated.ts';
  * open/adopt/editor-switch renders stay immediate.
  */
 const RENDER_DEBOUNCE_MS = 120;
+
+/** The grid keys the layout widget adjusts, in widget order. */
+const LAYOUT_KEYS: readonly PreviewLayoutKey[] = ['charsPerLine', 'linesPerPage'];
+
+function isLayoutKey(value: unknown): value is PreviewLayoutKey {
+  return typeof value === 'string' && (LAYOUT_KEYS as readonly string[]).includes(value);
+}
+
+/** A widget override: the preview-only value, and the resolved setting it was set against. */
+interface LayoutOverride {
+  readonly value: number;
+  readonly base: number;
+}
 
 export class Preview {
   /** The panel's viewType — the key the window-reload serializer registers under. */
@@ -65,13 +88,33 @@ export class Preview {
    * replaced panel (every panel transition funnels through teardown()).
    */
   private renderSeq = 0;
-  /** Pending edit-driven re-render (see {@link RENDER_DEBOUNCE_MS}); cleared by teardown(). */
+  /** Pending debounced re-render (see {@link RENDER_DEBOUNCE_MS}) and the widget input it re-focuses; cleared by teardown(). */
   private renderDebounce: ReturnType<typeof setTimeout> | undefined;
+  private scheduledFocus: PreviewLayoutKey | undefined;
+  /**
+   * Preview-only values for charsPerLine / linesPerPage from the layout widget, replacing the
+   * settings in every render. Panel-scoped: kept across document switches, dropped by teardown().
+   * A render retires one whose setting moved since it was set, or that now equals its setting.
+   */
+  private readonly layoutOverride = new Map<PreviewLayoutKey, LayoutOverride>();
+  /** The last `jpnov.previewAdjusted` value sent, so only a flip costs a setContext round trip. */
+  private adjustedContext: boolean | undefined;
+  /** The widget's fixed strings, localized once; `hint` is per render. */
+  private readonly labels: Omit<PreviewLayoutLabels, 'hint'>;
 
   private readonly client: LanguageClient;
 
   constructor(client: LanguageClient) {
     this.client = client;
+    this.labels = {
+      chars: vscode.l10n.t('chars'),
+      lines: vscode.l10n.t('lines'),
+      charsPerLine: vscode.l10n.t('Characters per line'),
+      linesPerPage: vscode.l10n.t('Lines per page'),
+      reset: vscode.l10n.t('Reset Preview Layout to Settings'),
+      save: vscode.l10n.t('Save Preview Layout to Settings…'),
+      show: vscode.l10n.t('Show Preview Layout Controls'),
+    };
     this.lastDocUri = this.previewableEditor(vscode.window.activeTextEditor)?.document.uri.toString();
     // Re-render when the user switches which file is active (a no-op while no panel is open).
     this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor((next) => {
@@ -109,8 +152,8 @@ export class Preview {
         Preview.viewType,
         vscode.l10n.t('Japanese Novel Preview'),
         { viewColumn: column, preserveFocus },
-        // Scripts are enabled but locked to a per-render nonce via CSP; the only script
-        // is our own cursor-follow scroller (no remote/inline-eval scripts can run).
+        // Scripts are enabled but locked to a per-render nonce via CSP; the only script is our
+        // own bundle (cursor follow + the layout widget), so no remote/inline-eval script can run.
         { enableScripts: true, retainContextWhenHidden: true },
       );
       this.wire(panel);
@@ -184,6 +227,55 @@ export class Preview {
     }
   }
 
+  /** Command handler for `jpnov.preview.resetLayout` (also the widget's reset button): drops every override. */
+  resetLayout(): void {
+    if (this.layoutOverride.size === 0) {
+      return;
+    }
+    this.cancelScheduledRender(); // a change committed just before the click must not re-open the chip
+    this.layoutOverride.clear();
+    this.syncContext();
+    this.refresh();
+  }
+
+  /**
+   * Command handler for `jpnov.preview.saveLayout` (also the widget's save button): writes the
+   * overridden keys to the user or workspace settings the author picks. The writes' change events
+   * re-render, and the render retires each override whose setting now holds its value.
+   */
+  async saveLayout(): Promise<void> {
+    const entries = [...this.layoutOverride]; // a snapshot: the panel may close while the pick is open
+    if (entries.length === 0) {
+      return;
+    }
+    this.scheduledFocus = undefined; // a change committed just before the click: rendered, but under the pick
+    const config = vscode.workspace.getConfiguration();
+    const shadowed = entries.some(([key]) => {
+      const scopes = config.inspect<number>(`jpnov.layout.${key}`);
+      return scopes?.workspaceValue !== undefined || scopes?.workspaceFolderValue !== undefined;
+    });
+    const items: (vscode.QuickPickItem & { readonly target: vscode.ConfigurationTarget })[] = [{
+      label: vscode.l10n.t('User Settings'),
+      description: vscode.l10n.t('Applies to every folder you open'),
+      ...(shadowed ? { detail: vscode.l10n.t('A workspace setting already exists and takes precedence') } : {}),
+      target: vscode.ConfigurationTarget.Global,
+    }];
+    if ((vscode.workspace.workspaceFolders ?? []).length > 0) {
+      items.push({
+        label: vscode.l10n.t('Workspace Settings'),
+        description: vscode.l10n.t('Applies to the open folder only'),
+        target: vscode.ConfigurationTarget.Workspace,
+      });
+    }
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: vscode.l10n.t('Select where to save') });
+    if (pick === undefined) {
+      return;
+    }
+    for (const [key, { value }] of entries) {
+      await config.update(`jpnov.layout.${key}`, value, pick.target);
+    }
+  }
+
   dispose(): void {
     this.activeEditorListener.dispose();
     // Capture before teardown(): teardown() nulls `this.panel`, so disposing it must
@@ -221,6 +313,102 @@ export class Preview {
     void this.panel?.webview.postMessage(message);
   }
 
+  /** Mirrors "an override is active" into the `jpnov.previewAdjusted` context key (the palette entries' `when`). */
+  private syncContext(): void {
+    const adjusted = this.layoutOverride.size > 0;
+    if (adjusted !== this.adjustedContext) {
+      this.adjustedContext = adjusted;
+      void vscode.commands.executeCommand('setContext', 'jpnov.previewAdjusted', adjusted);
+    }
+  }
+
+  private cancelScheduledRender(): void {
+    clearTimeout(this.renderDebounce);
+    this.renderDebounce = undefined;
+    this.scheduledFocus = undefined;
+  }
+
+  /**
+   * Trailing-edge debounced render of the shown document: a typing burst or a held spinner costs
+   * one render. `focus` names the widget input whose change this is, for the render that lands.
+   */
+  private scheduleRender(focus?: PreviewLayoutKey): void {
+    clearTimeout(this.renderDebounce);
+    this.scheduledFocus = focus ?? this.scheduledFocus;
+    this.renderDebounce = setTimeout(() => {
+      this.renderDebounce = undefined;
+      const landing = this.scheduledFocus;
+      this.scheduledFocus = undefined;
+      const doc = this.openPreviewable(this.currentDocUri);
+      if (doc !== undefined) {
+        void this.renderDocument(doc, undefined, landing);
+      }
+    }, RENDER_DEBOUNCE_MS);
+  }
+
+  /** Handles the layout widget's verbs; the payload is untrusted, so anything malformed is dropped. */
+  private onWebviewMessage(message: unknown): void {
+    if (typeof message !== 'object' || message === null) {
+      return;
+    }
+    const m = message as { type?: unknown; key?: unknown; value?: unknown };
+    if (m.type === 'layout') {
+      const { key, value } = m;
+      if (isLayoutKey(key) && typeof value === 'number' && Number.isSafeInteger(value) && value >= CHARS_MIN && value <= CHARS_MAX) {
+        const base = resolvePreviewSettings(buildPreviewSettings())[key];
+        if (value === base) {
+          this.layoutOverride.delete(key);
+        } else {
+          this.layoutOverride.set(key, { value, base });
+        }
+        this.syncContext();
+        this.scheduleRender(key);
+      }
+    } else if (m.type === 'reset') {
+      this.resetLayout();
+    } else if (m.type === 'save') {
+      // Through the command, so its popup boundary covers the webview path too.
+      void vscode.commands.executeCommand('jpnov.preview.saveLayout');
+    }
+  }
+
+  /**
+   * Drops an override whose setting moved since it was set (the settings edit wins) or that now
+   * equals its setting, and mirrors the outcome into the context key.
+   */
+  private retireOverrides(base: PreviewSettings): void {
+    for (const [key, override] of this.layoutOverride) {
+      if (override.base !== base[key] || override.value === base[key]) {
+        this.layoutOverride.delete(key);
+      }
+    }
+    this.syncContext();
+  }
+
+  /**
+   * The widget's bootstrap for one render: `rendered` is what the document was laid out with (an
+   * override may have changed since), `base` the resolved settings behind it.
+   */
+  private layoutInit(
+    base: PreviewSettings,
+    rendered: PreviewSettings,
+    adjusted: boolean,
+    focus: PreviewLayoutKey | undefined,
+  ): PreviewLayoutInit {
+    const hint = adjusted
+      ? vscode.l10n.t('Preview only. The settings are still {0} chars × {1} lines.', String(base.charsPerLine), String(base.linesPerPage))
+      : vscode.l10n.t('Characters per line × lines per page. Changes here apply to the preview only.');
+    return {
+      charsPerLine: rendered.charsPerLine,
+      linesPerPage: rendered.linesPerPage,
+      adjusted,
+      min: CHARS_MIN,
+      max: CHARS_MAX,
+      ...(focus !== undefined ? { focus } : {}),
+      labels: { ...this.labels, hint },
+    };
+  }
+
   /**
    * Take ownership of `panel` (freshly created by open() or revived by the serializer):
    * track it, tear down on dispose, and wire the listeners that drive edit re-renders and
@@ -234,19 +422,15 @@ export class Preview {
       this.teardown();
     });
     this.panelDisposables.push(
-      // Re-render on every edit to the file currently shown (live dirty buffer), debounced so a
-      // typing burst costs one render. The trailing call reads the document's CURRENT text
-      // (TextDocument is live), and re-checks the panel still shows that document (it may have
-      // switched or closed during the delay).
+      // The layout widget's verbs: preview-only grid overrides, reset, save.
+      panel.webview.onDidReceiveMessage((message: unknown) => {
+        this.onWebviewMessage(message);
+      }),
+      // Re-render on every edit to the file currently shown (live dirty buffer); the trailing render
+      // reads the document's CURRENT text and re-checks that the panel still shows it.
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (e.document.uri.toString() === this.currentDocUri) {
-          clearTimeout(this.renderDebounce);
-          this.renderDebounce = setTimeout(() => {
-            this.renderDebounce = undefined;
-            if (e.document.uri.toString() === this.currentDocUri) {
-              void this.renderDocument(e.document);
-            }
-          }, RENDER_DEBOUNCE_MS);
+          this.scheduleRender();
         }
       }),
       // ...and follow the top-most cursor as it moves (a scroll message, no re-render).
@@ -285,7 +469,11 @@ export class Preview {
    * renderSeq-serialized (a stale response never lands), so every call site may fire-and-forget
    * with `void`.
    */
-  private async renderDocument(doc: vscode.TextDocument, fallbackLine?: number): Promise<void> {
+  private async renderDocument(
+    doc: vscode.TextDocument,
+    fallbackLine?: number,
+    focus?: PreviewLayoutKey,
+  ): Promise<void> {
     const panel = this.panel;
     if (panel === undefined) {
       return;
@@ -299,11 +487,17 @@ export class Preview {
     panel.title = vscode.l10n.t('{0} — Preview', lastPathSegment(uri));
 
     const seq = ++this.renderSeq;
-    const params: RenderFileParams = {
-      uri,
-      text: doc.getText(),
-      settings: buildPreviewSettings(),
-    };
+    const snapshot = buildPreviewSettings();
+    const base = resolvePreviewSettings(snapshot);
+    this.retireOverrides(base);
+    // The widget's overrides replace the settings for the preview only; builds read the settings.
+    const settings = { ...snapshot };
+    for (const [key, override] of this.layoutOverride) {
+      settings[key] = override.value;
+    }
+    const params: RenderFileParams = { uri, text: doc.getText(), settings };
+    // Sampled now: what this render lays out is what its widget must show, whatever changes meanwhile.
+    const layout = this.layoutInit(base, resolvePreviewSettings(settings), this.layoutOverride.size > 0, focus);
 
     let result: RenderFileResult;
     try {
@@ -331,7 +525,7 @@ export class Preview {
     // panel state) applies only before any live cursor line is known.
     const activeLine = this.topCursorLine(uri) ?? this.lastRevealLine ?? fallbackLine ?? 0;
     this.lastRevealLine = activeLine;
-    panel.webview.html = this.harden(result.html, panel.webview, activeLine, uri);
+    panel.webview.html = this.harden(result.html, panel.webview, activeLine, uri, layout);
   }
 
   /** The top-most (earliest) cursor line among all selections in an editor for `docUri`. */
@@ -345,15 +539,16 @@ export class Preview {
   }
 
   /**
-   * Inject a strict CSP `<meta>`, a nonce on the inline `<style>`, and a nonce'd
-   * cursor-follow `<script>` into the server's standalone document so it is safe to host
-   * inside a webview. Only the nonced inline style + our own script may run.
+   * Inject a strict CSP `<meta>`, a nonce on the inline `<style>`, the widget's nonce'd stylesheet
+   * and the nonce'd bundle `<script>` (cursor follow + widget) into the server's standalone
+   * document, so only those may run inside the webview.
    */
   private harden(
     html: string,
     webview: vscode.Webview,
     activeLine: number,
     docUri: string,
+    layout: PreviewLayoutInit,
   ): string {
     const nonce = makeNonce();
     const meta = cspMeta(nonce, webview, true);
@@ -373,15 +568,18 @@ export class Preview {
       return this.shell(html, webview);
     }
     out = out.replace(/<head(\s[^>]*)?>/i, (m) => `${m}${meta}`);
+    // The widget's stylesheet after the compiler's own <style> (its selectors are namespaced `jw-`).
+    // Replacer functions throughout: a `$` sequence inside the bundle must never act as a pattern.
+    out = out.replace(/<\/head>/i, () => `<style nonce="${nonce}">${WIDGET_CSS}</style></head>`);
 
-    // Inject the scroller at the end of <body> (DOM is ready): the `__INIT` bootstrap, then the
-    // bundled scroller — see bootScript for the escaping / script-split constraints.
-    const init: PreviewInit = { uri: docUri, line: activeLine };
-    const script = `${bootScript(nonce, init)}<script nonce="${nonce}">${SCROLL_JS}</script>`;
+    // Inject the bundle at the end of <body> (DOM is ready): the `__INIT` bootstrap, then the
+    // scroller + widget — see bootScript for the escaping / script-split constraints.
+    const init: PreviewInit = { uri: docUri, line: activeLine, layout };
+    const script = `${bootScript(nonce, init)}<script nonce="${nonce}">${PREVIEW_JS}</script>`;
     if (/<\/body>/i.test(out)) {
-      return out.replace(/<\/body>/i, `${script}</body>`);
+      return out.replace(/<\/body>/i, () => `${script}</body>`);
     }
-    return out.replace(/<\/html>/i, `${script}</html>`);
+    return out.replace(/<\/html>/i, () => `${script}</html>`);
   }
 
   /** Minimal hardened standalone document for fallback / placeholder content. */
@@ -418,8 +616,7 @@ export class Preview {
     // seq-guarded, so the bump keeps a slow response from writing to this panel after
     // it is disposed (or, via adopt()'s duplicate guard, replaced).
     this.renderSeq++;
-    clearTimeout(this.renderDebounce);
-    this.renderDebounce = undefined;
+    this.cancelScheduledRender();
     for (const d of this.panelDisposables) {
       d.dispose();
     }
@@ -427,6 +624,9 @@ export class Preview {
     this.panel = undefined;
     this.currentDocUri = undefined;
     this.lastRevealLine = undefined;
+    // The overrides live with the panel: the next one starts on the settings.
+    this.layoutOverride.clear();
+    this.syncContext();
   }
 }
 
