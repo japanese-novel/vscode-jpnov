@@ -23,25 +23,27 @@ const { registerBookCommands } = await import('../../src/client/book/manage.ts')
 const { COVER_TEMPLATE } = await import('../../src/shared/book/create.ts');
 
 const ROOT = 'file:///ws';
+/** A book at the folder root: its entries count from the folder itself. */
 const BOOK = `${ROOT}/book.jpbook`;
 
 type List = 'chapters' | 'covers';
-const ENTRY = { uri: BOOK, rootUri: ROOT, fileRel: 'book.jpbook', outRel: 'book' };
+const ENTRY = { uri: BOOK, rootUri: ROOT, fileRel: 'book.jpbook' };
 
-function listNode(list: List = 'chapters'): unknown {
-  return { kind: 'list', list, entry: ENTRY };
+function listNode(list: List = 'chapters', entry: typeof ENTRY = ENTRY): unknown {
+  return { kind: 'list', list, entry };
 }
 
-/** The book document with `text` below the header (fixtures and expected lines count from there), and the .jpnov sweep results of its root. */
-function seed(text: string, files: readonly string[]): void {
-  state.textDocuments.push(doc(BOOK, 'jpbook', HEAD + text));
+/** The book document with `text` below the header (fixtures and expected lines count from there), and the .jpnov sweep results of its folder. */
+function seed(text: string, files: readonly string[], book = BOOK): void {
+  state.workspaceFolders = [{ uri: Uri.parse(ROOT), name: 'ws', index: 0 }];
+  state.textDocuments.push(doc(book, 'jpbook', HEAD + text));
   state.findFilesResults.set(ROOT, files.map((rel) => Uri.parse(`${ROOT}/${rel}`)));
 }
 
-async function runAddFiles(list: List = 'chapters'): Promise<void> {
+async function runAddFiles(list: List = 'chapters', entry: typeof ENTRY = ENTRY): Promise<void> {
   const handler = state.registeredCommands.get('jpbook.addFiles');
   assert.ok(handler, 'jpbook.addFiles must be registered');
-  await handler(listNode(list));
+  await handler(listNode(list, entry));
 }
 
 /** The one picker the run opened. */
@@ -189,15 +191,73 @@ test('an unticked parked name stays listed and is not created', async () => {
 
 test('an unusable name is a row that says so, cannot stay ticked, and is not taken by Enter', async () => {
   seed('', []);
-  state.quickPickQueue.push([{ type: '../x' }, { toggle: '../x' }, 'accept']);
+  state.quickPickQueue.push([{ type: 'a*b' }, { toggle: 'a*b' }, 'accept']);
   await runAddFiles();
 
   const qp = picker();
   assert.deepEqual(qp.items, [
-    { label: '../x', description: 'This file name cannot be used', role: 'info', rel: '../x', alwaysShow: true },
+    { label: 'a*b', description: 'This file name cannot be used', role: 'info', rel: 'a*b', alwaysShow: true },
   ]);
   assert.deepEqual(qp.selectedItems, []);
   assertNothingWritten();
+});
+
+// --- the book's folder as the base -------------------------------------------------
+
+/** A book in a subfolder of the workspace folder: its entries count from `books/`. */
+const DEEP_BOOK = `${ROOT}/books/book.jpbook`;
+const DEEP_ENTRY = { uri: DEEP_BOOK, rootUri: ROOT, fileRel: 'books/book.jpbook' };
+
+test('candidates are paths from the book\'s folder, those above it (../) listed after the rest', async () => {
+  seed('---\n../ichi.jpnov\n', ['zoku/ni.jpnov', 'ichi.jpnov', 'books/san.jpnov', 'books/sub/yon.jpnov'], DEEP_BOOK);
+  state.quickPickQueue.push([{ toggle: 'ni.jpnov' }, 'accept']);
+  await runAddFiles('chapters', DEEP_ENTRY);
+
+  assert.deepEqual(picker().items, [
+    { label: 'san.jpnov', role: 'existing', rel: 'san.jpnov' },
+    { label: 'yon.jpnov', description: 'sub', role: 'existing', rel: 'sub/yon.jpnov' },
+    { label: 'ni.jpnov', description: '../zoku', role: 'existing', rel: '../zoku/ni.jpnov' },
+  ]);
+  assert.deepEqual(state.appliedEdits.map((e) => [e.uri, e.newText]), [[DEEP_BOOK, '../zoku/ni.jpnov\n']]);
+  assert.deepEqual(state.warningMessages, []);
+});
+
+test('a typed ../ name creates the file above the book\'s folder, inside the workspace folder: no warning', async () => {
+  seed('', [], DEEP_BOOK);
+  state.quickPickQueue.push([{ type: '../x' }, 'accept']);
+  await runAddFiles('chapters', DEEP_ENTRY);
+
+  assert.deepEqual(state.errorMessages, []);
+  assert.deepEqual(state.warningMessages, []);
+  assert.deepEqual(state.writtenFiles, [{ uri: `${ROOT}/x.jpnov`, content: '' }]);
+  assert.deepEqual(state.appliedEdits.map((e) => e.newText), ['---\n../x.jpnov\n']);
+});
+
+test('a typed name landing outside the workspace folder is created all the same, with a warning', async () => {
+  seed('', [], DEEP_BOOK);
+  state.quickPickQueue.push([{ type: '../../out/x' }, 'accept']);
+  await runAddFiles('chapters', DEEP_ENTRY);
+
+  assert.deepEqual(state.errorMessages, []);
+  assert.deepEqual(state.writtenFiles, [{ uri: 'file:///out/x.jpnov', content: '' }]);
+  assert.deepEqual(state.warningMessages, [
+    'Japanese Novel: ../../out/x.jpnov was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
+  ]);
+  assert.deepEqual(state.appliedEdits.map((e) => e.newText), ['---\n../../out/x.jpnov\n']);
+});
+
+test('a book under no workspace folder searches its own folder and warns about nothing', async () => {
+  const alone = 'file:///home/本.jpbook';
+  state.textDocuments.push(doc(alone, 'jpbook', `${HEAD}---\n`));
+  state.findFilesResults.set('file:///home', [Uri.parse('file:///home/ichi.jpnov')]);
+  state.quickPickQueue.push([{ toggle: 'ichi.jpnov' }, { type: '../ni' }, 'accept']);
+  await runAddFiles('chapters', { uri: alone, rootUri: null as unknown as string, fileRel: '本.jpbook' });
+
+  assert.deepEqual(state.findFilesCalls.map((c) => (c.include.base as Uri).toString()), ['file:///home']);
+  assert.deepEqual(picker().items.filter((i) => i.description === undefined).map((i) => i.label), ['ichi.jpnov']);
+  assert.deepEqual(state.warningMessages, []);
+  assert.deepEqual(state.writtenFiles, [{ uri: 'file:///ni.jpnov', content: '' }]);
+  assert.deepEqual(state.appliedEdits.map((e) => e.newText), ['ichi.jpnov\n../ni.jpnov\n']);
 });
 
 test('a typed name of a file on disk is no create row: listed = told so, unlisted = its candidate row', async () => {

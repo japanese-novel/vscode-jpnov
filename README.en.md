@@ -54,8 +54,9 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
    input box already holds `.jpbook`, so type only the name before it. The
    new book opens right there with its **Book Info**, **Cover pages** and
    **Chapters** sections. One `.jpbook` is one book: a plain text file with
-   one chapter path per line, each relative to the workspace folder, so
-   moving the `.jpbook` never breaks them. The lines above its `---` carry the
+   one chapter path per line, each counted from the `.jpbook`'s own folder
+   (`../` reaches up, as in an import); move the book inside VS Code and its
+   paths are rewritten to keep naming the same files. The lines above its `---` carry the
    book's own metadata — title, running head, page-number style (see
    [Per-book metadata](#per-book-metadata)); Create a Book writes them all.
    Editing the file by hand does the same thing the view does.
@@ -71,17 +72,21 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
    The text and EPUB buttons sit beside it. With a book open, the buttons
    build just that book; back in the list, they build every checked book.
 
-Chapters and book files can live anywhere in the workspace folder; subfolders are
-mirrored into the output (`src/volume1.jpbook` builds to
-`dist/src/volume1.html`). The output folder (`jpnov.layout.outDir`, default
-`dist`), dot-folders, and `node_modules` are never scanned. When workspace
-folders nest, a book belongs to the innermost folder that contains it: its
-paths count from that folder, and its output goes to that folder's output
-folder. The extension
-activates when you open a `.jpnov`/`.jpbook`, when a workspace folder
-contains a `*.jpbook`, or when any `jpnov.*` setting is saved at workspace
-or folder level — preview and book editing need no configuration at all. A
-**Get started with Japanese Novel** walkthrough covers the same steps.
+Chapters and book files can live anywhere: a path counts from the `.jpbook`'s
+folder and may leave the workspace folder. Each book builds into the output
+folder, named after its file: `books/volume1.jpbook` builds to
+`dist/volume1.html`. The folder is `jpnov.layout.outDir`, default
+`${workspaceFolder}/dist` — the workspace folder's `dist`, whatever the book's
+depth. Any other value counts from the `.jpbook`'s own folder: `dist` puts the
+output beside the book, `../dist` one level up. A book under no workspace
+folder counts from its own folder either way. Dot-folders and `node_modules`
+are never scanned for books. A workspace folder is
+optional: a `.jpbook` open in the editor is listed under **Open files** when
+no folder contains it. The extension activates when you open a
+`.jpnov`/`.jpbook`, when a workspace folder contains a `*.jpbook`, or when
+any `jpnov.*` setting is saved at workspace or folder level — preview and
+book editing need no configuration at all. A **Get started with Japanese
+Novel** walkthrough covers the same steps.
 
 ## A 60-second Japanese typography primer
 
@@ -301,9 +306,12 @@ is an icon button):
   line wrapping follow the reading device. One spine file per chapter, split again
   at ［＃改ページ］.
 
-Outputs land in `<outDir>/<book path>.{html,epub,txt}` with `outDir`
-defaulting to `dist`. Two book files that resolve to the same output path fail
-the build with a diagnostic. A `.jpbook` with an error (a missing metadata key or
+Outputs land in `<outDir>/<name>.{html,epub,txt}`, `<name>` being the
+`.jpbook`'s file name without the extension and `outDir` defaulting to
+`${workspaceFolder}/dist` (a value without the token counts from the
+`.jpbook`'s own folder). Two book files that resolve to the same output file
+fail the build with a diagnostic, and neither is written. A `.jpbook` with
+an error (a missing metadata key or
 closing `---`, a backslash in a path, an entry that is not a `.jpnov` file) fails that
 book's build with its first error; the other books still build. Warnings, such
 as unknown keys or duplicates, never stop a build.
@@ -336,8 +344,8 @@ annotations (see [Annotations](#annotations)), and chapters appear in the
 order the `.jpbook` lists them.
 
 On `.jpbook` files the editor offers completion (chapter paths, metadata keys,
-and enum values), diagnostics (missing files, duplicates, escaping the
-workspace, unknown metadata keys…), and document links — Cmd/Ctrl-click an
+and enum values), diagnostics (missing files, duplicates, unknown metadata
+keys…), and document links — Cmd/Ctrl-click an
 entry to open the chapter.
 
 The Books view edits books, too. Open one to see its **Book Info**,
@@ -356,12 +364,13 @@ hand-editing always agree.
 
 ![The Books view with a book open: its Book Info rows, cover pages and chapter list](docs/images/vscode-books-panel.png)
 
-Renaming or moving a chapter (or a folder of chapters) inside VS Code offers
-to update every `.jpbook` that references it —
+Renaming or moving a chapter, a folder of chapters, or a `.jpbook` itself
+inside VS Code offers to update every `.jpbook` whose paths it affects —
 `jpnov.editor.updateRefsOnFileMove` picks `prompt` (default), `always`, or
 `never` — the same three choices VS Code offers for updating imports on file
-move. Renames made outside VS Code
-can't be tracked; the missing path is flagged in the editor instead.
+move. A book moved together with its chapters needs no update. Renames made
+outside VS Code can't be tracked; the missing path is flagged in the editor
+instead.
 
 ### Per-book metadata
 
@@ -387,14 +396,14 @@ divider:
 
 | Key | Template value | Meaning |
 | --- | --- | --- |
-| `title` | the file name | Display name in the Books view and the EPUB title (the output path still derives from the file name); never empty |
+| `title` | the file name | Display name in the Books view and the EPUB title (the output file name still derives from the file name); never empty |
 | `author` | empty | Author name; becomes the EPUB creator metadata; empty for none |
 | `header` | empty | Running head at the top of every page; empty for none |
 | `headerAlign` | `center` | Header placement: pinned (`right`, `left`), alternating per page (`rightLeft`, `leftRight`), or centred (`center`) |
 | `footer` | `［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］` | Footer line, `12 / 215` with the template value; empty suppresses it |
 | `footerAlign` | `right` | Footer placement: pinned (`right`, `left`), alternating per page (`rightLeft`, `leftRight`), or centred (`center`) |
 | `divider` | empty | Chapter divider inserted between chapters that do not open with a heading (e.g. `＊　＊　＊`); a bare mark is centred along the line at build time, a `［＃３字下げ］` prefix indents it instead; empty for a single blank line |
-| `cover` | — | Cover pages placed before the body: a cover sheet, a title page, a synopsis (see below) |
+| `cover` | — | Cover pages placed before the body: a cover sheet, a title page, a synopsis (see below); a single page may be written inline as `cover: cover.jpnov` |
 
 The header is the first line, exactly `jpbook/1`: a first line that is anything
 else, or that names a version this extension has no parser for, fails the build,
@@ -430,7 +439,8 @@ cover:
 chapter1.jpnov
 ```
 
-Paths work exactly like chapter paths. Each file starts a new page. The pages ship in
+Paths work exactly like chapter paths; a single cover page may sit on the key's
+own line (`cover: cover.jpnov`). Each file starts a new page. The pages ship in
 the HTML build, and so in any PDF saved from it. The running head and page numbering
 start on the first body page, however many cover sheets precede it.
 
@@ -546,8 +556,9 @@ with no base or no reading) are always reported, independent of lint settings.
 
 ## Settings reference
 
-Most settings are window-level; the output folder and the
-highlighting lists are per workspace folder.
+Most settings are window-level; the output folder is resolved per book file
+(set it per workspace folder or in user settings), and the highlighting lists
+are per workspace folder.
 
 ### Japanese Novel — Layout & Output
 
@@ -565,7 +576,7 @@ highlighting lists are per workspace folder.
 | `jpnov.layout.paper.lineNumbers` | `false` | Line numbers in built pages, restarting per page |
 | `jpnov.layout.paper.edgeLine` | `none` | Column rules + page frame in built pages: `none` / `text` / `red` |
 | `jpnov.layout.txt.encoding` | `shiftJis` | Encoding of built `.txt`: `shiftJis` / `utf8` / `utf8Bom` |
-| `jpnov.layout.outDir` | `dist` | Output folder (per workspace folder), never scanned for books |
+| `jpnov.layout.outDir` | `${workspaceFolder}/dist` | Output folder: `${workspaceFolder}/…` counts from the book's workspace folder, anything else from the `.jpbook`'s own folder (per workspace folder or user settings) |
 
 The running head and page number are **per-book** properties and live in each
 `.jpbook`'s metadata, not in settings — see

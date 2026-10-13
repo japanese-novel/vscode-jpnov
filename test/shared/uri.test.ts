@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
-import { encodePathSegment, encodeRelPath } from '../../src/shared/uri.ts';
+import { encodePathSegment, encodeRelPath, pathSegments } from '../../src/shared/uri.ts';
 
 test('encodePathSegment escapes everything outside RFC 3986 unreserved, with uppercase hex', () => {
   // VS Code's own table (gen-delims, sub-delims, space), then whatever encodeURIComponent escapes.
@@ -39,4 +39,23 @@ test('encodeRelPath encodes per segment, keeping the separators and the dot segm
 
 test('a lone surrogate is an encoding error, not a silent substitution', () => {
   assert.throws(() => encodePathSegment('\uD800x'), URIError);
+});
+
+test('pathSegments drops . and empty segments, folds .., keeps a leading ..', () => {
+  const cases: readonly (readonly [string, readonly string[]])[] = [
+    ['a//b', ['a', 'b']],
+    ['./a', ['a']],
+    ['a/', ['a']],
+    ['a\\b', ['a', 'b']],
+    ['a/../b', ['b']],
+    ['../a', ['..', 'a']],
+    ['a/../../b', ['..', 'b']],
+    ['a/..', []],
+    ['..', ['..']],
+    ['../..', ['..', '..']],
+    ['', []],
+  ];
+  for (const [path, expected] of cases) {
+    assert.deepEqual(pathSegments(path), expected, `for ${JSON.stringify(path)}`);
+  }
 });

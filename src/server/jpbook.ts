@@ -6,13 +6,10 @@
  * computed by exactly one code path. Callers parse once (`parseJpbook`) and hand the result
  * in, so an event never parses the same text twice.
  *
- * Entries are relative to the book's OWNING WORKSPACE FOLDER root (`rootUri`), which every
- * function takes explicitly — the live handlers look it up via `context.roots.rootOf`, the
- * build passes its target root. A null root (a `.jpbook` outside every workspace folder)
- * degrades to syntax/metadata-only: no containment or existence checks, no links, no path
- * completion. Filesystem access is `file:`-scheme only (the server never touches
- * `vscode.fs`); a non-`file:` root degrades the same way existence-wise, and metadata
- * completion (fs-free) works everywhere.
+ * Entries are relative to the book's own directory (`dirUri`, the parent of the document URI),
+ * which every function takes explicitly; nothing bounds them. Filesystem access is
+ * `file:`-scheme only (the server never touches `vscode.fs`): off `file:` the existence checks
+ * and path completion are skipped, and metadata completion (fs-free) works everywhere.
  *
  * vscode-free: only `import type`/value-imports of the language-SERVER package (never the
  * `vscode` module) are used here.
@@ -28,8 +25,8 @@ import {
   colonIndex,
   completeEntryLine,
   completeMetaLine,
+  coverShape,
   entryPathOf,
-  isCoverMark,
   metaEndOf,
   metaKeyOf,
   writtenKeysOf,
@@ -38,11 +35,10 @@ import {
   type ParsedJpbook,
   type ParsedLine,
 } from '#/shared/book/jpbook.ts';
-import { resolveContained } from '#/shared/config/validate.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
 
 import { diagnostic } from './diagnostics.ts';
-import { isFileScheme } from './fsUri.ts';
+import { isFileScheme, resolveUri } from './fsUri.ts';
 import { INDENT_TOO_LARGE } from './syntax.ts';
 
 /** A column span on `line` as an LSP {@link Range}. */
@@ -112,13 +108,12 @@ async function readDirEntries(dirUri: string): Promise<{ name: string; isDir: bo
 
 /**
  * Per-line diagnostics for one parsed `.jpbook`: syntax/metadata errors and warnings (from
- * {@link parseJpbook}'s line kinds), then — root permitting — containment/escape rejections
- * (via {@link resolveContained}) and, on a `file:` root, existence (a missing path or one
- * resolving to a directory is an Error). Used by both the live editor handler and the
- * build, so the two never disagree.
+ * {@link parseJpbook}'s line kinds), then, on a `file:` book, existence (a missing path or one
+ * resolving to a directory is an Error). Used by both the live editor handler and the build,
+ * so the two never disagree.
  */
-export async function diagnoseJpbook(rootUri: string | null, parsed: ParsedJpbook): Promise<Diagnostic[]> {
-  const canCheckFs = rootUri !== null && isFileScheme(rootUri);
+export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook): Promise<Diagnostic[]> {
+  const canCheckFs = isFileScheme(dirUri);
   const diagnostics: Diagnostic[] = [];
 
   for (const metaError of parsed.metaErrors) {
@@ -151,18 +146,11 @@ export async function diagnoseJpbook(rootUri: string | null, parsed: ParsedJpboo
       );
       continue;
     }
-    if (rootUri === null) {
-      continue; // no owning workspace folder — containment/existence unverifiable
-    }
-    const resolved = resolveContained(rootUri, entry.value);
-    if (!resolved.ok) {
-      diagnostics.push(diagnostic(range, { code: resolved.code }, DiagnosticSeverity.Error));
-      continue;
-    }
     if (!canCheckFs) {
       continue; // existence unverifiable off `file:` — leave the path un-flagged.
     }
-    const verdict = await statEntry(resolved.abs);
+    const uri = resolveUri(dirUri, entry.value);
+    const verdict = uri === null ? 'missing' : await statEntry(uri);
     if (verdict === 'missing') {
       diagnostics.push(
         diagnostic(range, { code: 'jpbook.fileNotFound', args: [entry.value] }, DiagnosticSeverity.Error),
@@ -177,24 +165,20 @@ export async function diagnoseJpbook(rootUri: string | null, parsed: ParsedJpboo
 }
 
 /**
- * Cmd+click targets: one {@link DocumentLink} per syntactically-valid, contained chapter or
- * cover line (`ok`/`duplicate`/`coverEntry`/`coverDuplicate`), pointing at the root-resolved
- * file URI; a cover line's link covers just its path portion. Blank, metadata,
- * error/warning lines — and every line when no root owns the book — get no link. No fs
- * access: links resolve as URIs and are cheap, so a not-yet-existing target still links
- * (its squiggle says so).
+ * Cmd+click targets: one {@link DocumentLink} per syntactically-valid chapter or cover line
+ * (`ok`/`duplicate`/`coverEntry`/`coverDuplicate`), pointing at the file URI resolved from the
+ * book's directory; a cover line's link covers just its path portion. Blank, metadata and
+ * error/warning lines get no link. No fs access: links resolve as URIs and are cheap, so a
+ * not-yet-existing target still links (its squiggle says so).
  */
-export function documentLinksForJpbook(rootUri: string | null, parsed: ParsedJpbook): DocumentLink[] {
-  if (rootUri === null) {
-    return [];
-  }
+export function documentLinksForJpbook(dirUri: string, parsed: ParsedJpbook): DocumentLink[] {
   return parsed.lines.flatMap((pl) => {
     const entry = entryPathOf(pl);
     if (entry === null) {
       return [];
     }
-    const resolved = resolveContained(rootUri, entry.value);
-    return resolved.ok ? [{ range: charRange(pl.line, entry.range), target: resolved.abs }] : [];
+    const target = resolveUri(dirUri, entry.value);
+    return target === null ? [] : [{ range: charRange(pl.line, entry.range), target }];
   });
 }
 
@@ -225,36 +209,26 @@ function toCompletionItem(c: JpbookCompletion, line: number): CompletionItem {
   return item;
 }
 
-/** Path start column on a `- ` cover item line, from the cursor prefix; null off-shape. */
+/** Path start column on a cover line (a `- ` item or `cover: `), from the cursor prefix; null off-shape. */
 function coverPathStart(prefix: string): number | null {
-  let i = 0;
-  while (i < prefix.length && /\s/.test(prefix.charAt(i))) {
-    i += 1;
-  }
-  if (!isCoverMark(prefix.charAt(i))) {
-    return null;
-  }
-  i += 1;
-  while (i < prefix.length && /\s/.test(prefix.charAt(i))) {
-    i += 1;
-  }
-  return i;
+  const indent = prefix.length - prefix.trimStart().length;
+  const shape = coverShape(prefix.slice(indent));
+  return shape === null ? null : indent + shape.offset;
 }
 
 /**
  * Completions for the cursor on `lineText` at `position`. In the metadata (above the closing
  * `---`, or the whole file while none closes it) it offers the keys not yet written / enum
- * values — pure, fs-free, so it works with or without a root — and, on cover-shaped lines
- * (`- ` items, `cover: `), file paths. On chapter lines it lists the directory the current
- * path prefix points into (relative to the OWNING ROOT) and hands it to the pure
- * {@link completeEntryLine}; the path branch returns nothing without a `file:` root, or when
- * the line's path already names an existing file with the cursor at its end (per the "no more
- * suggestions once the line matches" rule). Folder items re-trigger suggestions so the user
- * keeps drilling. The header and fence lines offer nothing, nor does a book whose header no
- * parser reads.
+ * values — pure, fs-free — and, on cover-shaped lines (`- ` items, `cover: `), file paths. On
+ * chapter lines it lists the directory the current path prefix points into (from the book's
+ * directory, `..` included) and hands it to the pure {@link completeEntryLine}; the path branch
+ * returns nothing off `file:`, or when the line's path already names an existing file with the
+ * cursor at its end (per the "no more suggestions once the line matches" rule). Folder items
+ * re-trigger suggestions so the user keeps drilling. The header and fence lines offer nothing,
+ * nor does a book whose header no parser reads.
  */
 export async function completeJpbook(
-  rootUri: string | null,
+  dirUri: string,
   parsed: ParsedJpbook,
   lineText: string,
   position: { line: number; character: number },
@@ -268,41 +242,25 @@ export async function completeJpbook(
   // Path completion for the text from `pathStart` on; chapter lines pass 0, cover lines the
   // column after their `- `/`cover: ` marker (returned spans shift back to line columns).
   const completePathAt = async (pathStart: number): Promise<CompletionItem[]> => {
-    if (rootUri === null || !isFileScheme(rootUri)) {
+    if (!isFileScheme(dirUri)) {
       return [];
     }
 
     // Suppress when nothing meaningful follows the cursor and the path already names a file.
     const whole = lineText.slice(pathStart).trim();
     if (whole !== '' && prefix.slice(pathStart).trim() === whole) {
-      const resolvedWhole = resolveContained(rootUri, whole);
-      if (resolvedWhole.ok && (await statEntry(resolvedWhole.abs)) === 'file') {
+      const wholeUri = resolveUri(dirUri, whole);
+      if (wholeUri !== null && (await statEntry(wholeUri)) === 'file') {
         return [];
       }
     }
 
     const pathSoFar = prefix.slice(pathStart).replace(/^\s+/, '');
-
-    // A leading "/" is an absolute path — never a valid entry — so offer nothing rather than
-    // misleadingly listing the workspace folder root.
-    if (pathSoFar.startsWith('/')) {
-      return [];
-    }
-
     const lastSlash = pathSoFar.lastIndexOf('/');
-    const dirPortion = lastSlash >= 0 ? pathSoFar.slice(0, lastSlash) : '';
-
-    let listDirUri: string;
-    if (dirPortion === '' || dirPortion === '.') {
-      // No directory part, or an explicit "./" — list the workspace folder root itself.
-      listDirUri = rootUri;
-    } else {
-      // The label is irrelevant here — a containment failure just yields no completions.
-      const resolvedDir = resolveContained(rootUri, dirPortion);
-      if (!resolvedDir.ok) {
-        return [];
-      }
-      listDirUri = resolvedDir.abs;
+    // No directory part lists the book's own directory; `..` its parent.
+    const listDirUri = resolveUri(dirUri, pathSoFar.slice(0, lastSlash + 1));
+    if (listDirUri === null) {
+      return [];
     }
 
     const entries = await readDirEntries(listDirUri);

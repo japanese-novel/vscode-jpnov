@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { CancellationTokenSource } from 'vscode-languageserver/node';
 
 import { META_KEYS } from '../../src/shared/book/jpbook.ts';
+import { PROJECT_DEFAULT } from '../../src/shared/config/types.ts';
 import { HEAD, meta } from '../shared/book/_fixture.ts';
 import { encodePathSegment } from '../../src/shared/uri.ts';
 import {
@@ -38,9 +39,14 @@ beforeEach(() => {
   resetMockState(state);
 });
 
-/** A BookEntry with the fields the provider reads. */
-function entry(rootUri: string, outRel: string, title?: string) {
-  return { uri: `${rootUri}/src/${outRel}.jpbook`, rootUri, fileRel: `${outRel}.jpbook`, outRel, title };
+/** A BookEntry with the fields the provider reads: the book sits in `src/` under its root. */
+function entry(rootUri: string, rel: string, title?: string) {
+  return { uri: `${rootUri}/src/${rel}.jpbook`, rootUri, fileRel: `src/${rel}.jpbook`, title };
+}
+
+/** A BookEntry for a `.jpbook` open under no workspace folder. */
+function openEntry(uri: string, title?: string) {
+  return { uri, rootUri: null, fileRel: uri.slice(uri.lastIndexOf('/') + 1), title };
 }
 
 /** A fake LanguageClient: answers listBooks with `books`, records the build params + token. */
@@ -82,13 +88,13 @@ function firstDetail(view: { webview: { posted: unknown[] } }): { type?: string;
   return d;
 }
 
-/** Construct + refresh + resolve + ready. Sets one workspace folder when there are books. */
-async function setup(books: ReturnType<typeof entry>[], buildResult?: unknown) {
+/** Construct + refresh + resolve + ready. Sets one workspace folder when the first book has a root. */
+async function setup(books: (ReturnType<typeof entry> | ReturnType<typeof openEntry>)[], buildResult?: unknown) {
   const client = fakeClient(books, buildResult);
   const provider = new BooksViewProvider(client as never, EXT as never);
   await provider.refresh(); // populate books, default-checked
   const first = books[0];
-  if (first !== undefined) {
+  if (first?.rootUri != null) {
     state.workspaceFolders = [{ uri: Uri.parse(first.rootUri), name: 'ws', index: 0 }];
   }
   const view = createFakeWebviewView();
@@ -136,16 +142,15 @@ test('the ready handshake posts the book list, all books checked by default', as
   const root = 'file:///ws';
   const { view } = await setup([entry(root, 'vol1', 'Volume One'), entry(root, 'part1/vol2')]);
   const st = lastState(view);
-  assert.equal(st.noFolder, false);
-  const groups = st.groups as { rootLabel: string | null; books: { title: string; fileRel: string; checked: boolean }[] }[];
+  const groups = st.groups as { label: string | null; books: { title: string; fileRel: string; checked: boolean }[] }[];
   const books = groups.flatMap((g) => g.books);
   assert.equal(books.length, 2);
   assert.ok(books.every((b) => b.checked));
-  // single root -> flat (no section label); title falls back to the outRel last segment.
+  // single root -> flat (no section label); title falls back to the file name without `.jpbook`.
   const firstGroup = groups[0];
   assert.ok(firstGroup);
-  assert.equal(firstGroup.rootLabel, null);
-  const vol2 = books.find((b) => b.fileRel === 'part1/vol2.jpbook');
+  assert.equal(firstGroup.label, null);
+  const vol2 = books.find((b) => b.fileRel === 'src/part1/vol2.jpbook');
   assert.ok(vol2);
   assert.equal(vol2.title, 'vol2');
   assert.ok(books.find((b) => b.title === 'Volume One'));
@@ -154,9 +159,64 @@ test('the ready handshake posts the book list, all books checked by default', as
 test('multiple roots produce per-root labeled groups', async () => {
   const { view } = await setup([entry('file:///w1', 'x'), entry('file:///w2', 'y')]);
   const st = lastState(view);
-  const groups = st.groups as { rootLabel: string | null }[];
-  assert.equal(groups.length, 2);
-  assert.ok(groups.every((g) => g.rootLabel));
+  const groups = st.groups as { label: string | null }[];
+  assert.deepEqual(groups.map((g) => g.label), ['w1', 'w2']);
+});
+
+test('books open under no folder form the last group, "Open files"; alone they are flat', async () => {
+  const { view } = await setup([openEntry('file:///home/本.jpbook'), entry('file:///ws', 'x')]);
+  const groups = lastState(view).groups as { label: string | null; books: { title: string }[] }[];
+  assert.deepEqual(groups.map((g) => [g.label, g.books.map((b) => b.title)]), [['ws', ['x']], ['Open files', ['本']]]);
+
+  const alone = await setup([openEntry('file:///home/本.jpbook', '作品名')]);
+  const flat = lastState(alone.view).groups as { label: string | null; books: { title: string; fileRel: string }[] }[];
+  assert.deepEqual(flat.map((g) => [g.label, g.books.map((b) => [b.title, b.fileRel])]), [[null, [['作品名', '本.jpbook']]]]);
+});
+
+test('the list and the build carry the open books (with the outDir resolved for each) beside the folders', async () => {
+  state.scopedConfig.set('file:///home/本.jpbook|jpnov.layout.outDir', 'out');
+  state.textDocuments.push(doc('file:///home/本.jpbook', 'jpbook', `${HEAD}title: 本\n---\n`));
+  state.textDocuments.push(doc('file:///ws/src/x.jpbook', 'jpbook', `${HEAD}title: x\n---\n`)); // under the folder: not an open book
+  state.textDocuments.push(doc('file:///home/memo.jpnov', 'jpnov', '')); // not a book
+  const client = fakeClient([entry('file:///ws', 'x'), openEntry('file:///home/本.jpbook')]);
+  const provider = new BooksViewProvider(client as never, EXT as never);
+  state.workspaceFolders = [{ uri: Uri.parse('file:///ws'), name: 'ws', index: 0 }];
+  const sent: unknown[] = [];
+  const original = client.sendRequest.bind(client);
+  client.sendRequest = (type: string, params: unknown, token?: unknown): Promise<unknown> => {
+    sent.push(params);
+    return original(type, params, token);
+  };
+  await provider.refresh();
+  const view = createFakeWebviewView();
+  provider.resolveWebviewView(view as never);
+  view.webview.receive({ type: 'ready' });
+  await tick();
+  view.webview.receive({ type: 'build', format: 'txt' });
+  await tick();
+
+  const expected = { projectDirs: { 'file:///ws': { outDir: PROJECT_DEFAULT.outDir } }, openBooks: [{ uri: 'file:///home/本.jpbook', outDir: 'out' }] };
+  assert.deepEqual(sent[0], expected);
+  const build = sent[1] as { projectDirs: unknown; openBooks: unknown };
+  assert.deepEqual({ projectDirs: build.projectDirs, openBooks: build.openBooks }, expected);
+});
+
+test('opening, closing or saving a .jpbook outside every folder re-lists; one under a folder does not', async () => {
+  const { client } = await setup([entry('file:///ws', 'x')]);
+  let lists = 0;
+  const original = client.sendRequest.bind(client);
+  client.sendRequest = (type: string, params: unknown, token?: unknown): Promise<unknown> => {
+    lists += type === ListBooksRequest ? 1 : 0;
+    return original(type, params, token);
+  };
+  const outside = doc('file:///home/本.jpbook', 'jpbook', '');
+  state.onDidOpenDoc.fire(outside);
+  state.onDidCloseDoc.fire(outside);
+  state.onDidSaveDoc.fire(outside);
+  state.onDidOpenDoc.fire(doc('file:///ws/src/x.jpbook', 'jpbook', ''));
+  state.onDidOpenDoc.fire(doc('file:///home/memo.jpnov', 'jpnov', ''));
+  await tick();
+  assert.equal(lists, 3);
 });
 
 test('state posted before the first enumeration is flagged loading', async () => {
@@ -455,13 +515,13 @@ test('a partial batch keeps the success flow intact and still opens the failing 
   assert.deepEqual(revealedDetails(view).map((m) => m.uri), [bUri]);
 });
 
-test('an error without a book uri (a root-level fault) stays toast-only', async () => {
+test('an error naming a book the list does not hold stays toast-only', async () => {
   const root = 'file:///ws';
   const { view } = await setup([entry(root, 'a', 'A')], {
     ok: false,
     outDirs: [],
     artifacts: [],
-    errors: [{ book: root, code: 'build.failed', args: ['boom'] }],
+    errors: [{ book: 'gone.jpbook', uri: `${root}/gone.jpbook`, code: 'build.failed', args: ['boom'] }],
   });
   view.webview.receive({ type: 'build', format: 'txt' });
   await tick();
@@ -514,8 +574,10 @@ test('an error whose book is not listed is skipped in favour of the next one', a
 test('openDetail posts covers and chapters (missing flagged) and the metadata rows', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
-  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}title: A\ncover:\n  - 表紙.jpnov\n  - sub/ch2.jpnov\n---\nch1.jpnov\nsub/ch2.jpnov\n`));
-  state.fsEntries.set('file:///ws/ch1.jpnov', FileType.File); // ch1 exists; ch2 does not
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}title: A\ncover:\n  - 表紙.jpnov\n  - sub/ch2.jpnov\n---\nch1.jpnov\nsub/ch2.jpnov\n../up.jpnov\n`));
+  // Entries count from the book's folder, `src/`: ch1 and ../up exist, ch2 does not.
+  state.fsEntries.set('file:///ws/src/ch1.jpnov', FileType.File);
+  state.fsEntries.set('file:///ws/up.jpnov', FileType.File);
   const { view } = await setup([entry(root, 'a', 'A')]);
   view.webview.receive({ type: 'openDetail', uri: bookUri });
   await tick();
@@ -523,8 +585,8 @@ test('openDetail posts covers and chapters (missing flagged) and the metadata ro
     uri: string;
     title: string;
     version: number;
-    chapters: { name: string; folder: string; missing: boolean; line: number; path: string }[];
-    covers: { name: string; folder: string; missing: boolean; line: number; path: string }[];
+    chapters: { name: string; folder: string; missing: boolean; line: number; path: string; fileUri: string }[];
+    covers: { name: string; folder: string; missing: boolean; line: number; path: string; fileUri: string }[];
     meta: { key: string; value: string; note: string }[];
   };
   assert.equal(detail.uri, bookUri);
@@ -534,15 +596,20 @@ test('openDetail posts covers and chapters (missing flagged) and the metadata ro
     detail.covers.map((c) => [c.line, c.path, c.folder, c.name, c.missing]),
     [[3, '表紙.jpnov', '', '表紙.jpnov', true], [4, 'sub/ch2.jpnov', 'sub', 'ch2.jpnov', true]],
   );
-  assert.equal(detail.chapters.length, 2);
+  assert.equal(detail.chapters.length, 3);
   const ch1 = detail.chapters.find((c) => c.name === 'ch1.jpnov');
   assert.ok(ch1);
   assert.equal(ch1.missing, false);
+  assert.equal(ch1.fileUri, 'file:///ws/src/ch1.jpnov');
+  const up = detail.chapters.find((c) => c.name === 'up.jpnov');
+  assert.ok(up);
+  assert.deepEqual([up.folder, up.fileUri, up.missing], ['..', 'file:///ws/up.jpnov', false]);
   const ch2 = detail.chapters.find((c) => c.name === 'ch2.jpnov');
   assert.ok(ch2);
   assert.equal(ch2.missing, true);
   assert.equal(ch2.folder, 'sub');
   assert.equal(ch2.line, 7);
+  assert.equal(ch2.fileUri, 'file:///ws/src/sub/ch2.jpnov');
   assert.equal(ch2.path, 'sub/ch2.jpnov');
   assert.equal(detail.meta.length, META_KEYS.length);
   // A set value carries no status note; the note is separate from the value (rendered by the label).
@@ -764,25 +831,20 @@ test('openFile opens the given uri', async () => {
 
 // --- empty states -----------------------------------------------------------
 
-test('no workspace folder posts the no-folder empty state', async () => {
+test('no books posts an empty list with or without a folder; noFolder says whether to recommend one', async () => {
   const { view } = await setup([]);
-  assert.equal(lastState(view).noFolder, true);
-});
-
-test('a folder with no books posts an empty (non-noFolder) list', async () => {
-  state.workspaceFolders = [{ uri: Uri.parse('file:///ws'), name: 'ws', index: 0 }];
-  const provider = new BooksViewProvider(fakeClient([]) as never, EXT as never);
-  await provider.refresh();
-  const view = createFakeWebviewView();
-  provider.resolveWebviewView(view as never);
-  view.webview.receive({ type: 'ready' });
-  await tick();
   const st = lastState(view);
-  assert.equal(st.noFolder, false);
-  assert.equal((st.groups as unknown[]).length, 0);
+  assert.equal(st.loading, false);
+  assert.deepEqual(st.groups, []);
+  assert.equal(st.noFolder, true);
+
+  state.workspaceFolders = [{ uri: Uri.parse('file:///ws'), name: 'ws', index: 0 }];
+  const withFolder = await setup([]);
+  assert.deepEqual(lastState(withFolder.view).groups, []);
+  assert.equal(lastState(withFolder.view).noFolder, false);
 });
 
-test('welcome actions run the create-book / open-folder / guide commands', async () => {
+test('welcome actions run the create-book / guide commands; an unknown action runs nothing', async () => {
   const { view } = await setup([]);
   view.webview.receive({ type: 'welcome', action: 'createBook' });
   view.webview.receive({ type: 'welcome', action: 'openFolder' });
@@ -790,7 +852,7 @@ test('welcome actions run the create-book / open-folder / guide commands', async
   await tick();
   const cmds = state.executedCommands.map((c) => c.command);
   assert.ok(cmds.includes('jpbook.createFile'));
-  assert.ok(cmds.includes('workbench.action.files.openFolder'));
+  assert.ok(!cmds.includes('workbench.action.files.openFolder'));
   assert.ok(cmds.includes('jpnov.openGuide'));
 });
 

@@ -51,11 +51,10 @@ export interface InitializationOptions {
  * in each message's English template.
  */
 export type MsgCode =
-  | 'book.entryNeedsFileScheme' // args: [value]
   | 'book.entryFileNotFound' // args: [value]  (ENOENT)
   | 'book.entryReadFailed' // args: [value, why]  (why = raw OS error, untranslatable)
   | 'book.entryNotText' // args: [value]  (the client's decoder refused the bytes: binary content)
-  | 'build.outPathCollision' // args: [outRel, list]
+  | 'build.outPathCollision' // args: [path, list] — two book files resolve to the same output file; neither is written
   | 'build.failed' // args: [detail]  (detail = raw build error, untranslatable)
   | 'jpbook.backslashSeparator' // args: [value]
   | 'jpbook.notJpnov' // args: [value]
@@ -71,14 +70,7 @@ export type MsgCode =
   | 'jpbook.headerMissing' // args: [header] — the first line is not `jpbook/…`; range = that line (nothing below it is read)
   | 'jpbook.versionUnsupported' // args: [version, supported] — a `jpbook/<version>` header this extension has no parser for; range = that line
   | 'jpbook.metaEmptyValue' // args: [key] — a key that needs a value (title, headerAlign, footerAlign) written without one (range = its line) or not written (range = the closing `---`)
-  | 'jpbook.coverItemWithoutKey' // args: [value] — a "- path" list item with no bare "cover:" line open above it
-  | 'jpbook.coverNeedsList' // args: [value] — `cover:` written with a value; it takes "- path" item lines
-  | 'path.empty' // args: [] — the path.* codes are resolveContained's verdicts on a book entry
-  | 'path.rootDot' // args: []  (the root "." or a path collapsing to it)
-  | 'path.homeRelative' // args: []
-  | 'path.absolute' // args: []
-  | 'path.invalid' // args: []
-  | 'path.escapesRoot' // args: []
+  | 'jpbook.coverItemWithoutKey' // args: [value] — a "- path" list item with no "cover:" line open above it
   | 'syntax.unclosedAnnotation' // args: [] — unterminated ［＃ (no ］ before the line end); the diagnostic range IS the span
   | 'syntax.unterminatedBlock' // args: [] — ［＃ここから…］ with no matching ［＃ここで…終わり］ before EOF; range = the ここから annotation
   | 'syntax.danglingBlockEnd' // args: [] — ［＃ここで…終わり］ with no open block; range = the 終わり annotation
@@ -259,8 +251,9 @@ export type BuildFormat = 'html' | 'txt' | 'epub';
 /**
  * The `jpnov.layout.outDir` snapshot for ONE workspace folder: a RAW relative string exactly as
  * configured (`scope: resource`, read per folder — unlike the window-global render snapshot).
- * The client never resolves it; the server resolves it against its root and silently
- * falls back to the default on any invalid value (empty / absolute / escaping / `.`).
+ * The client never resolves it; the server validates it (`outDirSubpath`), falls back to the
+ * default on any invalid value, and joins it onto the directory of each `.jpbook` (onto the
+ * book's workspace folder for a `${workspaceFolder}/…` value).
  */
 export interface ProjectDirs {
   readonly outDir: string;
@@ -269,10 +262,20 @@ export interface ProjectDirs {
 /**
  * The per-root `jpnov.layout.outDir` snapshot carried on `jpnov/listBooks` and `jpnov/build`:
  * one entry per workspace folder, keyed by folder URI. The map DEFINES which roots the
- * request targets — a root absent from it contributes no books and builds nothing. Where
- * roots nest, a book belongs to the innermost one.
+ * request targets — a root absent from it contributes no books and builds nothing. A root only
+ * scopes discovery (a walk stops at a nested root), groups the list and supplies the `outDir`
+ * value of the books found under it.
  */
 export type ProjectDirsMap = Readonly<Record<string, ProjectDirs>>;
+
+/**
+ * A `.jpbook` open in the editor that no workspace folder contains (or with none open), with
+ * the `outDir` the client read for its uri. The server lists and builds it like a discovered
+ * book: entries from its directory, output in `<dir>/<outDir>`.
+ */
+export interface OpenBook extends ProjectDirs {
+  readonly uri: string;
+}
 
 /**
  * Build selectors:
@@ -282,12 +285,14 @@ export type ProjectDirsMap = Readonly<Record<string, ProjectDirs>>;
  * - `settings`    — the client's render-settings snapshot (required; client and server ship
  *                   together, so there is no legacy sender to tolerate).
  * - `projectDirs` — the per-root output dir (see {@link ProjectDirsMap}).
+ * - `openBooks`   — the books under no root (see {@link OpenBook}); ABSENT = none.
  */
 export interface BuildParams {
   readonly books?: readonly string[];
   readonly format: BuildFormat;
   readonly settings: HtmlSettings;
   readonly projectDirs: ProjectDirsMap;
+  readonly openBooks?: readonly OpenBook[];
 }
 
 /** The output-location field every {@link BuildArtifact} member carries. */
@@ -325,10 +330,10 @@ export interface EpubArtifact extends BuildArtifactBase {
 export type BuildArtifact = TxtArtifact | HtmlArtifact | EpubArtifact;
 
 export interface BuildError extends LocalizableMessage {
-  /** Book identity (e.g. the book dir relative to the workspace folder root). */
+  /** The book's {@link BookEntry.fileRel}. */
   readonly book: string;
-  /** The `.jpbook` URI when the error is one book's (the Books panel's key); absent for a root-level fault. */
-  readonly uri?: string;
+  /** The `.jpbook` URI (the Books panel's key). */
+  readonly uri: string;
 }
 
 export interface BuildResult {
@@ -344,26 +349,25 @@ export interface BuildResult {
 
 export const ListBooksRequest = 'jpnov/listBooks';
 
-/** Enumerates the books of every root in `projectDirs`. */
+/** Enumerates the books of every root in `projectDirs`, then the `openBooks` (ABSENT = none). */
 export interface ListBooksParams {
   readonly projectDirs: ProjectDirsMap;
+  readonly openBooks?: readonly OpenBook[];
 }
 
 /**
- * One buildable book = one `*.jpbook` discovered under the workspace folder root. Its
- * `uri` is the STABLE identity the Books panel keys checkbox state on and echoes back in
- * {@link BuildParams.books}; `outRel` rides along so the panel can show the real output
- * path without re-deriving it (the derivation stays single-sourced in the server).
+ * One buildable book = one `*.jpbook`, discovered under a root or sent open. Its `uri` is the
+ * STABLE identity the Books panel keys checkbox state on and echoes back in
+ * {@link BuildParams.books}; everything about the book (its entries, its output) comes from
+ * that uri's directory.
  */
 export interface BookEntry {
   /** Absolute URI of the `.jpbook` file (stable id + build selector). */
   readonly uri: string;
-  /** The book's root: the innermost targeted root that contains it (normalized, no trailing slash). */
-  readonly rootUri: string;
-  /** Path relative to the workspace folder root (POSIX separators), e.g. `"part1/vol2.jpbook"`. */
+  /** The targeted root the book was found under (normalized, no trailing slash); null for an {@link OpenBook}. */
+  readonly rootUri: string | null;
+  /** Display name: the path under `rootUri` (POSIX separators), e.g. `"part1/vol2.jpbook"`, else the file name. */
   readonly fileRel: string;
-  /** Derived output relative path (`jpbookOutRel`, POSIX `/`); the build appends the format extension. */
-  readonly outRel: string;
   /** The `title`, when written and non-empty — display metadata for the Books panel. */
   readonly title?: string;
 }

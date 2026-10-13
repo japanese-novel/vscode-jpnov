@@ -1,7 +1,8 @@
 /**
  * Unit tests for `jpbook.createFile`'s book mode (manage.ts) against the mocked `vscode`:
- * the folder resolution, the parked-`.jpbook` prompt, the written book template, the
- * non-overwrite guard, and the post-create detail reveal on BooksViewProvider.
+ * the folder resolution, the parked-`.jpbook` prompt (the save dialog without a folder), the
+ * written book template, the non-overwrite guard, and the post-create detail reveal on
+ * BooksViewProvider.
  *
  * Runs in CI via `npm run test:integration`; directly (see test/client/README.md):
  *   node --import ./test/register.mjs --test --experimental-test-module-mocks "test/client/bookCreate.test.ts"
@@ -98,13 +99,55 @@ test('a dismissed prompt writes nothing', async () => {
   assert.deepEqual(state.errorMessages, []);
 });
 
-test('no open folder routes to the folder picker instead of prompting', async () => {
+test('no open folder asks a save dialog; dismissed = nothing written', async () => {
   await createFile(undefined);
 
+  assert.equal(state.saveDialogCalls.length, 1);
+  const options = state.saveDialogCalls[0] as { defaultUri: Uri; filters: Record<string, string[]>; saveLabel: string };
+  assert.match(options.defaultUri.path, /\/My Book\.jpbook$/);
+  assert.deepEqual(options.filters, { 'Book file': ['jpbook'] });
+  assert.equal(options.saveLabel, 'Create');
   assert.deepEqual(state.inputBoxCalls, []);
   assert.deepEqual(state.writtenFiles, []);
   assert.deepEqual(state.errorMessages, []);
-  assert.ok(state.executedCommands.some((c) => c.command === 'workbench.action.files.openFolder'));
+  assert.deepEqual(state.warningMessages, []);
+});
+
+test('no open folder: the chosen path gets the template, opens in the editor (what lists it) and is revealed', async () => {
+  const bookUri = 'file:///home/作品名.jpbook';
+  const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: null, fileRel: '作品名.jpbook' }]);
+  state.saveDialogResult = Uri.parse(bookUri);
+
+  await createFile(provider);
+  await tick();
+
+  assert.deepEqual(state.errorMessages, []);
+  assert.deepEqual(state.warningMessages, []); // no folder open: nothing to be outside of
+  assert.deepEqual(state.writtenFiles, [{ uri: bookUri, content: bookTemplate('作品名') }]);
+  assert.ok(state.openedDocs.includes(bookUri));
+  assert.equal(revealedDetail(view)?.uri, bookUri);
+});
+
+test('no open folder: a chosen name without the suffix gets it', async () => {
+  state.saveDialogResult = Uri.parse('file:///home/作品名');
+
+  await createFile(undefined);
+
+  assert.deepEqual(state.writtenFiles, [{ uri: 'file:///home/作品名.jpbook', content: bookTemplate('作品名') }]);
+});
+
+test('a book typed above the folder is created there, with a warning', async () => {
+  seedFolder();
+  state.inputBoxQueue.push('../elsewhere/作品名');
+
+  await createFile(undefined);
+
+  assert.deepEqual(state.errorMessages, []);
+  assert.deepEqual(state.createdDirs, ['file:///elsewhere']);
+  assert.deepEqual(state.writtenFiles, [{ uri: 'file:///elsewhere/作品名.jpbook', content: bookTemplate('作品名') }]);
+  assert.deepEqual(state.warningMessages, [
+    'Japanese Novel: ../elsewhere/作品名.jpbook was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
+  ]);
 });
 
 test('multi-root goes through the folder pick and writes into the chosen root', async () => {
@@ -148,7 +191,7 @@ test('an existing target cancels creation', async () => {
 test('a created book is revealed in the panel', async () => {
   seedFolder();
   const bookUri = `${ROOT}/新刊.jpbook`;
-  const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: ROOT, fileRel: '新刊.jpbook', outRel: '新刊' }]);
+  const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: ROOT, fileRel: '新刊.jpbook' }]);
   state.inputBoxQueue.push('新刊');
 
   await createFile(provider);
@@ -165,7 +208,7 @@ test('revealNewBook focuses the view and opens the detail of a non-ASCII book', 
   seedFolder();
   const bookUri = `${ROOT}/本.jpbook`;
   state.textDocuments.push(doc(bookUri, 'jpbook', meta({ title: '本' }) + 'ch1.jpnov\n'));
-  const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: ROOT, fileRel: '本.jpbook', outRel: '本' }]);
+  const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: ROOT, fileRel: '本.jpbook' }]);
 
   await provider.revealNewBook(Uri.parse(bookUri) as never);
   await tick();
@@ -192,7 +235,7 @@ test('revealNewBook re-finds the book when the stored name is NFD-normalized', a
   const nfdName = 'ガイド.jpbook'.normalize('NFD');
   const bookUri = `${ROOT}/${nfdName}`;
   state.textDocuments.push(doc(bookUri, 'jpbook', ''));
-  const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: ROOT, fileRel: nfdName, outRel: 'ガイド'.normalize('NFD') }]);
+  const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: ROOT, fileRel: nfdName }]);
 
   await provider.revealNewBook(Uri.parse(`${ROOT}/ガイド.jpbook`) as never);
   await tick();

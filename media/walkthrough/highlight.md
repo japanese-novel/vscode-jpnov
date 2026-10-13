@@ -1,5 +1,5 @@
 ```text
-// .vscode/settings.json
+// settings.json
 "jpnov.editor.highlight.characters": ["山田　太郎", "John Smith"],
 "jpnov.editor.highlight.keywords":   ["王都"]
 

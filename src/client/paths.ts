@@ -8,14 +8,24 @@ import * as vscode from 'vscode';
 export const FIND_FILES_EXCLUDE = '**/{node_modules,.*}/**';
 
 /**
- * A file URI from a root-relative entry — segments spread so a slash-bearing path never
- * reaches joinPath as one encodable segment.
+ * A file URI from a path written relative to `base` (`..` folds, as `joinPath` normalizes) —
+ * segments spread so a slash-bearing path never reaches joinPath as one encodable segment.
  */
-export function chapterUri(rootUri: string, rel: string): vscode.Uri {
-  return vscode.Uri.joinPath(vscode.Uri.parse(rootUri), ...rel.split('/'));
+export function resolveUri(base: vscode.Uri, rel: string): vscode.Uri {
+  return vscode.Uri.joinPath(base, ...rel.split('/'));
 }
 
-/** Splits a root-relative path into filename and containing directory (`''` at the root). */
+/** Code-unit order, locale-free, so every list sorts the same on every machine. */
+export function compareStr(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** The directory a `.jpbook` sits in: what its entries and its output folder count from. */
+export function bookDir(bookUri: string): vscode.Uri {
+  return vscode.Uri.joinPath(vscode.Uri.parse(bookUri), '..');
+}
+
+/** Splits an entry path into filename and containing directory (`''` when there is none). */
 export function splitRelPath(rel: string): { name: string; dir: string } {
   const cut = rel.lastIndexOf('/');
   return { name: rel.slice(cut + 1), dir: cut >= 0 ? rel.slice(0, cut) : '' };

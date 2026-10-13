@@ -24,8 +24,6 @@ export function renderMessage(msg: LocalizableMessage): string {
   const a = msg.args ?? [];
   const s = (i: number): string => String(a[i] ?? '');
   switch (msg.code) {
-    case 'book.entryNeedsFileScheme':
-      return vscode.l10n.t('cannot read "{0}": book files require a file:// workspace', s(0));
     case 'book.entryFileNotFound':
       return vscode.l10n.t('cannot read "{0}": file not found', s(0));
     case 'book.entryReadFailed':
@@ -65,24 +63,7 @@ export function renderMessage(msg: LocalizableMessage): string {
     case 'jpbook.metaEmptyValue':
       return vscode.l10n.t('{0} needs a value', s(0));
     case 'jpbook.coverItemWithoutKey':
-      return vscode.l10n.t(
-        'a "- " item needs a bare "cover:" line above it; any other key ends the list: {0}',
-        s(0),
-      );
-    case 'jpbook.coverNeedsList':
-      return vscode.l10n.t('write "cover:" alone, then one "- path" line per cover file: {0}', s(0));
-    case 'path.empty':
-      return vscode.l10n.t('a book entry must not be empty');
-    case 'path.rootDot':
-      return vscode.l10n.t('a book entry must name a subpath, not the root "."');
-    case 'path.homeRelative':
-      return vscode.l10n.t('a book entry must not start with "~" (home-relative)');
-    case 'path.absolute':
-      return vscode.l10n.t('a book entry must be a relative path, not absolute');
-    case 'path.invalid':
-      return vscode.l10n.t('a book entry is not a valid path');
-    case 'path.escapesRoot':
-      return vscode.l10n.t('a book entry must not escape the workspace root');
+      return vscode.l10n.t('a "- " item needs a "cover:" line above it; any other key ends the list: {0}', s(0));
     case 'syntax.unclosedAnnotation':
       return vscode.l10n.t('unterminated ［＃ annotation (missing ］)');
     case 'syntax.unterminatedBlock':

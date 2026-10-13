@@ -6,8 +6,9 @@
  * where the divider is suppressed by the same rule `chapterGlue` applies at ［＃改ページ］.
  *
  * `epubMembers` is pure and deterministic given `modified` (the injected build timestamp):
- * the identifier derives from `outRel`, the same identity the output path keys on, so
- * rebuilding a book keeps its identity and readers treat it as an update, not a new book.
+ * the identifier derives from `outRel`, the book's output stem (its file name), so rebuilding
+ * a book keeps its identity and readers treat it as an update, not a new book; two books of
+ * one file name in different folders share it.
  * Pure + vscode-free.
  */
 import { createHash } from 'node:crypto';
@@ -78,7 +79,7 @@ export function epubMembers(opts: {
   /** Its `title` and `author` are the package's dc:title and dc:creator. A blank title takes the
    *  first nav label; a blank author leaves dc:creator out. */
   readonly book: TitledBook;
-  /** The book's output stem (`jpbookOutRel`) — identity for dc:identifier. */
+  /** The book's output stem (the `.jpbook` basename, no extension) — identity for dc:identifier. */
   readonly outRel: string;
   readonly kinsoku: KinsokuMode;
   readonly dash: DashMode;

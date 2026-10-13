@@ -44,11 +44,9 @@ function labels(): Labels {
     noCovers: vscode.l10n.t('Pages before the body — for a submission cover sheet or a synopsis.'),
     noBooksTitle: vscode.l10n.t('No books yet.'),
     noBooksBody: vscode.l10n.t('A .jpbook collects your chapters into one book.'),
+    noFolderHint: vscode.l10n.t("A folder is optional, but recommended: open your novel's folder and its books are listed here automatically; without one, a book is listed while its .jpbook is open in the editor."),
     createBook: vscode.l10n.t('Create a Book…'),
     openGuide: vscode.l10n.t('Open the Guide'),
-    noFolderTitle: vscode.l10n.t('No folder open.'),
-    noFolderBody: vscode.l10n.t("Book files (.jpbook) live inside a workspace folder. Open your novel's folder first, then create the book there."),
-    openFolder: vscode.l10n.t('Open Folder'),
   };
 }
 

@@ -76,9 +76,9 @@ const conn = (): LspClient => {
   return client;
 };
 
-/** Runs `body` with `text` open at `uri` on the server, then closes it. */
-async function withOpen<T>(uri: string, text: string, body: () => Promise<T>): Promise<T> {
-  conn().notify('textDocument/didOpen', { textDocument: { uri, languageId: 'jpnov', version: 1, text } });
+/** Runs `body` with `text` open at `uri` on the server (a manuscript unless `languageId` says otherwise), then closes it. */
+async function withOpen<T>(uri: string, text: string, body: () => Promise<T>, languageId = 'jpnov'): Promise<T> {
+  conn().notify('textDocument/didOpen', { textDocument: { uri, languageId, version: 1, text } });
   try {
     return await body();
   } finally {
@@ -225,7 +225,8 @@ test('jpnov/listBooks + jpnov/build round-trip a real workspace over the wire', 
   assert.equal(list.books.length, 1);
   const book = list.books[0];
   assert.ok(book);
-  assert.equal(book.outRel, 'hon');
+  assert.equal(book.fileRel, 'hon.jpbook');
+  assert.equal(book.rootUri, wsUri);
   assert.equal(book.title, '試験本');
 
   const result = await conn().request<BuildResult>('jpnov/build', {
@@ -257,6 +258,30 @@ test('jpnov/listBooks + jpnov/build round-trip a real workspace over the wire', 
   assert.ok(txtArtifact.content.includes('走った!?［＃「!?」は縦中横］'), 'the .txt artifact prints the 縦中横 annotation as typed');
 
   builtHtml = htmlArtifact.content;
+});
+
+test('a .jpbook under no workspace folder gets links, path completion and a listing from its own directory', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jpnov-e2e-alone-'));
+  cleanups.push(dir);
+  const dirUri = pathToFileURL(dir).href.replace(/\/$/, '');
+  await writeFile(join(dir, 'hon.jpnov'), CHAPTER_TEXT, 'utf8');
+  const uri = `${dirUri}/hon.jpbook`;
+  const text = bookTemplate('試験本') + 'hon.jpnov\n';
+  await writeFile(join(dir, 'hon.jpbook'), text, 'utf8');
+  const fenceLine = text.split('\n').indexOf('---');
+
+  await withOpen(uri, text, async () => {
+    const links = await conn().request<{ target?: string }[]>('textDocument/documentLink', { textDocument: { uri } });
+    assert.deepEqual(links.map((l) => l.target), [`${dirUri}/hon.jpnov`]);
+    const items = await conn().request<{ label: string }[]>('textDocument/completion', {
+      textDocument: { uri },
+      position: { line: fenceLine + 1, character: 0 },
+    });
+    assert.ok(items.some((i) => i.label === 'hon.jpnov'));
+  }, 'jpbook');
+
+  const list = await conn().request<ListBooksResult>('jpnov/listBooks', { projectDirs: {}, openBooks: [{ uri, outDir: 'dist' }] });
+  assert.deepEqual(list.books, [{ uri, rootUri: null, fileRel: 'hon.jpbook', title: '試験本' }]);
 });
 
 /**

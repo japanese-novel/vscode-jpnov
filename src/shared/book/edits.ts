@@ -6,7 +6,7 @@
  * for it (an empty value is written as `key:`), and the lines of every other key stay where
  * they are.
  * The entry planners take an {@link EntryList} (chapters = body lines, covers = the `- path`
- * items under `cover:`) and never touch the other list.
+ * items under `cover:`, the key's own value included) and never touch the other list.
  */
 import {
   COVER_KEY,
@@ -17,6 +17,7 @@ import {
   KNOWN_KEYS,
   isCover,
   isEntryOf,
+  isInlineCover,
   META_KEYS,
   metaLinesOf,
   metaKeyOf,
@@ -177,10 +178,10 @@ export function listedEntries(lines: readonly ParsedLine[], list: EntryList): Se
 }
 
 /**
- * Appends entries (root-relative paths) to `list`, skipping any already listed there (a GUI
- * add must not manufacture `duplicate` warnings). Chapters go at the end of the document,
- * below a `---` added first when none closes the metadata;
- * covers after the open list's last item (its indent and marker mirrored), or as a new
+ * Appends entries (paths from the book's folder) to `list`, skipping any already listed there
+ * (a GUI add must not manufacture `duplicate` warnings). Chapters go at the end of the
+ * document, below a `---` added first when none closes the metadata; covers after the open
+ * list's last item (the indent and marker of the last `- ` item mirrored), or as a new
  * `cover:` key at the end of the metadata. Null when nothing is new.
  */
 export function appendEntries(text: string, list: EntryList, rels: readonly string[]): TextReplace | null {
@@ -197,17 +198,29 @@ export function appendEntries(text: string, list: EntryList, rels: readonly stri
     return appendAtEnd(parsed.lines, eol, lines.join(eol));
   }
 
-  // Only the first bare `cover:` opens a list (a repeat is a muted warning), so every
+  // Only the first `cover:` key opens a list (a repeat is a muted warning), so every
   // `isCover` line belongs to it.
-  const key = parsed.lines.find((pl) => pl.kind === 'cover');
+  const key = metaLinesOf(parsed).find((pl) => metaKeyOf(pl.value) === COVER_KEY);
   if (key === undefined) {
-    return insertAtMetaEnd(parsed, eol, [`${COVER_KEY}:`, ...fresh.map((rel) => `${COVER_ITEM_PREFIX}${rel}`)].join(eol));
+    return insertAtMetaEnd(parsed, eol, [metaLine(COVER_KEY, ''), ...fresh.map((rel) => `${COVER_ITEM_PREFIX}${rel}`)].join(eol));
   }
   const items = parsed.lines.filter(isCover);
   const last = items[items.length - 1];
-  const path = last === undefined ? null : coverPathOf(last);
-  const prefix = last === undefined || path === null ? COVER_ITEM_PREFIX : last.raw.slice(0, path.range.startChar);
-  return appendAfterLine(last ?? key, fresh.map((rel) => `${eol}${prefix}${rel}`).join(''));
+  return appendAfterLine(last ?? key, fresh.map((rel) => `${eol}${itemPrefix(last)}${rel}`).join(''));
+}
+
+/** What precedes a `- ` item's path on its line (indent and marker); the README-style prefix off an item. */
+function itemPrefix(item: ParsedLine | undefined): string {
+  if (item === undefined || isInlineCover(item)) {
+    return COVER_ITEM_PREFIX;
+  }
+  const path = coverPathOf(item);
+  return path === null ? COVER_ITEM_PREFIX : item.raw.slice(0, path.range.startChar);
+}
+
+/** A cover entry as a `- ` item line: an inline `cover: path` becomes `  - path`, an item travels as written. */
+function asItem(pl: ParsedLine): string {
+  return isInlineCover(pl) ? `${COVER_ITEM_PREFIX}${entryKeyOf(pl)}` : pl.raw;
 }
 
 /** The entry line of `list` at `line`, or null — the guard every mover uses (other lists are null). */
@@ -233,22 +246,29 @@ export function resolveEntry(lines: readonly ParsedLine[], list: EntryList, ref:
 }
 
 /**
- * Deletes the entry line entirely (the file itself is untouched), as {@link deleteRun} does.
- * A cover list emptied this way keeps its bare `cover:` line. Null when `line` is not an
- * entry of `list`.
+ * Deletes the entry line entirely (the file itself is untouched), as {@link deleteRun} does;
+ * an inline `cover: path` keeps its `cover:` and loses its path, so the list stays open. Null
+ * when `line` is not an entry of `list`.
  */
 export function removeEntry(text: string, list: EntryList, line: number): TextReplace | null {
   const parsed = parseJpbook(text);
   const pl = entryAt(parsed.lines, list, line);
-  return pl === null ? null : deleteRun(parsed.lines, pl, pl);
+  if (pl === null) {
+    return null;
+  }
+  if (isInlineCover(pl)) {
+    return { start: at(pl.line, pl.range.startChar), end: at(pl.line, pl.range.endChar), newText: metaLine(COVER_KEY, '') };
+  }
+  return deleteRun(parsed.lines, pl, pl);
 }
 
 /**
  * Moves the entry at `fromLine` to sit BEFORE the entry at `beforeLine` (`null` = after the
  * list's last entry). Planned as delete + insert against the ORIGINAL text — the ranges
  * never overlap, so they apply as one `WorkspaceEdit`. Blank lines and metadata stay where
- * they are; only the entry line travels (with its own indent and marker). Null when the
- * move is a no-op or either line is not an entry of `list`.
+ * they are; only the entry line travels (with its own indent and marker; an inline
+ * `cover: path` travels as a `- ` item, and moving an entry before it turns it into one under
+ * a bare `cover:`). Null when the move is a no-op or either line is not an entry of `list`.
  */
 export function moveEntryTo(
   text: string,
@@ -280,14 +300,18 @@ export function moveEntryTo(
     if (entries[fromIdx + 1]?.line === beforeLine) {
       return null;
     }
-    return [removal, { start: at(beforeLine, 0), end: at(beforeLine, 0), newText: `${from.raw}${eol}` }];
+    if (isInlineCover(target)) {
+      const block = [metaLine(COVER_KEY, ''), asItem(from), asItem(target)].join(eol);
+      return [removal, { start: at(target.line, target.range.startChar), end: at(target.line, target.range.endChar), newText: block }];
+    }
+    return [removal, { start: at(beforeLine, 0), end: at(beforeLine, 0), newText: `${asItem(from)}${eol}` }];
   }
 
   const last = entries[entries.length - 1];
   if (last === undefined || last.line === fromLine) {
     return null; // already the last entry
   }
-  return [removal, appendAfterLine(last, `${eol}${from.raw}`)];
+  return [removal, appendAfterLine(last, `${eol}${asItem(from)}`)];
 }
 
 /** The line numbers of `list`'s entries in document order — the panel's row → line mapping. */

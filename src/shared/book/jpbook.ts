@@ -1,20 +1,19 @@
 /**
- * Pure, vscode-free parsing of the per-book `*.jpbook` manifest, plus the output-name
- * derivation, per-book chrome composition, and the fs-free completion logic.
+ * Pure, vscode-free parsing of the per-book `*.jpbook` manifest, plus per-book chrome
+ * composition and the fs-free completion logic.
  *
  * A `.jpbook` opens with its header line ({@link HEADER}: the format and its version), then its
  * metadata — the seven `key: value` lines of {@link META_KEYS}, all required, plus the optional
  * `cover:` list — closes it with a `---` line, and continues with one chapter path per line.
  *
- * Chapter and cover paths are relative to the book's OWNING WORKSPACE FOLDER root, so moving
- * the `.jpbook` itself never invalidates them. The `.jpbook`'s OWN name and location imply the
- * output path (mirroring the source tree): `volume01/index.jpbook` and `volume01.jpbook` both
- * build `volume01`, `part1/vol2.jpbook` builds `part1/vol2`. Metadata never affects the output
- * path.
+ * Chapter and cover paths are relative to the DIRECTORY OF THE `.jpbook`, as an `import` is to
+ * its module: `a.jpnov`, `./a.jpnov`, `../drafts/a.jpnov`, and nothing bounds them. The
+ * `.jpbook`'s own name is the output name (`vol1.jpbook` builds `vol1`); metadata never affects
+ * it.
  *
- * Syntax, naming and completion decisions only — never the filesystem: an `'ok'` line means
- * "a backslash-free relative `.jpnov` path"; the server (`src/server/jpbook.ts`) resolves it
- * through {@link resolveContained} and stats it before trusting it.
+ * Syntax and completion decisions only — never the filesystem: an `'ok'` line means "a
+ * backslash-free `.jpnov` path"; the server (`src/server/jpbook.ts`) resolves it from the
+ * book's directory and stats it before trusting it.
  */
 import type { BuildChrome, FurnitureAlign } from '../compiler/chrome.ts';
 import { FURNITURE_ALIGNS } from '../compiler/chrome.ts';
@@ -23,6 +22,7 @@ import { scan } from '../ast/scan.ts';
 import { displayText } from '../chars.ts';
 import { nonBlank } from '../compiler/reflow.ts';
 import type { LocalizableMessage } from '../protocol.ts';
+import { pathSegments } from '../uri.ts';
 
 /** A column span within a single document line (`endChar` exclusive). */
 export interface JpbookRange {
@@ -38,10 +38,11 @@ export interface JpbookRange {
  *                  nothing is said about it.
  * - `'fence'`     — the `---` line that closes the metadata.
  * - `'meta'`      — a recognized, valid `key: value` metadata line.
- * - `'ok'`        — a syntactically valid `.jpnov` path (existence/containment unverified).
+ * - `'ok'`        — a syntactically valid `.jpnov` path (existence unverified).
  * - `'duplicate'` — a valid path that repeats an earlier `'ok'` line; a Warning, not built.
  * - `'cover'`     — a bare `cover:` key line, opening the cover list.
- * - `'coverEntry'` — a `- ` cover path; a front page in the html build ({@link coverPathOf}).
+ * - `'coverEntry'` — a cover path: a `- ` item, or the `cover: path` key line, which opens the
+ *                  list and is its first item; a front page in the html build ({@link coverPathOf}).
  * - `'coverDuplicate'` — a cover path repeating an earlier one; a Warning, not built.
  * - `{ error }`   — a syntax problem (e.g. backslash, non-`.jpnov`, key-less metadata, an empty
  *                  `title`, a bad alignment) to surface as an Error; a book with any such line is not built
@@ -163,16 +164,26 @@ export function metaKeyOf(value: string): string | null {
   return key === '' ? null : key;
 }
 
-/** The path portion of an ITEM line's TRIMMED value and its offset within it; null otherwise. */
-function coverShape(value: string): { readonly path: string; readonly offset: number } | null {
-  if (!isCoverMark(value.charAt(0))) {
+/**
+ * The path portion of a cover line's TRIMMED value and its offset within it: after a `- `
+ * marker, else after the `cover:` key's colon; null off both shapes. Marker first, as the
+ * parser dispatches.
+ */
+export function coverShape(value: string): { readonly path: string; readonly offset: number } | null {
+  const sep = isCoverMark(value.charAt(0)) ? 1 : metaKeyOf(value) === COVER_KEY ? colonIndex(value) + 1 : -1;
+  if (sep < 0) {
     return null;
   }
-  let offset = 1;
+  let offset = sep;
   while (offset < value.length && isEdgeWhitespace(value.charAt(offset))) {
     offset += 1;
   }
   return { path: value.slice(offset), offset };
+}
+
+/** True for a `cover: path` line: the key line that is also the list's first item (never a `- ` item). */
+export function isInlineCover(pl: ParsedLine): boolean {
+  return isCover(pl) && metaKeyOf(pl.value) === COVER_KEY;
 }
 
 /**
@@ -286,15 +297,15 @@ export function hasJpnovExt(name: string): boolean {
   return /\.jpnov$/i.test(name);
 }
 
-/** The segments of a relative path, either separator; `.` and empty ones (`a//b`, a trailing `/`) dropped. */
-export function pathSegments(path: string): string[] {
-  return path.split(/[\\/]+/).filter((seg) => seg !== '' && seg !== '.');
+/** A book file's name without `.jpbook` (any letter case): its output name and its label when it has no title. */
+export function jpbookStem(name: string): string {
+  return name.replace(/\.jpbook$/i, '');
 }
 
 /**
- * The identity of an entry path: `./` and empty segments collapsed, NFC. `./a.jpnov` and
- * `a.jpnov` name one file, so they are one entry; the value as written stays what the line
- * shows and the build reads.
+ * The identity of an entry path: `./` and empty segments dropped, `..` folded, NFC.
+ * `./a.jpnov`, `a.jpnov` and `x/../a.jpnov` name one file, so they are one entry; the value as
+ * written stays what the line shows and the build reads.
  */
 export function entryIdentity(path: string): string {
   return pathSegments(path.normalize('NFC')).join('/');
@@ -328,8 +339,9 @@ const PARSERS: ReadonlyMap<string, BodyParser> = new Map([[JPBOOK_VERSION, parse
  * everywhere; interior whitespace is preserved (a filename may contain spaces). Every line
  * above the first `---` is metadata, and a line there without a key is an Error. Duplicate
  * keys keep the FIRST line (one in Error included: an empty `title:` or a bad alignment takes
- * its key and reports itself). A `cover` list survives blank lines and closes at any other
- * metadata line or the fence. Chapter and cover paths must be backslash-free `.jpnov` (any
+ * its key and reports itself). A `cover` list opens at the first `cover:` line (a value on it
+ * is the list's first item), survives blank lines and closes at any other metadata line or the
+ * fence. Chapter and cover paths must be backslash-free `.jpnov` (any
  * letter case); later repeats of a path (by {@link entryIdentity}) are
  * `'duplicate'`/`'coverDuplicate'`, the two lists deduping independently. Never throws.
  */
@@ -383,7 +395,7 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
 
   let state: 'meta' | 'body' = 'meta';
   let coverKeySeen = false;
-  // 'muted' = a DUPLICATE bare `cover:`: its items warn instead of collecting, so a whole
+  // 'muted' = a DUPLICATE `cover:` key: its items warn instead of collecting, so a whole
   // second list cannot cascade into orphan-item Errors.
   let coverList: 'open' | 'muted' | null = null;
 
@@ -415,18 +427,15 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
       return { error: { code: 'jpbook.metaNotKeyValue', args: [value] } };
     }
     if (key === COVER_KEY) {
-      // List-only: the grammar paints any `key: value` as a string and VS Code withholds
-      // completion inside strings, so cover paths live on `- ` lines, like chapters.
-      if (value.slice(colonIndex(value) + 1).trim() !== '') {
-        return { error: { code: 'jpbook.coverNeedsList', args: [value] } };
-      }
       if (coverKeySeen) {
         coverList = 'muted';
         return { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } };
       }
       coverKeySeen = true;
       coverList = 'open';
-      return 'cover';
+      // A value on the key line is the list's first item; a bad one still opens the list.
+      const path = coverShape(value)?.path ?? '';
+      return path === '' ? 'cover' : coverPathKind(path, value);
     }
     if (!(META_KEYS as readonly string[]).includes(key)) {
       return { warning: { code: 'jpbook.metaUnknownKey', args: [key, KNOWN_KEYS.join(', ')] } };
@@ -609,26 +618,6 @@ export function parseDividerValue(value: string): DividerValue {
  */
 export function composeDividerValue(mark: string, indent: number | null): string {
   return indent === null ? mark : indentAnnotation(indent) + mark;
-}
-
-/**
- * Derives the output RELATIVE PATH (stem, no extension) for a `.jpbook`, mirroring the
- * tree under the workspace folder root (POSIX `/`; backslashes tolerated as separators). The build
- * appends the format extension to it. Strips `.jpbook`; a basename of `index` collapses to its parent
- * directory when one exists (so `vol1/index.jpbook` and `vol1.jpbook` agree on `vol1`);
- * remaining segments join with `/`. A root-level `index.jpbook` has no parent, so it keeps
- * `index`.
- *
- * Two distinct book files that collide on this path are a BUILD-level error (detected by the
- * caller via the output-path map).
- */
-export function jpbookOutRel(jpbookRel: string): string {
-  const segments = pathSegments(jpbookRel);
-  const last = (segments.pop() ?? '').replace(/\.jpbook$/i, '');
-  if (!(last === 'index' && segments.length > 0)) {
-    segments.push(last);
-  }
-  return segments.join('/');
 }
 
 /** A directory entry handed to {@link completeEntryLine} (the caller does the `readdir`). */

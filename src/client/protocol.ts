@@ -20,9 +20,9 @@ export interface BookVM {
   readonly checked: boolean;
 }
 
-/** One per-root section of the book list; `rootLabel` is null when there is a single root (flat). */
+/** One section of the book list (a workspace folder, or the open files under none); `label` is null when there is a single section (flat). */
 export interface BookGroupVM {
-  readonly rootLabel: string | null;
+  readonly label: string | null;
   readonly books: readonly BookVM[];
 }
 
@@ -60,6 +60,7 @@ export interface StateMessage {
   readonly type: 'state';
   /** True before the first enumeration lands — show a neutral placeholder, not the "no books" welcome. */
   readonly loading: boolean;
+  /** True with no workspace folder open: the empty state then recommends opening one. */
   readonly noFolder: boolean;
   /** The footer's "open the output folder after building" toggle (host-held, like the selection). */
   readonly revealOutput: boolean;
@@ -94,7 +95,7 @@ export type BooksInbound = StateMessage | DetailMessage | CloseDetailMessage;
 export type BuildAction = 'print' | 'txt' | 'epub';
 
 /** An empty-state welcome-link action. */
-export type WelcomeAction = 'createBook' | 'openGuide' | 'openFolder';
+export type WelcomeAction = 'createBook' | 'openGuide';
 
 /** Every message the Books webview dispatches back to the host. */
 export type BooksOutbound =
@@ -173,11 +174,10 @@ export interface Labels {
   readonly noCovers: string;
   readonly noBooksTitle: string;
   readonly noBooksBody: string;
+  /** Appended to the empty state's body when no folder is open. */
+  readonly noFolderHint: string;
   readonly createBook: string;
   readonly openGuide: string;
-  readonly noFolderTitle: string;
-  readonly noFolderBody: string;
-  readonly openFolder: string;
 }
 
 /** The Books webview's `__INIT` bootstrap: localized strings baked in for the first paint. */

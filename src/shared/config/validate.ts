@@ -1,15 +1,7 @@
-import type { MsgCode } from '#/shared/protocol.ts';
-
-import { encodeRelPath } from '../uri.ts';
-
-/** Failure of {@link resolveContained}: the `path.*` code. */
-export interface ContainmentError {
-  readonly ok: false;
-  readonly code: MsgCode;
-}
+import { encodeRelPath, pathSegments } from '../uri.ts';
 
 /**
- * True when the value names an absolute location a root-relative field must reject:
+ * True when the value names an absolute location a relative field must reject:
  * a POSIX `/…` path, a Windows drive or UNC path, or a full `scheme:` URI. Shared with
  * the panel's file-name input so the two ends of the pipeline can't drift.
  */
@@ -22,72 +14,41 @@ export function isAbsoluteLocation(value: string): boolean {
   );
 }
 
+/** The `outDir` prefix that counts from the book's workspace folder instead of its own directory. */
+export const WORKSPACE_FOLDER_TOKEN = '${workspaceFolder}';
+
+/** A validated `jpnov.layout.outDir`: the relative path and the directory it counts from. */
+export interface OutDir {
+  /** True for a `${workspaceFolder}/…` value: `rel` counts from the book's workspace folder (its own directory when it has none). */
+  readonly fromRoot: boolean;
+  /** Segments collapsed, `/`-separated, not encoded, `../` kept (`../dist` gathers a folder's books one level up); `''` = the base folder itself (`.`). */
+  readonly rel: string;
+}
+
+/** The product default: the `dist` of the book's workspace folder. `PROJECT_DEFAULT.outDir` spells it as a setting value. */
+export const OUT_DIR_DEFAULT: OutDir = { fromRoot: true, rel: 'dist' };
+
 /**
- * Resolves a user-supplied relative path against a workspace-root URI, refusing any
- * value that escapes the root or names an absolute / home-relative location.
- *
- * Pure + vscode-free: `rootUri` and the returned `abs` are URI strings
- * (e.g. `file:///Users/x/proj`); `rel` is the plain path as written (a `.jpbook` entry, a
- * setting) and is percent-encoded here the way VS Code encodes a `Uri`, so `abs` matches the
- * client's strings. On success `abs` is guaranteed to be at or below `rootUri`. On failure it
- * returns a `path.*` {@link MsgCode}; the CLIENT renders the localized text (the server fills
- * the English diagnostic fallback).
- *
- * Rejected:
- * - `""` and whitespace-only
- * - `"."` (the root itself — a config field must name a *sub*path)
- * - any `..` segment that would climb above the root
- * - absolute paths (`/foo`, `C:\foo`, `\\server\share`, or a `scheme:` URI)
- * - a leading `~` (home-relative)
+ * A configured project dir (`jpnov.layout.outDir`) as the server joins it. Null when it names no
+ * folder: empty, absolute, `~`-relative, or text no URI can carry (a lone surrogate). `.` and
+ * `${workspaceFolder}` alone are folders like any other: the output lands beside the book, or in
+ * its workspace folder.
  */
-export function resolveContained(rootUri: string, rel: string): { ok: true; abs: string } | ContainmentError {
-  const trimmed = rel.trim();
-
+export function outDirSubpath(value: string): OutDir | null {
+  const trimmed = value.trim();
   if (trimmed === '') {
-    return { ok: false, code: 'path.empty' };
+    return null;
   }
-  if (trimmed === '.') {
-    return { ok: false, code: 'path.rootDot' };
+  const fromRoot = trimmed.startsWith(WORKSPACE_FOLDER_TOKEN);
+  const rest = fromRoot ? trimmed.slice(WORKSPACE_FOLDER_TOKEN.length).replace(/^[\\/]+/, '') : trimmed;
+  if (rest.startsWith('~') || isAbsoluteLocation(rest)) {
+    return null;
   }
-  if (trimmed.startsWith('~')) {
-    return { ok: false, code: 'path.homeRelative' };
-  }
-
-  if (isAbsoluteLocation(trimmed)) {
-    return { ok: false, code: 'path.absolute' };
-  }
-
-  // Resolve against the root using URL semantics (handles ./ and ../ collapsing). A trailing
-  // slash on the base makes the relative path resolve *inside* the root. The path is encoded
-  // first, so `#` `?` `%` stay in the name while `.`/`..` (unreserved) collapse as usual.
-  const base = rootUri.endsWith('/') ? rootUri : `${rootUri}/`;
-  let resolved: URL;
+  const rel = pathSegments(rest).join('/');
   try {
-    resolved = new URL(encodeRelPath(trimmed.split('\\').join('/')), base);
+    encodeRelPath(rel);
   } catch {
-    return { ok: false, code: 'path.invalid' }; // a lone surrogate fails the encoding
+    return null;
   }
-
-  const baseUrl = new URL(base);
-  // The root path in both spellings (with/without the trailing slash), derived once for the
-  // two checks below. `base` ends with '/', so `pathname` normally does too.
-  const rootDir = baseUrl.pathname.endsWith('/') ? baseUrl.pathname : `${baseUrl.pathname}/`;
-  const rootPath = rootDir.slice(0, -1);
-
-  // Containment: same origin/scheme, and the resolved path is at or under the base.
-  if (
-    resolved.protocol !== baseUrl.protocol ||
-    resolved.host !== baseUrl.host ||
-    !(resolved.pathname === rootPath || resolved.pathname.startsWith(rootDir))
-  ) {
-    return { ok: false, code: 'path.escapesRoot' };
-  }
-
-  // Equal to the root after collapsing (e.g. "foo/..") is also a rejection: a config
-  // field must name a real subpath. (Shares `path.rootDot` with the literal "." case.)
-  if (resolved.pathname === rootPath || resolved.pathname === rootDir) {
-    return { ok: false, code: 'path.rootDot' };
-  }
-
-  return { ok: true, abs: resolved.href.replace(/\/$/, '') };
+  return { fromRoot, rel };
 }

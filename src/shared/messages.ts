@@ -15,8 +15,6 @@ import type { LocalizableMessage, MsgCode } from './protocol.ts';
 export function renderEnglish(code: MsgCode, args: readonly (string | number)[] = []): string {
   const a = (i: number): string => String(args[i] ?? '');
   switch (code) {
-    case 'book.entryNeedsFileScheme':
-      return `cannot read "${a(0)}": book files require a file:// workspace`;
     case 'book.entryFileNotFound':
       return `cannot read "${a(0)}": file not found`;
     case 'book.entryReadFailed':
@@ -56,21 +54,7 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
     case 'jpbook.metaEmptyValue':
       return `${a(0)} needs a value`;
     case 'jpbook.coverItemWithoutKey':
-      return `a "- " item needs a bare "cover:" line above it; any other key ends the list: ${a(0)}`;
-    case 'jpbook.coverNeedsList':
-      return `write "cover:" alone, then one "- path" line per cover file: ${a(0)}`;
-    case 'path.empty':
-      return 'a book entry must not be empty';
-    case 'path.rootDot':
-      return 'a book entry must name a subpath, not the root "."';
-    case 'path.homeRelative':
-      return 'a book entry must not start with "~" (home-relative)';
-    case 'path.absolute':
-      return 'a book entry must be a relative path, not absolute';
-    case 'path.invalid':
-      return 'a book entry is not a valid path';
-    case 'path.escapesRoot':
-      return 'a book entry must not escape the workspace root';
+      return `a "- " item needs a "cover:" line above it; any other key ends the list: ${a(0)}`;
     case 'syntax.unclosedAnnotation':
       return 'unterminated ［＃ annotation (missing ］)';
     case 'syntax.unterminatedBlock':

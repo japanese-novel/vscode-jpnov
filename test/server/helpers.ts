@@ -23,7 +23,6 @@ import type { RawLintConfigWire } from '../../src/shared/protocol.ts';
 import { createHighlightStore } from '../../src/server/highlight/vocabulary.ts';
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { errorText } from '../../src/shared/errors.ts';
-import { createWorkspaceRoots } from '../../src/server/roots.ts';
 
 export interface RecordedNotification {
   readonly method: string;
@@ -108,7 +107,6 @@ export function makeContext(conn: FakeConnection, readText: ReadText = nodeReade
     readText,
     lintSelection: selectRules({}),
     highlight: createHighlightStore(),
-    roots: createWorkspaceRoots(),
   };
 }
 

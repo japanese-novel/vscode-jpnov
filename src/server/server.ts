@@ -61,11 +61,11 @@ import type {
 import { highlightsAt, hoverAt, prepareRenameAt, renameAt } from './annotations.ts';
 import { handleBuild, handleListBooks } from './build.ts';
 import type { Finding } from './diagnostics.ts';
+import { parentUri } from './fsUri.ts';
 import { buildCodeActions } from './lint/codeActions.ts';
 import { computeLintFindings } from './lint/engine.ts';
 import { createParseCache } from './parsed.ts';
 import { reportError } from './report.ts';
-import { createWorkspaceRoots } from './roots.ts';
 import type { ServerContext } from './context.ts';
 import { createHighlightStore, handleHighlightChanged } from './highlight/vocabulary.ts';
 import { buildSemanticTokens, SEMANTIC_LEGEND } from './semanticTokens.ts';
@@ -97,7 +97,6 @@ const context: ServerContext = {
   readText: readTextOverWire,
   lintSelection: selectRules({}), // all rules off until the client's snapshot arrives at initialize
   highlight: createHighlightStore(), // empty until the client's snapshot arrives at initialize
-  roots: createWorkspaceRoots(), // seeded at initialize; live via workspace/didChangeWorkspaceFolders
 };
 
 // Open-document tracker (so semantic-tokens requests have document text to highlight).
@@ -113,18 +112,12 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   // Vocabulary seed: no refresh here — the client is not `initialized` yet, and the first
   // semanticTokens request naturally lands after this.
   context.highlight.apply(options?.highlight);
-  // Workspace-folder seed: `.jpbook` entries are root-relative, so the live features need
-  // the folder list (change notifications are registered once `initialized`).
-  context.roots.replace((params.workspaceFolders ?? []).map((f) => f.uri));
 
   return {
     capabilities: {
       textDocumentSync: {
         openClose: true,
         change: TextDocumentSyncKind.Incremental,
-      },
-      workspace: {
-        workspaceFolders: { supported: true, changeNotifications: true },
       },
       semanticTokensProvider: {
         legend: SEMANTIC_LEGEND,
@@ -151,20 +144,6 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       // No executeCommandProvider: this extension drives everything through custom requests.
     },
   };
-});
-
-// Workspace folders changed: update the root set the live `.jpbook` features resolve
-// against, then refresh the open books (their entries may gain/lose an owning root).
-connection.onInitialized(() => {
-  // Event registration (a Disposable, intentionally kept for the process lifetime).
-  connection.workspace.onDidChangeWorkspaceFolders((e) => {
-    context.roots.change(e.added.map((f) => f.uri), e.removed.map((f) => f.uri));
-    for (const doc of documents.all()) {
-      if (doc.languageId === 'jpbook') {
-        scheduleJpbookDiagnostics(doc);
-      }
-    }
-  });
 });
 
 // Prose-lint settings changed (jpnov.lint.*): re-resolve the enabled-rule selection from the fresh
@@ -200,9 +179,9 @@ connection.onRequest(
   ): Promise<BuildResult> => handleBuild(context, params, workDone, token),
 );
 
-// List books: enumerate every `.jpbook` of every root in the request's projectDirs map and read
-// each one through the client for its title (no diagnostics); the wire may omit params, so accept
-// the nullable form.
+// List books: enumerate every `.jpbook` of every root in the request's projectDirs map, then the
+// open books it names, and read each one through the client for its title (no diagnostics); the
+// wire may omit params, so accept the nullable form.
 connection.onRequest(
   ListBooksRequest,
   (params: ListBooksParams | undefined): Promise<ListBooksResult> =>
@@ -280,15 +259,15 @@ function lineAt(doc: TextDocument, line: number): string {
   return text.replace(/\r$/, '');
 }
 
-// Autocompletion: metadata keys/values in the front matter, file paths on chapter lines —
-// only for book files, delegated to the fs-backed resolver.
+// Autocompletion: metadata keys/values in the front matter, file paths on chapter and cover
+// lines (relative to the book's directory) — only for book files, delegated to the fs-backed resolver.
 connection.onCompletion((params) => {
   const doc = documents.get(params.textDocument.uri);
   if (doc?.languageId !== 'jpbook') {
     return [];
   }
   return completeJpbook(
-    context.roots.rootOf(doc.uri),
+    parentUri(doc.uri),
     parseJpbook(doc.getText()),
     lineAt(doc, params.position.line),
     params.position,
@@ -301,10 +280,10 @@ connection.onDocumentLinks((params) => {
   if (doc?.languageId !== 'jpbook') {
     return [];
   }
-  return documentLinksForJpbook(context.roots.rootOf(doc.uri), parseJpbook(doc.getText()));
+  return documentLinksForJpbook(parentUri(doc.uri), parseJpbook(doc.getText()));
 });
 
-// Live per-line diagnostics for an open .jpbook (missing/escaping/duplicate paths, metadata
+// Live per-line diagnostics for an open .jpbook (missing/duplicate paths, metadata
 // problems). Debounced per URI and version-guarded so async fs existence checks never publish
 // results for stale text.
 const jpbookDebounce = new Map<string, ReturnType<typeof setTimeout>>();
@@ -324,7 +303,7 @@ function scheduleJpbookDiagnostics(doc: TextDocument): void {
       }
       void (async () => {
         try {
-          const diagnostics = await diagnoseJpbook(context.roots.rootOf(uri), parseJpbook(current.getText()));
+          const diagnostics = await diagnoseJpbook(parentUri(uri), parseJpbook(current.getText()));
           // Re-check after the async fs work: a newer edit (with its own schedule) wins.
           if (documents.get(uri)?.version === scheduledVersion) {
             // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.

@@ -72,7 +72,7 @@ export default tseslint.config(
         'error',
         {
           property: 'asRelativePath',
-          message: 'It counts from the innermost workspace folder of the file, not from the root of the book: start from BookEntry.rootUri.',
+          message: 'It counts from the workspace folder of the file; a book entry counts from the directory of its .jpbook (BookEntry.uri).',
         },
       ],
     },
