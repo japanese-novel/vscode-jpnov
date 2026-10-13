@@ -5,7 +5,7 @@
  */
 import { BUILD_CHROME_DEFAULT } from '../config/settings.ts';
 import { isAbsoluteLocation } from '../config/validate.ts';
-import { FENCE, JPBOOK_VERSION, META_KEYS, metaLine, pathSegments, VERSION_KEY, type MetaKey } from './jpbook.ts';
+import { FENCE, HEADER, META_KEYS, metaLine, pathSegments, type MetaKey } from './jpbook.ts';
 
 /**
  * Starter content of a cover file created from the panel: README's 応募用の表紙 sample,
@@ -17,13 +17,12 @@ export const COVER_TEMPLATE = '［＃５字下げ］［＃ここに「タイト�
   '［＃７字下げ］４００字詰め原稿用紙換算［＃縦中横］［＃ここに「原稿用紙換算枚数」の値を表示］［＃縦中横終わり］枚\n';
 
 /**
- * Starter content of a book created from the panel: the format version, then every required
- * key — the title from the file's stem, the page furniture at the product defaults, the rest
- * empty — and the `---` the chapters follow. `Record` keeps the table one line per key, so a
- * new {@link META_KEYS} entry fails to compile until it has one.
+ * The metadata a book created from the panel starts with: the title from the file's stem, the
+ * page furniture at the product defaults, the rest empty. `Record` keeps the table one line
+ * per key, so a new {@link META_KEYS} entry fails to compile until it has one.
  */
-export function bookTemplate(stem: string): string {
-  const values: Record<MetaKey, string> = {
+export function templateValues(stem: string): Record<MetaKey, string> {
+  return {
     title: stem,
     author: '',
     header: BUILD_CHROME_DEFAULT.header,
@@ -32,7 +31,12 @@ export function bookTemplate(stem: string): string {
     footerAlign: BUILD_CHROME_DEFAULT.footerAlign,
     divider: '',
   };
-  const lines = [metaLine(VERSION_KEY, JPBOOK_VERSION), ...META_KEYS.map((key) => metaLine(key, values[key])), FENCE];
+}
+
+/** Starter content of a book created from the panel: the header line, {@link templateValues}, and the `---` the chapters follow. */
+export function bookTemplate(stem: string): string {
+  const values = templateValues(stem);
+  const lines = [HEADER, ...META_KEYS.map((key) => metaLine(key, values[key])), FENCE];
   return `${lines.join('\n')}\n`;
 }
 

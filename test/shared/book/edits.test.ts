@@ -1,17 +1,37 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import * as edits from '../../../src/shared/book/edits.ts';
+import { entryLines, listedEntries, metaRows, resolveEntry, type TextReplace } from '../../../src/shared/book/edits.ts';
 import {
-  appendEntries,
-  entryLines,
-  listedEntries,
-  metaRows,
-  moveEntryTo,
-  removeEntry,
-  resolveEntry,
-  setMeta,
-} from '../../../src/shared/book/edits.ts';
-import { META_KEYS, metaKeyOf, parseJpbook, type EntryList, type JpbookLineKind, type MetaKey } from '../../../src/shared/book/jpbook.ts';
+  META_KEYS,
+  metaKeyOf,
+  parseJpbook as parseWhole,
+  type EntryList,
+  type JpbookLineKind,
+  type MetaKey,
+  type ParsedJpbook,
+} from '../../../src/shared/book/jpbook.ts';
+import { below, HEAD } from './_fixture.ts';
+
+// The fixtures below are the lines under the header: the planners run on `HEAD + text`, with the
+// line arguments and the positions they return shifted across the header line, and a parse is
+// numbered from below it too. No edit ever lands on the header (a position there would shift to -1).
+type Position = TextReplace['start'];
+const up = (p: Position): Position => ({ line: p.line - 1, character: p.character });
+const shift = (r: TextReplace): TextReplace => ({ start: up(r.start), end: up(r.end), newText: r.newText });
+const setMeta = (text: string, key: MetaKey, value: string): TextReplace[] => edits.setMeta(HEAD + text, key, value).map(shift);
+const appendEntries = (text: string, list: EntryList, rels: readonly string[]): TextReplace | null => {
+  const r = edits.appendEntries(HEAD + text, list, rels);
+  return r === null ? null : shift(r);
+};
+const removeEntry = (text: string, list: EntryList, line: number): TextReplace | null => {
+  const r = edits.removeEntry(HEAD + text, list, line + 1);
+  return r === null ? null : shift(r);
+};
+const moveEntryTo = (text: string, list: EntryList, from: number, before: number | null): TextReplace[] | null =>
+  edits.moveEntryTo(HEAD + text, list, from + 1, before === null ? null : before + 1)?.map(shift) ?? null;
+const parseJpbook = (text: string): ParsedJpbook => below(parseWhole(HEAD + text), 1);
 
 /**
  * Applies LSP-style replaces to `text` (offsets computed per line) — the test's oracle. Edits may
@@ -124,7 +144,6 @@ test('setMeta: keys filled in any order end in the key order, above the fence', 
     'title: 作品名\nauthor: ペンネーム\nheader: 作品名　一\nheaderAlign: right\nfooter:\nfooterAlign: left\ndivider: ＊\n---\na.jpnov\n',
   );
   assert.deepEqual(Object.keys(parseJpbook(text).meta), [...META_KEYS]);
-  assert.deepEqual(parseJpbook(text).missing, ['version']); // the panel never writes the version
 });
 
 // --- appendEntries (chapters) -------------------------------------------------------------
@@ -227,12 +246,12 @@ test('entryLines(chapters) and metaRows project the panel model in fixed order',
   assert.deepEqual(entryLines(parsed.lines, 'chapters'), [2, 4]);
   assert.deepEqual(metaRows(parsed.meta), [
     { key: 'title', value: undefined },
-    { key: 'author', value: undefined },
+    { key: 'author', value: '' },
     { key: 'header', value: '柱' },
     { key: 'headerAlign', value: undefined },
-    { key: 'footer', value: undefined },
+    { key: 'footer', value: '' },
     { key: 'footerAlign', value: undefined },
-    { key: 'divider', value: undefined },
+    { key: 'divider', value: '' },
   ]);
 });
 
@@ -249,7 +268,7 @@ test('setMeta never splits a cover list: an absent key lands beside a key line',
 test('a cover list never leaks into the metadata the panel edits', () => {
   const text = ['title: 一', 'cover:', '  - c1.jpnov', '---', 'a.jpnov'].join('\n');
   // The list lives in the LINE KINDS, so the panel's seven single-line rows stay complete.
-  assert.deepEqual(parseJpbook(text).meta, { title: '一' });
+  assert.deepEqual(parseJpbook(text).meta, { title: '一', author: '', header: '', footer: '', divider: '' });
   assert.deepEqual(metaRows(parseJpbook(text).meta).map((r) => r.key), [...META_KEYS]);
 });
 

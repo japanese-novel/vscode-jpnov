@@ -110,7 +110,7 @@ novel-sample/
 `作品集.jpbook` source:
 
 ```
-version: 1.0
+jpbook/1
 title: My 作品集
 author: みんな
 header: 作品集　その一

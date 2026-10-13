@@ -67,10 +67,10 @@ export type MsgCode =
   | 'jpbook.metaDuplicateKey' // args: [key]  (first value wins)
   | 'jpbook.metaBadEnum' // args: [key, value, allowedList]
   | 'jpbook.dividerNotEncodable' // args: [char]
-  | 'jpbook.metaUnterminated' // args: [] — no `---` closes the metadata; range = the first non-blank line
-  | 'jpbook.versionUnsupported' // args: [value, supported] — a `version:` this extension does not read
-  | 'jpbook.metaMissingKeys' // args: [keyList] — required keys no metadata line wrote; range = the closing `---`
-  | 'jpbook.metaEmptyValue' // args: [key] — a key that needs a value (title) written without one
+  | 'jpbook.metaUnterminated' // args: [] — no `---` closes the metadata; range = the first non-blank line below the header, else the header
+  | 'jpbook.headerMissing' // args: [header] — the first line is not `jpbook/…`; range = that line (nothing below it is read)
+  | 'jpbook.versionUnsupported' // args: [version, supported] — a `jpbook/<version>` header this extension has no parser for; range = that line
+  | 'jpbook.metaEmptyValue' // args: [key] — a key that needs a value (title, headerAlign, footerAlign) written without one (range = its line) or not written (range = the closing `---`)
   | 'jpbook.coverItemWithoutKey' // args: [value] — a "- path" list item with no bare "cover:" line open above it
   | 'jpbook.coverNeedsList' // args: [value] — `cover:` written with a value; it takes "- path" item lines
   | 'path.empty' // args: [] — the path.* codes are resolveContained's verdicts on a book entry

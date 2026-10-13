@@ -367,12 +367,12 @@ can't be tracked; the missing path is flagged in the editor instead.
 
 Page furniture belongs to the book: two volumes in one workspace can carry
 different running heads, and the chapter divider is part of a book's identity
-too. A `.jpbook` therefore starts with its metadata, one `key: value` line
-each, closed by a `---` line that the chapters follow. Create a Book writes
-exactly this:
+too. A `.jpbook` therefore opens with the header line `jpbook/1` (the format
+and its version), then its metadata, one `key: value` line each, closed by a
+`---` line that the chapters follow. Create a Book writes exactly this:
 
 ```text
-version: 1.0
+jpbook/1
 title: 作品名
 author:
 header:
@@ -387,7 +387,6 @@ divider:
 
 | Key | Template value | Meaning |
 | --- | --- | --- |
-| `version` | `1.0` | The `.jpbook` format version this file is written in; a version the extension does not read fails the build |
 | `title` | the file name | Display name in the Books view and the EPUB title (the output path still derives from the file name); never empty |
 | `author` | empty | Author name; becomes the EPUB creator metadata; empty for none |
 | `header` | empty | Running head at the top of every page; empty for none |
@@ -397,8 +396,11 @@ divider:
 | `divider` | empty | Chapter divider inserted between chapters that do not open with a heading (e.g. `＊　＊　＊`); a bare mark is centred along the line at build time, a `［＃３字下げ］` prefix indents it instead; empty for a single blank line |
 | `cover` | — | Cover pages placed before the body: a cover sheet, a title page, a synopsis (see below) |
 
-Every key from `version` to `divider` is required: a book missing one is not
-built, and its `---` line is flagged. Only `cover` is optional. Unknown keys
+The header is the first line, exactly `jpbook/1`: a first line that is anything
+else, or that names a version this extension has no parser for, fails the build,
+and nothing below it is read. A key that is not written is an empty one; `title`,
+`headerAlign` and `footerAlign` cannot be empty, so a book without them is not
+built, and its `---` line is flagged. Unknown keys
 warn and are ignored, so future keys stay forward-compatible. The seven keys from `title` to `divider`
 are also editable from the **Book Info** rows in the Books view, and `cover`
 from its **Cover pages** section.
@@ -413,7 +415,7 @@ sheet, a title page, a synopsis. The files listed under `cover` become those
 pages, in order:
 
 ```text
-version: 1.0
+jpbook/1
 title: 作品名
 author: ペンネーム
 header:

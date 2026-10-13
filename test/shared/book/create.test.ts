@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { VALUE_NAMES } from '../../../src/shared/ast/notation.ts';
 import { bookTemplate, COVER_TEMPLATE, normalizeFileInput } from '../../../src/shared/book/create.ts';
-import { checkJpbook, META_KEYS, parseJpbook } from '../../../src/shared/book/jpbook.ts';
+import { checkJpbook, HEADER, META_KEYS, parseJpbook } from '../../../src/shared/book/jpbook.ts';
 import { BUILD_CHROME_DEFAULT } from '../../../src/shared/config/settings.ts';
 import { nodesOf } from '../ast/_shape.ts';
 import { readRepoFile } from '../repo.ts';
@@ -76,7 +76,6 @@ test('COVER_TEMPLATE shows values the notation names', () => {
 
 test('bookTemplate writes every required key, titled after the file, and builds as written', () => {
   const parsed = parseJpbook(bookTemplate('作品名'));
-  assert.deepEqual(parsed.missing, []);
   assert.equal(parsed.fence, parsed.lines.length - 2);
   assert.deepEqual(checkJpbook(parsed), {
     ok: true,
@@ -90,8 +89,8 @@ test('bookTemplate writes every required key, titled after the file, and builds 
       divider: '',
     },
   });
-  assert.deepEqual(parsed.lines.slice(0, -1).map((l) => l.kind), ['meta', ...META_KEYS.map(() => 'meta'), 'fence']);
-  assert.equal(parsed.lines[0]?.value, 'version: 1.0');
+  assert.deepEqual(parsed.lines.slice(0, -1).map((l) => l.kind), ['header', ...META_KEYS.map(() => 'meta'), 'fence']);
+  assert.equal(parsed.lines[0]?.value, HEADER);
   assert.ok(bookTemplate('x').endsWith('\n'));
 });
 

@@ -21,7 +21,7 @@ import {
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT } from '../../src/shared/config/settings.ts';
 import { INDENT_MAX, indentAnnotation } from '../../src/shared/ast/notation.ts';
-import { JPBOOK_VERSION, REQUIRED_KEYS } from '../../src/shared/book/jpbook.ts';
+import { HEADER, JPBOOK_VERSION, META_KEYS } from '../../src/shared/book/jpbook.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import { CHARS_MIN, LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
 import { MANUSCRIPT_SHEET } from '../../src/shared/compiler/document.ts';
@@ -36,7 +36,7 @@ import type {
   ProjectDirsMap,
   ReadTextFailure,
 } from '../../src/shared/protocol.ts';
-import { meta, metaWith } from '../shared/book/_fixture.ts';
+import { FENCE_LINE, HEAD, meta, metaBody, metaWith } from '../shared/book/_fixture.ts';
 
 /** The product-default settings snapshot every build request carries (settings is required). */
 const SETTINGS: HtmlSettings = {
@@ -885,7 +885,7 @@ test('metadata never leaks into the artifacts: body starts at the first chapter'
 test('a book whose metadata has warnings (unknown key) still builds', async () => {
   await using ws = await makeTmpWorkspace();
   const { ctx, conn } = boot();
-  await writeUnder(ws.dir, 'vol1.jpbook', `publisher: 誰か\n${meta({ header: '柱' })}a.jpnov`);
+  await writeUnder(ws.dir, 'vol1.jpbook', `${metaWith('publisher: 誰か', { header: '柱' })}a.jpnov`);
   await writeUnder(ws.dir, 'a.jpnov', 'あ');
 
   const result = await handleBuild(ctx, {
@@ -1278,45 +1278,47 @@ const SYNTAX_FAILURES: readonly {
     manifest: '',
     files: [],
     format: 'txt',
-    code: 'jpbook.metaMissingKeys',
-    args: [REQUIRED_KEYS.join(', ')],
+    code: 'jpbook.headerMissing',
+    args: [HEADER],
     diagnostics: 1,
   },
   {
-    name: 'the version line missing',
-    manifest: meta({}, ['version']) + 'bad/第一章.jpnov',
+    // The keys stand where the header should: nothing below the first line is read.
+    name: 'the header line missing',
+    manifest: `${metaBody()}---\nbad/第一章.jpnov`,
     files: ['bad/第一章.jpnov'],
     format: 'txt',
-    code: 'jpbook.metaMissingKeys',
-    args: ['version'],
+    code: 'jpbook.headerMissing',
+    args: [HEADER],
     diagnostics: 1,
   },
   {
     name: 'a version this extension does not read',
-    manifest: meta({ version: '2.0' }) + 'bad/第一章.jpnov',
+    manifest: `jpbook/2\n${metaBody()}---\nbad/第一章.jpnov`,
     files: ['bad/第一章.jpnov'],
     format: 'html',
     code: 'jpbook.versionUnsupported',
-    args: ['2.0', JPBOOK_VERSION],
+    args: ['2', JPBOOK_VERSION],
     diagnostics: 1,
   },
   {
-    name: 'a key missing',
+    // An unwritten key is an empty one: the title cannot be, so its empty-value Error sits on the fence.
+    name: 'the title not written',
     manifest: meta({}, ['title']) + 'bad/第一章.jpnov',
     files: ['bad/第一章.jpnov'],
     format: 'html',
-    code: 'jpbook.metaMissingKeys',
+    code: 'jpbook.metaEmptyValue',
     args: ['title'],
     diagnostics: 1,
   },
   {
-    name: 'two keys missing (listed in key order)',
-    manifest: meta({}, ['divider', 'author']) + 'bad/第一章.jpnov',
+    name: 'both alignments not written (reported in key order)',
+    manifest: meta({}, ['footerAlign', 'headerAlign']) + 'bad/第一章.jpnov',
     files: ['bad/第一章.jpnov'],
     format: 'txt',
-    code: 'jpbook.metaMissingKeys',
-    args: ['author, divider'],
-    diagnostics: 1,
+    code: 'jpbook.metaEmptyValue',
+    args: ['headerAlign'],
+    diagnostics: 2,
   },
   {
     // The key counts as written: the error names the empty value, not a missing key.
@@ -1343,34 +1345,34 @@ const SYNTAX_FAILURES: readonly {
     manifest: meta({ headerAlign: '' }) + 'headerAlign: center\nbad/第一章.jpnov',
     files: ['bad/第一章.jpnov'],
     format: 'html',
-    code: 'jpbook.metaBadEnum',
-    args: ['headerAlign', '', FURNITURE_ALIGNS.join(', ')],
+    code: 'jpbook.metaEmptyValue',
+    args: ['headerAlign'],
     diagnostics: 2,
   },
   {
-    // A lone fence closes an empty metadata block: every key is missing.
+    // A lone fence closes an empty metadata block: the title and both alignments are missing.
     name: 'a lone fence',
-    manifest: '---',
+    manifest: `${HEAD}---`,
     files: [],
     format: 'txt',
-    code: 'jpbook.metaMissingKeys',
-    args: [REQUIRED_KEYS.join(', ')],
-    diagnostics: 1,
+    code: 'jpbook.metaEmptyValue',
+    args: ['title'],
+    diagnostics: 3,
   },
   {
-    // A `---` on the first line closes the metadata at once; the keys below read as chapters.
-    name: 'a fence on the first line, above the keys',
-    manifest: `---\n${meta()}bad/第一章.jpnov`,
+    // A `---` right under the header closes the metadata at once; the keys below read as chapters.
+    name: 'a fence under the header, above the keys',
+    manifest: `${HEAD}---\n${metaBody()}---\nbad/第一章.jpnov`,
     files: ['bad/第一章.jpnov'],
     format: 'txt',
-    code: 'jpbook.metaMissingKeys',
-    args: [REQUIRED_KEYS.join(', ')],
-    diagnostics: 2 + REQUIRED_KEYS.length,
+    code: 'jpbook.metaEmptyValue',
+    args: ['title'],
+    diagnostics: 4 + META_KEYS.length,
   },
   {
     // Without a fence the chapter lines read as metadata; the missing fence is the root cause.
     name: 'no closing fence',
-    manifest: `${meta().replace(/---\n$/, '')}bad/第一章.jpnov`,
+    manifest: `${HEAD}${metaBody()}bad/第一章.jpnov`,
     files: ['bad/第一章.jpnov'],
     format: 'txt',
     code: 'jpbook.metaUnterminated',
@@ -1398,7 +1400,7 @@ const SYNTAX_FAILURES: readonly {
   {
     // A colon-less line among the keys is an Error of its own; the keys below it stay metadata.
     name: 'a colon-less metadata line',
-    manifest: `just text\n${meta()}bad/第一章.jpnov`,
+    manifest: `${HEAD}just text\n${metaBody()}---\nbad/第一章.jpnov`,
     files: ['bad/第一章.jpnov'],
     format: 'txt',
     code: 'jpbook.metaNotKeyValue',
@@ -1453,7 +1455,7 @@ test('build: a missing key fails the book before any chapter is read; the other 
     reads.push(uri.slice(ws.uri.length + 1));
     return disk(uri, token);
   });
-  await writeUnder(ws.dir, 'bad/index.jpbook', meta({}, ['divider']) + 'bad/a.jpnov\nbad/b.jpnov');
+  await writeUnder(ws.dir, 'bad/index.jpbook', meta({}, ['title']) + 'bad/a.jpnov\nbad/b.jpnov');
   await writeUnder(ws.dir, 'bad/a.jpnov', 'あ');
   await writeUnder(ws.dir, 'bad/b.jpnov', 'い');
   await writeUnder(ws.dir, 'good/index.jpbook', meta() + 'good/y.jpnov');
@@ -1464,11 +1466,11 @@ test('build: a missing key fails the book before any chapter is read; the other 
   assert.deepEqual(reads, ['bad/index.jpbook', 'good/index.jpbook', 'good/y.jpnov']); // no bad chapter
   assert.deepEqual(
     result.errors.map((e) => [e.book, e.uri, e.code, e.args]),
-    [['bad/index.jpbook', badUri, 'jpbook.metaMissingKeys', ['divider']]],
+    [['bad/index.jpbook', badUri, 'jpbook.metaEmptyValue', ['title']]],
   );
   assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/good.txt`]);
-  // bad: the missing key, on its fence (the last metadata line moved up one); good: none.
-  const badFence = REQUIRED_KEYS.length - 1;
+  // bad: the unwritten title, on its fence (the metadata one line shorter); good: none.
+  const badFence = FENCE_LINE - 1;
   assert.deepEqual(conn.published.map((p) => [p.uri, p.diagnostics.map((d) => d.range.start.line)]), [[badUri, [badFence]], [`${ws.uri}/good/index.jpbook`, []]]);
 });
 
@@ -1542,8 +1544,8 @@ test('build: the manifest is diagnosed on the lines the reader returns, unsaved 
   await writeUnder(ws.dir, 'vol1.jpbook', meta() + 'src/gone.jpnov');
   // Saved, the missing chapter follows the fence; a blank line typed above it and left unsaved moves it down one.
   const readers: readonly [ReadText, number][] = [
-    [nodeReader(), REQUIRED_KEYS.length + 1],
-    [unsaved('vol1.jpbook', `${meta()}\nsrc/gone.jpnov`), REQUIRED_KEYS.length + 2],
+    [nodeReader(), FENCE_LINE + 1],
+    [unsaved('vol1.jpbook', `${meta()}\nsrc/gone.jpnov`), FENCE_LINE + 2],
   ];
 
   for (const [reader, line] of readers) {

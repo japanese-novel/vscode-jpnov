@@ -1,9 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeFsPath, planBookEdits, type FileRename } from '../../src/client/book/rename.ts';
+import { normalizeFsPath, planBookEdits as planWhole, type FileRename } from '../../src/client/book/rename.ts';
+import { HEAD } from '../shared/book/_fixture.ts';
 
 const ROOT = '/ws/novel';
+/** The planner over `HEAD + text`, its edit lines counted from below the header like the fixtures. */
+const planBookEdits = (root: string, text: string, renames: readonly FileRename[]): ReturnType<typeof planWhole> => {
+  const plan = planWhole(root, HEAD + text, renames);
+  return { ...plan, edits: plan.edits.map((e) => ({ ...e, line: e.line - 1 })) };
+};
 const R = (oldPath: string, newPath: string): FileRename => ({ oldPath, newPath });
 /** Chapter lines below an empty metadata block: the fence is line 0, so the chapters start at line 1. */
 const below = (chapters: string): string => `---\n${chapters}`;

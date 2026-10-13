@@ -13,7 +13,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { INDENT_MAX, fullWidthDigits } from '../../src/shared/ast/notation.ts';
-import { KNOWN_KEYS, REQUIRED_KEYS } from '../../src/shared/book/jpbook.ts';
+import { HEADER, KNOWN_KEYS } from '../../src/shared/book/jpbook.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import { renderEnglish } from '../../src/shared/messages.ts';
 import type { MsgCode } from '../../src/shared/protocol.ts';
@@ -42,8 +42,8 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'jpbook.metaDuplicateKey': ['title'],
   'jpbook.metaBadEnum': ['footerAlign', 'middle', FURNITURE_ALIGNS.join(', ')],
   'jpbook.metaUnterminated': [],
-  'jpbook.versionUnsupported': ['2.0', '1.0'],
-  'jpbook.metaMissingKeys': [REQUIRED_KEYS.join(', ')],
+  'jpbook.headerMissing': [HEADER],
+  'jpbook.versionUnsupported': ['2', '1'],
   'jpbook.metaEmptyValue': ['title'],
   'jpbook.coverItemWithoutKey': ['- cover.jpnov'],
   'jpbook.coverNeedsList': ['cover: 表紙.jpnov'],

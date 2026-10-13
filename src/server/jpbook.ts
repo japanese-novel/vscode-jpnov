@@ -31,7 +31,6 @@ import {
   entryPathOf,
   isCoverMark,
   metaEndOf,
-  metaErrorOf,
   metaKeyOf,
   writtenKeysOf,
   type JpbookCompletion,
@@ -122,17 +121,13 @@ export async function diagnoseJpbook(rootUri: string | null, parsed: ParsedJpboo
   const canCheckFs = rootUri !== null && isFileScheme(rootUri);
   const diagnostics: Diagnostic[] = [];
 
-  const metaError = metaErrorOf(parsed);
-  if (metaError !== null) {
+  for (const metaError of parsed.metaErrors) {
     diagnostics.push(diagnostic(charRange(metaError.line, metaError.range), metaError.error, DiagnosticSeverity.Error));
   }
 
   for (const pl of parsed.lines) {
     if (pl.kind === 'meta') {
       diagnostics.push(...dividerWarnings(pl));
-      continue;
-    }
-    if (pl.kind === 'blank' || pl.kind === 'fence' || pl.kind === 'cover') {
       continue;
     }
     if (typeof pl.kind === 'object') {
@@ -255,7 +250,8 @@ function coverPathStart(prefix: string): number | null {
  * {@link completeEntryLine}; the path branch returns nothing without a `file:` root, or when
  * the line's path already names an existing file with the cursor at its end (per the "no more
  * suggestions once the line matches" rule). Folder items re-trigger suggestions so the user
- * keeps drilling. The fence line itself offers nothing.
+ * keeps drilling. The header and fence lines offer nothing, nor does a book whose header no
+ * parser reads.
  */
 export async function completeJpbook(
   rootUri: string | null,
@@ -263,6 +259,10 @@ export async function completeJpbook(
   lineText: string,
   position: { line: number; character: number },
 ): Promise<CompletionItem[]> {
+  const kind = parsed.lines[position.line]?.kind;
+  if (parsed.lines[0]?.kind !== 'header' || kind === 'header' || kind === 'fence') {
+    return []; // a book no parser read, the header, the fence: nothing sensible to offer
+  }
   const prefix = lineText.slice(0, position.character);
 
   // Path completion for the text from `pathStart` on; chapter lines pass 0, cover lines the
@@ -323,9 +323,6 @@ export async function completeJpbook(
       return completePathAt(pathStart);
     }
     return completeMetaLine(prefix, writtenKeysOf(parsed, position.line)).map((c) => toCompletionItem(c, position.line));
-  }
-  if (position.line === parsed.fence) {
-    return []; // on the fence — nothing sensible to offer.
   }
   return completePathAt(0);
 }

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 import { COVER_ITEM_MARKS, parseJpbook } from '../../../src/shared/book/jpbook.ts';
 import { readRepoFile } from '../repo.ts';
+import { HEAD } from './_fixture.ts';
 
 interface Rule {
   name?: string;
@@ -51,7 +52,7 @@ test('the .jpbook metadata region ends on exactly the lines the parser reads as 
   const ends = new RegExp(region.end);
   for (const line of ['---', '  ---', '---  ', '　---　', '\t---', '----', '- --', '--', '--- x', 'title: ---']) {
     // Prefixed with a key line so the parser is still in the metadata when it meets `line`.
-    const parsed = parseJpbook(`title: t\n${line}`);
-    assert.equal(ends.test(line), parsed.fence === 1, JSON.stringify(line));
+    const parsed = parseJpbook(`${HEAD}title: t\n${line}`);
+    assert.equal(ends.test(line), parsed.fence === 2, JSON.stringify(line));
   }
 });

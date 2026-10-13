@@ -1,6 +1,6 @@
 ```text
 # volume1.jpbook ＝ 1 冊（本の情報＋読む順に 1 行 1 章）
-version: 1.0
+jpbook/1
 title: 作品名　第一巻
 author: ペンネーム
 header: 作品名　一

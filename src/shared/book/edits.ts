@@ -18,7 +18,7 @@ import {
   isCover,
   isEntryOf,
   META_KEYS,
-  metaEndOf,
+  metaLinesOf,
   metaKeyOf,
   metaLine,
   parseJpbook,
@@ -104,8 +104,8 @@ function deleteLines(lines: readonly ParsedLine[], doomed: readonly ParsedLine[]
  * value, an empty `title:`, or the key in another case or width. A chapter line never holds a
  * key, so a `header: h` below the fence (an invalid path) stays what it is.
  */
-function holdsKey(pl: ParsedLine, key: MetaKey, metaEnd: number): boolean {
-  return pl.line < metaEnd && pl.kind !== 'blank' && metaKeyOf(pl.value)?.normalize('NFKC').toLowerCase() === key.toLowerCase();
+function holdsKey(pl: ParsedLine, key: MetaKey): boolean {
+  return metaKeyOf(pl.value)?.normalize('NFKC').toLowerCase() === key.toLowerCase();
 }
 
 /**
@@ -116,7 +116,7 @@ function holdsKey(pl: ParsedLine, key: MetaKey, metaEnd: number): boolean {
 export function setMeta(text: string, key: MetaKey, value: string): TextReplace[] {
   const parsed = parseJpbook(text);
   const clean = sanitizeValue(value);
-  const held = parsed.lines.filter((pl) => holdsKey(pl, key, metaEndOf(parsed)));
+  const held = metaLinesOf(parsed).filter((pl) => holdsKey(pl, key));
   const entry = metaLine(key, clean);
   const target = held.find((pl) => pl.kind === 'meta') ?? held[0];
   if (target === undefined) {
@@ -131,13 +131,13 @@ export function setMeta(text: string, key: MetaKey, value: string): TextReplace[
 /**
  * Inserts a new key line at its {@link KNOWN_KEYS} position: after the nearest earlier
  * key the metadata holds (its line in Error included), else before the nearest later one, else
- * at the end of the metadata. A bare `cover:` never anchors an insert AFTER it: a line right
- * under it would close the list.
+ * at the end of the metadata. `cover` is the last key, so a bare `cover:` is only ever a LATER
+ * key: the insert goes above it, never right under it where it would close the list.
  */
 function insertMeta(parsed: ParsedJpbook, eol: string, key: MetaKey, entry: string): TextReplace {
   const keyLines = new Map<string, ParsedLine>();
-  for (const pl of parsed.lines.slice(0, metaEndOf(parsed))) {
-    const name = pl.kind === 'blank' ? null : metaKeyOf(pl.value);
+  for (const pl of metaLinesOf(parsed)) {
+    const name = metaKeyOf(pl.value);
     if (name !== null && !keyLines.has(name)) {
       keyLines.set(name, pl);
     }
@@ -145,7 +145,7 @@ function insertMeta(parsed: ParsedJpbook, eol: string, key: MetaKey, entry: stri
 
   const order = KNOWN_KEYS.indexOf(key);
   const held = KNOWN_KEYS.map((k) => keyLines.get(k));
-  const earlier = held.slice(0, order).findLast((pl) => pl !== undefined && pl.kind !== 'cover');
+  const earlier = held.slice(0, order).findLast((pl) => pl !== undefined);
   if (earlier !== undefined) {
     return appendAfterLine(earlier, `${eol}${entry}`);
   }

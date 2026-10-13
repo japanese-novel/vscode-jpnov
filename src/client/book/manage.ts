@@ -86,20 +86,18 @@ function alignLabel(value: FurnitureAlign): string {
 /**
  * The meta row split into its bare display VALUE and a status NOTE, so the panel can place the
  * note beside the LABEL rather than inside the value: a value carries no note; an empty header
- * or footer shows "(hidden)", an empty divider "(none)", and an empty title or author, or a key
- * the file does not write, "(not set)".
+ * or footer shows "(hidden)", an empty divider "(none)", and an empty title or author, or a
+ * title or alignment the file does not write, "(not set)". (An unwritten key that may be empty
+ * parses as empty.)
  */
 export function metaValueParts(key: MetaKey, value: string | undefined): { value: string; note: string } {
   if (value !== undefined && value !== '') {
     return { value: isAlignKey(key) ? alignLabel(value as FurnitureAlign) : value, note: '' };
   }
-  if (value === '' && (key === 'header' || key === 'footer')) {
-    return { value: '', note: vscode.l10n.t('(hidden)') };
-  }
-  if (value === '' && key === 'divider') {
-    return { value: '', note: vscode.l10n.t('(none)') };
-  }
-  return { value: '', note: vscode.l10n.t('(not set)') };
+  const note = key === 'header' || key === 'footer'
+    ? vscode.l10n.t('(hidden)')
+    : key === 'divider' ? vscode.l10n.t('(none)') : vscode.l10n.t('(not set)');
+  return { value: '', note };
 }
 
 /** Applies planned replaces and saves — the panel's watcher does the refresh. A refused edit or save is toasted. */
@@ -422,7 +420,7 @@ export async function createFile(view: BooksViewProvider | undefined): Promise<v
   if (rel === undefined) {
     return;
   }
-  const target = await writeNewFile(root, rel, bookTemplate(lastPathSegment(rel).replace(/\.jpbook$/i, '')));
+  const target = await writeNewFile(root, rel, bookTemplate(splitRelPath(rel).name.replace(/\.jpbook$/i, '')));
   if (target !== null) {
     await view?.revealNewBook(target);
   }

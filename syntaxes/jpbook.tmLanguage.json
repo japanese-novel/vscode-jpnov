@@ -1,7 +1,7 @@
 {
   "name": "Japanese Novel Book",
   "scopeName": "text.jpbook",
-  "comment": "The metadata (key: value lines and the cover list) from the top of the file down to a `---` line, then one relative .jpnov source path per line. The region begins at the document start (\\A) and ends at the first fence, as the parser reads it (the whole file is metadata while no fence closes it). Deliberately error-agnostic: backslashes, non-.jpnov paths, missing files, missing/unknown/duplicate metadata keys and bad values are the language server's diagnostics to report — the grammar must not second-guess them (any key: value line in the region is painted as metadata). There is no semantic-token layer for book files, so nothing can repaint over this.",
+  "comment": "The header line `jpbook/1` (first line only), then the metadata (key: value lines and the cover list) down to a `---` line, then one relative .jpnov source path per line. The region begins at the document start (\\A) and ends at the first fence, as the parser reads it (the whole file is metadata while no fence closes it). Deliberately error-agnostic: backslashes, non-.jpnov paths, missing files, missing/unknown/duplicate metadata keys and bad values are the language server's diagnostics to report — the grammar must not second-guess them (any key: value line in the region is painted as metadata). There is no semantic-token layer for book files, so nothing can repaint over this.",
   "patterns": [
     {
       "name": "meta.metadata.jpbook",
@@ -25,6 +25,14 @@
   "repository": {
     "metadata-body": {
       "patterns": [
+        {
+          "comment": "The header `jpbook/<version>`: the first line of the file and nothing else (\\A, which the engine lets match on the first line only). Error-agnostic about the version: whether the extension reads it is the server's diagnostic.",
+          "match": "\\A(jpbook/)(\\S*)$",
+          "captures": {
+            "1": { "name": "keyword.other.format.jpbook" },
+            "2": { "name": "constant.numeric.version.jpbook" }
+          }
+        },
         {
           "comment": "A cover list item `- path.jpnov` (full-width － tolerated like the parser). Error-agnostic: whether the item is orphaned, duplicated, or missing is the server's diagnostic; a non-.jpnov item goes unpainted exactly like a non-.jpnov chapter line. Must precede the key-value rule (a path may contain a colon).",
           "match": "^[ \\t　]*([-－])[ \\t　]*(\\S.*?)(\\.jpnov)[ \\t　]*$",

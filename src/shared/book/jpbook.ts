@@ -2,9 +2,9 @@
  * Pure, vscode-free parsing of the per-book `*.jpbook` manifest, plus the output-name
  * derivation, per-book chrome composition, and the fs-free completion logic.
  *
- * A `.jpbook` opens with its metadata — the format version ({@link VERSION_KEY}) and the seven
- * `key: value` lines of {@link META_KEYS}, all required, plus the optional `cover:` list — closes
- * it with a `---` line, and continues with one chapter path per line.
+ * A `.jpbook` opens with its header line ({@link HEADER}: the format and its version), then its
+ * metadata — the seven `key: value` lines of {@link META_KEYS}, all required, plus the optional
+ * `cover:` list — closes it with a `---` line, and continues with one chapter path per line.
  *
  * Chapter and cover paths are relative to the book's OWNING WORKSPACE FOLDER root, so moving
  * the `.jpbook` itself never invalidates them. The `.jpbook`'s OWN name and location imply the
@@ -21,6 +21,7 @@ import { FURNITURE_ALIGNS } from '../compiler/chrome.ts';
 import { indentAnnotation } from '../ast/notation.ts';
 import { scan } from '../ast/scan.ts';
 import { displayText } from '../chars.ts';
+import { nonBlank } from '../compiler/reflow.ts';
 import type { LocalizableMessage } from '../protocol.ts';
 
 /** A column span within a single document line (`endChar` exclusive). */
@@ -32,6 +33,9 @@ export interface JpbookRange {
 /**
  * Classification of one source line:
  * - `'blank'`     — empty or whitespace-only; skipped (no diagnostic, no link, not built).
+ * - `'header'`    — the first line, {@link HEADER}, naming a version this extension reads.
+ * - `'unread'`    — a line below a header no parser reads (the header line holds the error);
+ *                  nothing is said about it.
  * - `'fence'`     — the `---` line that closes the metadata.
  * - `'meta'`      — a recognized, valid `key: value` metadata line.
  * - `'ok'`        — a syntactically valid `.jpnov` path (existence/containment unverified).
@@ -47,6 +51,8 @@ export interface JpbookRange {
  */
 export type JpbookLineKind =
   | 'blank'
+  | 'header'
+  | 'unread'
   | 'fence'
   | 'meta'
   | 'ok'
@@ -104,19 +110,25 @@ export const META_KEYS = ['title', 'author', 'header', 'headerAlign', 'footer', 
 export type MetaKey = (typeof META_KEYS)[number];
 
 /**
- * The format-version key, written first in every book file. A value other than
- * {@link JPBOOK_VERSION} is an Error. Not a {@link JpbookMeta} field.
+ * The header every book file opens with: the format, then the version it is written in,
+ * the way an HTTP request line names its protocol (`jpbook/1`). It is the FIRST line, a BOM
+ * apart: {@link parseJpbook} reads it alone, takes the parser of that version from
+ * {@link PARSERS}, and reports a version it has none for without reading further. Not a
+ * `key: value` line, so no reader takes it for a key that could sit anywhere.
  */
-export const VERSION_KEY = 'version';
-export const JPBOOK_VERSION = '1.0';
-
-/** The keys every book file writes, in writing order: the version, then the metadata. */
-export const REQUIRED_KEYS = [VERSION_KEY, ...META_KEYS] as const;
-export type RequiredKey = (typeof REQUIRED_KEYS)[number];
+export const HEADER_PREFIX = 'jpbook/';
+export const JPBOOK_VERSION = '1';
+export const HEADER = `${HEADER_PREFIX}${JPBOOK_VERSION}`;
 
 /** The keys whose value is one of {@link FURNITURE_ALIGNS}: the parser checks it, completion and the panel offer it. */
 export function isAlignKey(key: string): key is 'headerAlign' | 'footerAlign' {
   return key === 'headerAlign' || key === 'footerAlign';
+}
+
+/** The keys an empty value suits: no author, a hidden header or footer, no divider. The others
+ *  (`title`, the alignments) need a value: an empty line and an unwritten key are the same Error. */
+function isEmptiable(key: MetaKey): key is Exclude<MetaKey, 'title' | 'headerAlign' | 'footerAlign'> {
+  return key !== 'title' && !isAlignKey(key);
 }
 
 /** The list-valued front-page key — parsed as line kinds, never a {@link JpbookMeta} field. */
@@ -132,9 +144,9 @@ export function isCoverMark(ch: string): boolean {
 }
 
 /** Every recognized key in writing order (unknown-key message, key completion, key insertion).
- *  `version` and `cover` stay out of {@link META_KEYS}: the panel's meta rows and `setMeta`
- *  edit the book's own metadata, one line per key. */
-export const KNOWN_KEYS = [...REQUIRED_KEYS, COVER_KEY] as const;
+ *  `cover` stays out of {@link META_KEYS}: the panel's meta rows and `setMeta` edit the book's
+ *  own metadata, one line per key. */
+export const KNOWN_KEYS = [...META_KEYS, COVER_KEY] as const;
 
 /** The line that closes the metadata; the chapters follow it. */
 export const FENCE = '---';
@@ -213,22 +225,44 @@ export interface JpbookMeta {
   readonly divider: string;
 }
 
+/** An error about the metadata as a whole, placed on the line its diagnostic marks. */
+export interface MetaError {
+  readonly line: number;
+  readonly range: JpbookRange;
+  readonly error: LocalizableMessage;
+}
+
 export interface ParsedJpbook {
+  /** One per source line; line 0 is the header (`'header'` when a parser read the book). */
   readonly lines: readonly ParsedLine[];
-  /** The values the valid key lines hold; a key with no line, or with an Error line, is absent. */
+  /**
+   * The values the valid key lines hold. A key no line wrote is an empty one: `''` for the keys
+   * an empty value suits; `title` and the alignments stay absent (an error in
+   * {@link metaErrors}), as does a key whose line is in Error.
+   */
   readonly meta: Partial<JpbookMeta>;
   /**
    * The `---` line that closes the metadata; null when none does, and the whole file is then
    * metadata ({@link metaEndOf}). Lines before it are metadata, lines after it chapters.
    */
   readonly fence: number | null;
-  /** The required keys no line took, in writing order (a line in Error takes its key). */
-  readonly missing: readonly RequiredKey[];
+  /**
+   * The errors of the metadata as a whole, in document order: no closing fence (marked on the
+   * first non-blank line below the header, else on the header; reported alone), else the keys
+   * that need a value and no line wrote, each marked on the fence. Empty below a header no
+   * parser reads: that line reports itself.
+   */
+  readonly metaErrors: readonly MetaError[];
 }
 
 /** The line the metadata ends before: its closing fence, else the end of the file. */
 export function metaEndOf(parsed: ParsedJpbook): number {
   return parsed.fence ?? parsed.lines.length;
+}
+
+/** The metadata lines: the header down to the fence, exclusive (the whole file while none closes it). */
+export function metaLinesOf(parsed: ParsedJpbook): readonly ParsedLine[] {
+  return parsed.lines.slice(0, metaEndOf(parsed));
 }
 
 /** ECMAScript whitespace (incl. the full-width ideographic space U+3000) trims line edges. */
@@ -266,17 +300,72 @@ export function entryIdentity(path: string): string {
   return pathSegments(path.normalize('NFC')).join('/');
 }
 
+/** A source line with its `\r` dropped, trimmed to its content and the content's span. */
+function lineOf(line: number, content: string): Omit<ParsedLine, 'kind'> {
+  let start = 0;
+  while (start < content.length && isEdgeWhitespace(content.charAt(start))) {
+    start += 1;
+  }
+  let end = content.length;
+  while (end > start && isEdgeWhitespace(content.charAt(end - 1))) {
+    end -= 1;
+  }
+  const value = content.slice(start, end);
+  return { line, range: value === '' ? { startChar: 0, endChar: 0 } : { startChar: start, endChar: end }, raw: content, value };
+}
+
+/** The lines below the header, as one version's parser reads them. */
+type BodyParser = (header: ParsedLine, contents: readonly string[]) => ParsedJpbook;
+
+/** The parser of each format version this extension reads, by the version the header names. */
+const PARSERS: ReadonlyMap<string, BodyParser> = new Map([[JPBOOK_VERSION, parseBody1]]);
+
 /**
  * Parses raw `.jpbook` text into one {@link ParsedLine} per source line plus the collected
- * metadata. CRLF-safe; blank lines are skipped everywhere; interior whitespace is preserved (a
- * filename may contain spaces). Every line above the first `---` is metadata, and a line there
- * without a key is an Error. Duplicate keys keep the FIRST line (one in Error included: an empty `title:` or a bad
- * alignment takes its key and reports itself). A `cover` list survives blank lines and closes at
- * any other metadata line or the fence. Chapter and cover paths must be backslash-free `.jpnov`
- * (any letter case); later repeats of a path (by {@link entryIdentity}) are
+ * metadata. The first line must be the {@link HEADER} (a BOM before it is tolerated, nothing
+ * else): a first line that is no header, or that names a version without a parser, is the one
+ * Error reported, and every line below it is `'unread'`. CRLF-safe; blank lines are skipped
+ * everywhere; interior whitespace is preserved (a filename may contain spaces). Every line
+ * above the first `---` is metadata, and a line there without a key is an Error. Duplicate
+ * keys keep the FIRST line (one in Error included: an empty `title:` or a bad alignment takes
+ * its key and reports itself). A `cover` list survives blank lines and closes at any other
+ * metadata line or the fence. Chapter and cover paths must be backslash-free `.jpnov` (any
+ * letter case); later repeats of a path (by {@link entryIdentity}) are
  * `'duplicate'`/`'coverDuplicate'`, the two lists deduping independently. Never throws.
  */
 export function parseJpbook(text: string): ParsedJpbook {
+  const contents = text.split('\n').map((raw) => (raw.endsWith('\r') ? raw.slice(0, -1) : raw));
+  const first = contents[0] ?? '';
+  const bom = first.startsWith('\uFEFF') ? 1 : 0;
+  const header = (kind: JpbookLineKind): ParsedLine =>
+    ({ line: 0, range: { startChar: bom, endChar: first.length }, raw: first, value: first.slice(bom), kind });
+  const unread = (error: LocalizableMessage): ParsedJpbook => ({
+    lines: [
+      header({ error }),
+      ...contents.slice(1).map((content, i) => {
+        const pl = lineOf(i + 1, content);
+        return { ...pl, kind: pl.value === '' ? 'blank' : 'unread' } as const;
+      }),
+    ],
+    meta: {},
+    fence: null,
+    metaErrors: [],
+  });
+
+  const value = first.slice(bom);
+  if (!value.startsWith(HEADER_PREFIX)) {
+    return unread({ code: 'jpbook.headerMissing', args: [HEADER] });
+  }
+  const version = value.slice(HEADER_PREFIX.length);
+  const parseBody = PARSERS.get(version);
+  if (parseBody === undefined) {
+    return unread({ code: 'jpbook.versionUnsupported', args: [version, JPBOOK_VERSION] });
+  }
+  return parseBody(header('header'), contents);
+}
+
+/** Version 1: `key: value` metadata and a `cover:` list above the `---`, chapter paths below. */
+function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbook {
   const seen = new Set<string>();
   const seenCovers = new Set<string>();
   /** Records `path` in `seen` by its identity; true when it was there already. */
@@ -289,8 +378,7 @@ export function parseJpbook(text: string): ParsedJpbook {
     return false;
   };
   // Keys a line already took, a line in Error included.
-  const takenKeys = new Set<RequiredKey>();
-  const lines: ParsedLine[] = [];
+  const takenKeys = new Set<MetaKey>();
   const meta: { -readonly [K in keyof JpbookMeta]?: JpbookMeta[K] } = {};
 
   let state: 'meta' | 'body' = 'meta';
@@ -340,18 +428,19 @@ export function parseJpbook(text: string): ParsedJpbook {
       coverList = 'open';
       return 'cover';
     }
-    if (key !== VERSION_KEY && !(META_KEYS as readonly string[]).includes(key)) {
+    if (!(META_KEYS as readonly string[]).includes(key)) {
       return { warning: { code: 'jpbook.metaUnknownKey', args: [key, KNOWN_KEYS.join(', ')] } };
     }
-    const metaKey = key as RequiredKey;
+    const metaKey = key as MetaKey;
     if (takenKeys.has(metaKey)) {
       return { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } };
     }
     takenKeys.add(metaKey);
     // metaKeyOf returned a key, so the line has a colon: colonIndex is non-negative here.
     const val = value.slice(colonIndex(value) + 1).trim();
-    if (metaKey === VERSION_KEY) {
-      return val === JPBOOK_VERSION ? 'meta' : { error: { code: 'jpbook.versionUnsupported', args: [val, JPBOOK_VERSION] } };
+    // Blank once the characters no output can carry are dropped.
+    if (!isEmptiable(metaKey) && nonBlank(displayText(val)) === null) {
+      return { error: emptyValue(metaKey) };
     }
     if (isAlignKey(metaKey)) {
       if (!(FURNITURE_ALIGNS as readonly string[]).includes(val)) {
@@ -359,10 +448,6 @@ export function parseJpbook(text: string): ParsedJpbook {
       }
       meta[metaKey] = val as FurnitureAlign;
       return 'meta';
-    }
-    // Blank once the characters no output can carry are dropped.
-    if (metaKey === 'title' && displayText(val).trim() === '') {
-      return { error: { code: 'jpbook.metaEmptyValue', args: [key] } };
     }
     meta[metaKey] = val;
     return 'meta';
@@ -378,51 +463,67 @@ export function parseJpbook(text: string): ParsedJpbook {
     return repeated(seen, value) ? 'duplicate' : 'ok';
   };
 
-  const rawLines = text.split('\n');
-  let fence: number | null = null;
-  for (let line = 0; line < rawLines.length; line += 1) {
-    const rawLine = rawLines[line] ?? '';
-    const content = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
-
-    let start = 0;
-    while (start < content.length && isEdgeWhitespace(content.charAt(start))) {
-      start += 1;
-    }
-    let end = content.length;
-    while (end > start && isEdgeWhitespace(content.charAt(end - 1))) {
-      end -= 1;
-    }
-    const value = content.slice(start, end);
-
+  const lines: ParsedLine[] = [header];
+  let fence: ParsedLine | null = null;
+  // The first non-blank line below the header: where a missing fence is marked (else the header).
+  let firstContent: ParsedLine | null = null;
+  for (let line = 1; line < contents.length; line += 1) {
+    const pl = lineOf(line, contents[line] ?? '');
+    const { value } = pl;
     if (value === '') {
-      lines.push({ line, range: { startChar: 0, endChar: 0 }, raw: content, value: '', kind: 'blank' });
+      lines.push({ ...pl, kind: 'blank' });
       continue;
     }
 
-    const range = { startChar: start, endChar: end };
     let kind: JpbookLineKind;
     if (state === 'body') {
       kind = bodyKind(value);
     } else if (value === FENCE) {
       state = 'body';
-      fence = line;
       kind = 'fence';
     } else if (isCoverMark(value.charAt(0))) {
       kind = coverItemKind(value);
     } else {
       kind = metaKind(value);
     }
-    lines.push({ line, range, raw: content, value, kind });
+    const parsed = { ...pl, kind };
+    lines.push(parsed);
+    firstContent ??= parsed;
+    if (kind === 'fence') {
+      fence ??= parsed;
+    }
   }
 
-  return { lines, meta, fence, missing: REQUIRED_KEYS.filter((key) => !takenKeys.has(key)) };
+  const metaErrors: MetaError[] = [];
+  const at = (pl: ParsedLine, error: LocalizableMessage): void => {
+    metaErrors.push({ line: pl.line, range: pl.range, error });
+  };
+  if (fence === null) {
+    at(firstContent ?? header, { code: 'jpbook.metaUnterminated', args: [] });
+  }
+  for (const key of META_KEYS) {
+    if (takenKeys.has(key)) {
+      continue;
+    }
+    if (isEmptiable(key)) {
+      meta[key] = '';
+    } else if (fence !== null) {
+      at(fence, emptyValue(key));
+    }
+  }
+  return { lines, meta, fence: fence?.line ?? null, metaErrors };
+}
+
+/** The Error a key that needs a value reports, written empty or not written at all. */
+function emptyValue(key: MetaKey): LocalizableMessage {
+  return { code: 'jpbook.metaEmptyValue', args: [key] };
 }
 
 /** The keys written in the metadata (any kind of line), `line` excluded — what key completion leaves out. */
 export function writtenKeysOf(parsed: ParsedJpbook, exceptLine = -1): Set<string> {
   const written = new Set<string>();
-  for (const pl of parsed.lines.slice(0, metaEndOf(parsed))) {
-    const key = pl.kind === 'blank' || pl.line === exceptLine ? null : metaKeyOf(pl.value);
+  for (const pl of metaLinesOf(parsed)) {
+    const key = pl.line === exceptLine ? null : metaKeyOf(pl.value);
     if (key !== null) {
       written.add(key);
     }
@@ -435,60 +536,26 @@ export type JpbookVerdict =
   | { readonly ok: true; readonly meta: JpbookMeta }
   | { readonly ok: false; readonly error: LocalizableMessage };
 
-/** An error about the metadata as a whole, placed on the line its diagnostic marks. */
-export interface MetaError {
-  readonly line: number;
-  readonly range: JpbookRange;
-  readonly error: LocalizableMessage;
-}
-
-/**
- * The one error the metadata as a whole has, or null: no closing fence (marked on the first
- * non-blank line; reported alone), else the missing keys (marked on the fence; at 0:0 in a
- * blank file).
- */
-export function metaErrorOf(parsed: ParsedJpbook): MetaError | null {
-  const first = parsed.lines.find((pl) => pl.kind !== 'blank');
-  if (parsed.fence === null && first !== undefined) {
-    return { line: first.line, range: first.range, error: { code: 'jpbook.metaUnterminated', args: [] } };
-  }
-  if (parsed.missing.length === 0) {
-    return null;
-  }
-  const error = { code: 'jpbook.metaMissingKeys', args: [parsed.missing.join(', ')] } as const;
-  const fence = parsed.fence === null ? undefined : parsed.lines[parsed.fence];
-  return fence === undefined
-    ? { line: 0, range: { startChar: 0, endChar: 0 }, error }
-    : { line: fence.line, range: fence.range, error };
-}
-
 /**
  * The build's gate: the first error in document order — an `{ error }` line's, or the
- * metadata's own ({@link metaErrorOf}), which wins a tie — else the complete metadata.
- * Warnings and duplicates never count.
+ * metadata's own ({@link ParsedJpbook.metaErrors}), which wins a tie — else the complete
+ * metadata. Warnings and duplicates never count.
  */
 export function checkJpbook(parsed: ParsedJpbook): JpbookVerdict {
-  const metaError = metaErrorOf(parsed);
+  const metaError = parsed.metaErrors[0];
   for (const pl of parsed.lines) {
-    if (metaError !== null && metaError.line <= pl.line) {
+    if (metaError !== undefined && metaError.line <= pl.line) {
       return { ok: false, error: metaError.error };
     }
     if (typeof pl.kind === 'object' && 'error' in pl.kind) {
       return { ok: false, error: pl.kind.error };
     }
   }
-  if (metaError !== null) {
+  if (metaError !== undefined) {
     return { ok: false, error: metaError.error };
   }
-  const { meta } = parsed;
-  if (!isComplete(meta)) {
-    return { ok: false, error: { code: 'jpbook.metaMissingKeys', args: [parsed.missing.join(', ')] } };
-  }
-  return { ok: true, meta };
-}
-
-function isComplete(meta: Partial<JpbookMeta>): meta is JpbookMeta {
-  return META_KEYS.every((key) => meta[key] !== undefined);
+  // Complete: a key absent from `meta` is written in Error (its line's) or unwritten (the fence's), reported above.
+  return { ok: true, meta: parsed.meta as JpbookMeta };
 }
 
 /**
