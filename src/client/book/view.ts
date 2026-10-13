@@ -1,6 +1,7 @@
 /**
  * The "Books" panel: a client-owned WebviewView (`contributes.views.jpnov`, `"type": "webview"`)
- * listing every buildable book with a checkbox, plus a per-book DETAIL screen; the bottom bar
+ * listing every buildable book — those under the workspace folders, plus the `.jpbook` files open
+ * outside them — with a checkbox, plus a per-book DETAIL screen; the bottom bar
  * builds ONLY the checked books. This provider is the single source of truth for the book list
  * and the selection — the webview only renders the last pushed `state` and dispatches actions.
  * The SERVER enumerates and renders (`jpnov/listBooks`, `jpnov/build`); the provider owns every
@@ -26,14 +27,7 @@ import {
 } from '#/shared/protocol.ts';
 
 import { entryKeyOf, entryLines, metaRows, moveEntryTo, resolveEntry, type EntryRef } from '#/shared/book/edits.ts';
-import {
-  isEntryList,
-  META_KEYS,
-  parseJpbook,
-  type EntryList,
-  type MetaKey,
-  type ParsedLine,
-} from '#/shared/book/jpbook.ts';
+import { parseJpbook, type EntryList, isEntryList, jpbookStem, META_KEYS, type MetaKey, type ParsedLine } from '#/shared/book/jpbook.ts';
 import { encodeTxt, TXT_ENCODING_DEFAULT, type TxtEncoding } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/errors.ts';
 import { ocfZip } from '#/shared/compiler/ocf.ts';
@@ -44,14 +38,10 @@ import { applyBookEdits, metaLabel, metaValueParts } from './manage.ts';
 import type { BookNode } from './nodes.ts';
 import { booksHtml } from './webviewHtml.ts';
 import { renderMessage } from '../messages.ts';
-import { chapterUri, lastPathSegment, splitRelPath } from '../paths.ts';
-import { buildProjectDirs } from '../projectConfig.ts';
+import { bookDir, compareStr, lastPathSegment, resolveUri, splitRelPath } from '../paths.ts';
+import { bookTargets, isOpenBook } from '../projectConfig.ts';
 import { buildHtmlSettings } from '../renderConfig.ts';
 import { raceRequest } from '../requests.ts';
-
-function compareStr(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
 
 /** Trailing-edge delay for chapter-file event bursts (matches the preview's render debounce). */
 const REPOST_DEBOUNCE_MS = 120;
@@ -74,9 +64,14 @@ function openExternally(uri: string): void {
   void vscode.env.openExternal(vscode.Uri.parse(uri).toString() as unknown as vscode.Uri);
 }
 
-/** The book's display label: its `title`, else (the key missing or empty) the last segment of the output name. */
+/** The book's display label: its `title`, else (the key missing or empty) its file name without `.jpbook`. */
 function bookTitle(entry: BookEntry): string {
-  return entry.title ?? splitRelPath(entry.outRel).name;
+  return entry.title ?? jpbookStem(splitRelPath(entry.fileRel).name);
+}
+
+/** The heading of a list section: the workspace folder's name, or the open files under none. */
+function groupLabel(rootUri: string | null): string {
+  return rootUri === null ? vscode.l10n.t('Open files') : lastPathSegment(rootUri);
 }
 
 /** A row as a webview verb names it: the rendered line + path, and the detail's document version. */
@@ -175,6 +170,11 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           repostDetail();
         }
       }),
+      // A book outside every folder is listed while its document is open, and the glob watcher
+      // above never sees it: its open, close and save re-list instead.
+      vscode.workspace.onDidOpenTextDocument((d) => isOpenBook(d) && void this.refresh()),
+      vscode.workspace.onDidCloseTextDocument((d) => isOpenBook(d) && void this.refresh()),
+      vscode.workspace.onDidSaveTextDocument((d) => isOpenBook(d) && void this.refresh()),
     );
   }
 
@@ -244,7 +244,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
    */
   async refresh(report = false): Promise<void> {
     const seq = ++this.refreshSeq;
-    const params: ListBooksParams = { projectDirs: buildProjectDirs() };
+    const params: ListBooksParams = bookTargets();
     let result: ListBooksResult;
     const cancel = new vscode.CancellationTokenSource();
     try {
@@ -561,31 +561,29 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  /** Runs an empty-state welcome-link action (create book / open guide / open folder). */
+  /** Runs an empty-state welcome-link action (create book / open guide). */
   private dispatchWelcome(action: unknown): void {
     if (action === 'createBook') {
       void vscode.commands.executeCommand('jpbook.createFile');
     } else if (action === 'openGuide') {
       void vscode.commands.executeCommand('jpnov.openGuide');
-    } else if (action === 'openFolder') {
-      void vscode.commands.executeCommand('workbench.action.files.openFolder');
     }
   }
 
-  /** Push the book list (per-root sections; single root shown flat) + selection to the webview. */
+  /** Push the book list (one section per root, the open files under none last; a single section shown flat) + selection to the webview. */
   private postState(): void {
     const view = this.view;
     if (view === undefined) {
       return;
     }
     const byRoot = Map.groupBy(this.books, (b) => b.rootUri);
-    const multiRoot = byRoot.size > 1;
+    const multi = byRoot.size > 1;
     const groups = [...byRoot.entries()]
-      .sort((a, b) => compareStr(lastPathSegment(a[0]), lastPathSegment(b[0])))
+      .sort((a, b) => Number(a[0] === null) - Number(b[0] === null) || compareStr(groupLabel(a[0]), groupLabel(b[0])))
       .map(([rootUri, entries]) => ({
-        rootLabel: multiRoot ? lastPathSegment(rootUri) : null,
+        label: multi ? groupLabel(rootUri) : null,
         books: entries
-          .sort((a, b) => compareStr(a.outRel, b.outRel))
+          .sort((a, b) => compareStr(a.fileRel, b.fileRel))
           .map((entry): BookVM => ({
             uri: entry.uri,
             title: bookTitle(entry),
@@ -593,11 +591,10 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             checked: this.checked.has(entry.uri),
           })),
       }));
-    const noFolder = (vscode.workspace.workspaceFolders ?? []).length === 0;
     const message: StateMessage = {
       type: 'state',
       loading: !this.hasLoaded,
-      noFolder,
+      noFolder: (vscode.workspace.workspaceFolders ?? []).length === 0,
       revealOutput: this.revealOutput,
       groups,
     };
@@ -663,7 +660,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         const pl = lines[line];
         const path = pl === undefined ? '' : entryKeyOf(pl);
         const { name, dir } = splitRelPath(path);
-        const target = chapterUri(entry.rootUri, path);
+        const target = resolveUri(bookDir(entry.uri), path);
         let missing = false;
         try {
           const st = await vscode.workspace.fs.stat(target);
@@ -678,20 +675,19 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   /**
    * The localized "built {N} file(s)" success toast (Japanese is number-invariant). With the
-   * footer's reveal toggle on, also opens each output dir — `BuildResult.outDirs`, already
-   * deduplicated server-side.
+   * footer's reveal toggle on, also opens the first output dir of `BuildResult.outDirs` (the
+   * default puts every book of a folder in one; an outDir beside each book would open one
+   * window per book).
    */
   private reportBuilt(count: number, label: string, outDirs: readonly string[]): void {
     // showInformationMessage never rejects, so void is safe.
     void vscode.window.showInformationMessage(
       vscode.l10n.t('Japanese Novel: built {0} {1} file(s).', String(count), label),
     );
-    if (!this.revealOutput) {
-      return;
-    }
-    for (const dir of outDirs) {
+    const first = outDirs[0];
+    if (this.revealOutput && first !== undefined) {
       // openExternal opens the folder's contents; revealFileInOS would only select it in its parent.
-      openExternally(dir);
+      openExternally(first);
     }
   }
 
@@ -735,7 +731,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             books,
             format: wireFormat,
             settings: buildHtmlSettings(),
-            projectDirs: buildProjectDirs(),
+            ...bookTargets(),
           };
           // The token rides the wire too: $/cancelRequest lets the server stop early.
           result = await raceRequest(

@@ -10,6 +10,8 @@
  * Suites using this mock run in CI via `npm run test:integration`; for direct runs see
  * test/client/README.md.
  */
+import { posix } from 'node:path';
+
 import { CancellationTokenSource } from 'vscode-languageserver/node';
 
 export type Listener<T> = (e: T) => unknown;
@@ -82,8 +84,9 @@ export class Uri {
     return new Uri('file', '', path);
   }
 
+  /** Folds `.` and `..` like VS Code's `joinPath` (which runs `posix.join`). */
   static joinPath(base: Uri, ...segments: string[]): Uri {
-    const joined = [base.path.replace(/\/+$/, ''), ...segments].join('/');
+    const joined = posix.join(base.path, ...segments);
     return new Uri(base.scheme, base.authority, joined);
   }
 
@@ -283,6 +286,14 @@ export interface MockState {
   onDidChangeConfig: EventEmitter<FakeConfigurationChange>;
   /** `workspace.onDidChangeWorkspaceFolders`: a test edits `workspaceFolders`, then fires this. */
   onDidChangeFolders: EventEmitter<FakeWorkspaceFoldersChange>;
+  /** `workspace.onDidOpenTextDocument` / `onDidCloseTextDocument` / `onDidSaveTextDocument`: a test fires these with a document. */
+  onDidOpenDoc: EventEmitter<FakeTextDocument>;
+  onDidCloseDoc: EventEmitter<FakeTextDocument>;
+  onDidSaveDoc: EventEmitter<FakeTextDocument>;
+  /** What `window.showSaveDialog` resolves to (undefined = dismissed), and the options of each call. */
+  saveDialogResult: Uri | undefined;
+  saveDialogCalls: unknown[];
+  warningMessages: string[];
   /** Programmed `showQuickPick` responses (FIFO; undefined = Esc) and `createQuickPick` step scripts (see `FakeQuickPick`). */
   quickPickQueue: unknown[];
   quickPickCalls: { items: unknown; options: unknown }[];
@@ -359,6 +370,12 @@ export function createMockState(): MockState {
     onDidChangeSelection: new EventEmitter<FakeSelectionChange>(),
     onDidChangeConfig: new EventEmitter<FakeConfigurationChange>(),
     onDidChangeFolders: new EventEmitter<FakeWorkspaceFoldersChange>(),
+    onDidOpenDoc: new EventEmitter<FakeTextDocument>(),
+    onDidCloseDoc: new EventEmitter<FakeTextDocument>(),
+    onDidSaveDoc: new EventEmitter<FakeTextDocument>(),
+    saveDialogResult: undefined,
+    saveDialogCalls: [],
+    warningMessages: [],
     quickPickQueue: [],
     quickPickCalls: [],
     quickPicks: [],
@@ -413,6 +430,12 @@ export function resetMockState(s: MockState): void {
   s.onDidChangeActiveEditor.dispose();
   s.onDidChangeConfig.dispose();
   s.onDidChangeFolders.dispose();
+  s.onDidOpenDoc.dispose();
+  s.onDidCloseDoc.dispose();
+  s.onDidSaveDoc.dispose();
+  s.saveDialogResult = undefined;
+  s.saveDialogCalls.length = 0;
+  s.warningMessages.length = 0;
   s.quickPickQueue.length = 0;
   s.quickPickCalls.length = 0;
   s.quickPicks.length = 0;
@@ -490,6 +513,16 @@ export function buildVscode(state: MockState): Record<string, unknown> {
         state.infoMessages.push(args[0]);
       }
       return Promise.resolve(undefined);
+    },
+    showWarningMessage(...args: unknown[]): Promise<undefined> {
+      if (typeof args[0] === 'string') {
+        state.warningMessages.push(args[0]);
+      }
+      return Promise.resolve(undefined);
+    },
+    showSaveDialog(options?: unknown): Promise<Uri | undefined> {
+      state.saveDialogCalls.push(options);
+      return Promise.resolve(state.saveDialogResult);
     },
     showQuickPick(items: unknown, options?: unknown): Promise<unknown> {
       state.quickPickCalls.push({ items, options });
@@ -582,6 +615,18 @@ export function buildVscode(state: MockState): Record<string, unknown> {
     get workspaceFolders() {
       return state.workspaceFolders;
     },
+    /** The folder containing `uri` (the longest `/`-bounded prefix), as VS Code picks it. */
+    getWorkspaceFolder(uri: Uri): { uri: Uri; name: string; index: number } | undefined {
+      const target = uri.toString();
+      let best: { uri: Uri; name: string; index: number } | undefined;
+      for (const folder of state.workspaceFolders ?? []) {
+        const root = folder.uri.toString().replace(/\/+$/, '');
+        if ((target === root || target.startsWith(`${root}/`)) && (best === undefined || root.length > best.uri.toString().length)) {
+          best = folder;
+        }
+      }
+      return best;
+    },
     fs: fsApi,
     /** `vscode.workspace.decode`: the options are recorded; NUL bytes count as binary (VS Code's own heuristic). */
     decode(content: Uint8Array, options: { uri: Uri } | { encoding: string }): Promise<string> {
@@ -612,8 +657,9 @@ export function buildVscode(state: MockState): Record<string, unknown> {
     onDidCreateFiles: registrationOnly,
     onDidDeleteFiles: registrationOnly,
     onDidRenameFiles: registrationOnly,
-    // Documents opened after activation (tests seed `textDocuments` up front).
-    onDidOpenTextDocument: registrationOnly,
+    onDidOpenTextDocument: state.onDidOpenDoc.event,
+    onDidCloseTextDocument: state.onDidCloseDoc.event,
+    onDidSaveTextDocument: state.onDidSaveDoc.event,
     // Settings reads. Bare getConfiguration() + full keys (renderConfig.ts) resolves from
     // `state.config` as before; the section/scope form (highlightConfig.ts, probe.ts)
     // consults `state.scopedConfig` first — keyed `${scopeUri}|${section ? section + '.' : ''}${key}`

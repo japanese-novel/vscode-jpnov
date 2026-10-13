@@ -6,11 +6,10 @@
  * unit-testable with plain paths.
  *
  * All paths are ABSOLUTE, POSIX-normalized fs paths (the caller normalizes `Uri.fsPath`).
- * A rename matches an entry either exactly (a file rename) or as a directory prefix (a
- * folder rename moves everything under it). Entries are relative to the book's OWNING
- * WORKSPACE FOLDER root — so moving a `.jpbook` itself never needs an update, and only a
- * target leaving the workspace folder is unrepresentable (reported, never rewritten into
- * a broken path).
+ * A rename matches a path either exactly (a file rename) or as a directory prefix (a folder
+ * rename moves everything under it). Entries count from the book's own folder, `../` allowed,
+ * so a moved book rewrites its entries to keep naming the same files, and a book moved along
+ * with its chapters needs nothing.
  */
 import { posix } from 'node:path';
 
@@ -28,12 +27,6 @@ export interface BookEdit {
   readonly startChar: number;
   readonly endChar: number;
   readonly newText: string;
-}
-
-export interface BookEditPlan {
-  readonly edits: readonly BookEdit[];
-  /** Entry values whose new location left the workspace folder (not rewritten). */
-  readonly unrepresentable: readonly string[];
 }
 
 /** Backslashes → `/` (Windows `fsPath`); POSIX paths pass through unchanged. */
@@ -55,38 +48,30 @@ function movedTo(abs: string, renames: readonly FileRename[]): string | null {
 }
 
 /**
- * Computes the edits one `.jpbook` needs for `renames`, entries resolved against
- * `rootPath` (its owning workspace folder). Chapter and cover lines are rewritten,
- * duplicates included (a duplicate must keep duplicating whatever it duplicated); blank,
- * metadata, and error/warning lines are never touched. Each edit replaces exactly the
- * path span — a cover line's `- `/`cover: ` marker and any surrounding whitespace survive.
+ * Computes the edits one `.jpbook` needs for `renames`; `bookPath` is the book's own path AFTER
+ * the event (its path before is found back through the renames). Chapter and cover lines are
+ * rewritten when the file they named now sits elsewhere relative to the book, duplicates
+ * included (a duplicate must keep duplicating whatever it duplicated); blank, metadata, and
+ * error/warning lines are never touched. Each edit replaces exactly the path span — a cover
+ * line's `- `/`cover: ` marker and any surrounding whitespace survive.
  */
-export function planBookEdits(
-  rootPath: string,
-  text: string,
-  renames: readonly FileRename[],
-): BookEditPlan {
+export function planBookEdits(bookPath: string, text: string, renames: readonly FileRename[]): BookEdit[] {
+  const inverted = renames.map((r) => ({ oldPath: r.newPath, newPath: r.oldPath }));
+  const oldDir = posix.dirname(movedTo(bookPath, inverted) ?? bookPath);
+  const newDir = posix.dirname(bookPath);
   const edits: BookEdit[] = [];
-  const unrepresentable: string[] = [];
 
   for (const pl of parseJpbook(text).lines) {
     const entry = entryPathOf(pl);
     if (entry === null) {
       continue;
     }
-    const abs = posix.normalize(posix.join(rootPath, entry.value));
-    const target = movedTo(abs, renames);
-    if (target === null) {
-      continue;
-    }
-    const rel = posix.relative(rootPath, target);
-    if (rel === '' || rel === '..' || rel.startsWith('../') || posix.isAbsolute(rel)) {
-      unrepresentable.push(entry.value);
-      continue;
-    }
-    if (rel !== entry.value) {
+    const oldAbs = posix.resolve(oldDir, entry.value);
+    const newAbs = movedTo(oldAbs, renames) ?? oldAbs;
+    if (posix.resolve(newDir, entry.value) !== newAbs) {
+      const rel = posix.relative(newDir, newAbs);
       edits.push({ line: pl.line, startChar: entry.range.startChar, endChar: entry.range.endChar, newText: rel });
     }
   }
-  return { edits, unrepresentable };
+  return edits;
 }

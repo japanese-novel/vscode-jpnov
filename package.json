@@ -103,6 +103,11 @@
       "[jpbook]": {
         "editor.copyWithSyntaxHighlighting": false,
         "editor.wordBasedSuggestions": "off",
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "off",
+          "strings": "on"
+        },
         "editor.unicodeHighlight.nonBasicASCII": false,
         "editor.unicodeHighlight.allowedCharacters": {
           "　": true,
@@ -318,7 +323,7 @@
           },
           "jpnov.layout.outDir": {
             "type": "string",
-            "default": "dist",
+            "default": "${workspaceFolder}/dist",
             "scope": "resource",
             "order": 13,
             "markdownDescription": "%jpnov.layout.outDir.description%"
@@ -730,7 +735,7 @@
         {
           "command": "jpbook.createFile",
           "group": "navigation@0",
-          "when": "view == jpnov.books && !jpnov.booksDetail && workspaceFolderCount != 0"
+          "when": "view == jpnov.books && !jpnov.booksDetail"
         },
         {
           "command": "jpbook.refresh",
@@ -765,10 +770,6 @@
         {
           "command": "jpbook.refresh",
           "when": "false"
-        },
-        {
-          "command": "jpbook.createFile",
-          "when": "workspaceFolderCount != 0"
         },
         {
           "command": "jpnov.cursorWordLeft",
@@ -867,7 +868,10 @@
   },
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true
+      "supported": true,
+      "restrictedConfigurations": [
+        "jpnov.layout.outDir"
+      ]
     }
   },
   "imports": {

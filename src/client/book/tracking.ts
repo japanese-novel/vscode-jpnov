@@ -7,13 +7,15 @@
  * and applies ONE `WorkspaceEdit` across every affected `.jpbook`. Edited books are left
  * dirty for the author to save, matching the platform convention.
  *
- * Renames from outside VS Code (Finder, terminal, git) fire no event; the standing
- * `jpbook.fileNotFound` diagnostics are the net for those.
+ * A moved `.jpbook` is a rename like any other: its own entries are rewritten so they keep
+ * naming the same files. Renames from outside VS Code (Finder, terminal, git) fire no event;
+ * the standing `jpbook.fileNotFound` diagnostics are the net for those.
  */
 import * as vscode from 'vscode';
 
-import { normalizeFsPath, planBookEdits, type BookEditPlan, type FileRename } from './rename.ts';
-import { FIND_FILES_EXCLUDE, lastPathSegment } from '../paths.ts';
+import { normalizeFsPath, planBookEdits, type BookEdit, type FileRename } from './rename.ts';
+import { FIND_FILES_EXCLUDE } from '../paths.ts';
+import { isOpenBook } from '../projectConfig.ts';
 
 const SETTING = 'jpnov.editor.updateRefsOnFileMove';
 
@@ -28,19 +30,14 @@ function persistMode(value: Mode): Thenable<void> {
   return vscode.workspace.getConfiguration().update(SETTING, value, vscode.ConfigurationTarget.Global);
 }
 
-/** Books the event touches, each with its computed plan (empty plans dropped). */
+/** Books the event touches (those under the workspace folders, and the open ones outside them), each with its edits (none = dropped). */
 async function planAffectedBooks(
   renames: readonly FileRename[],
-): Promise<{ uri: vscode.Uri; plan: BookEditPlan }[]> {
-  const books = await vscode.workspace.findFiles('**/*.jpbook', FIND_FILES_EXCLUDE);
-  const affected: { uri: vscode.Uri; plan: BookEditPlan }[] = [];
+): Promise<{ uri: vscode.Uri; edits: readonly BookEdit[] }[]> {
+  const found = await vscode.workspace.findFiles('**/*.jpbook', FIND_FILES_EXCLUDE);
+  const books = [...found, ...vscode.workspace.textDocuments.filter(isOpenBook).map((d) => d.uri)];
+  const affected: { uri: vscode.Uri; edits: readonly BookEdit[] }[] = [];
   for (const uri of books) {
-    // Entries are root-relative: a book outside every workspace folder has no base at all
-    // (the server degrades it to syntax-only the same way), so there is nothing to update.
-    const folder = vscode.workspace.getWorkspaceFolder(uri);
-    if (folder === undefined) {
-      continue;
-    }
     let doc: vscode.TextDocument;
     try {
       // openTextDocument yields the LIVE buffer when the book is open (dirty edits included).
@@ -48,9 +45,9 @@ async function planAffectedBooks(
     } catch {
       continue; // unreadable (gone mid-event) — nothing to update
     }
-    const plan = planBookEdits(normalizeFsPath(folder.uri.fsPath), doc.getText(), renames);
-    if (plan.edits.length > 0 || plan.unrepresentable.length > 0) {
-      affected.push({ uri, plan });
+    const edits = planBookEdits(normalizeFsPath(uri.fsPath), doc.getText(), renames);
+    if (edits.length > 0) {
+      affected.push({ uri, edits });
     }
   }
   return affected;
@@ -62,7 +59,7 @@ async function askUser(bookCount: number): Promise<boolean> {
   const always = vscode.l10n.t('Always Update');
   const never = vscode.l10n.t('Never Update');
   const message = vscode.l10n.t(
-    'Japanese Novel: chapter files were renamed or moved — update the paths in {0} book file(s)?',
+    'Japanese Novel: files were renamed or moved — update the paths in {0} book file(s)?',
     String(bookCount),
   );
   const pick = await vscode.window.showInformationMessage(message, update, always, never);
@@ -89,35 +86,20 @@ async function handleRenames(e: vscode.FileRenameEvent): Promise<void> {
   }
 
   const affected = await planAffectedBooks(renames);
-  const editable = affected.filter((a) => a.plan.edits.length > 0);
-
-  let applied = false;
-  if (editable.length > 0) {
-    const proceed = currentMode() === 'always' || (await askUser(editable.length));
-    if (proceed) {
-      const edit = new vscode.WorkspaceEdit();
-      for (const { uri, plan } of editable) {
-        for (const ed of plan.edits) {
-          edit.replace(uri, new vscode.Range(ed.line, ed.startChar, ed.line, ed.endChar), ed.newText);
-        }
-      }
-      applied = await vscode.workspace.applyEdit(edit);
+  if (affected.length === 0) {
+    return;
+  }
+  const proceed = currentMode() === 'always' || (await askUser(affected.length));
+  if (!proceed) {
+    return;
+  }
+  const edit = new vscode.WorkspaceEdit();
+  for (const { uri, edits } of affected) {
+    for (const ed of edits) {
+      edit.replace(uri, new vscode.Range(ed.line, ed.startChar, ed.line, ed.endChar), ed.newText);
     }
   }
-
-  // Entries that left the workspace folder cannot be rewritten into a valid path; explain
-  // the incoming red squiggle — but not when the user just declined the whole update.
-  const skipped = affected.filter((a) => a.plan.unrepresentable.length > 0);
-  if (skipped.length > 0 && (applied || editable.length === 0)) {
-    const names = skipped.map((a) => lastPathSegment(a.uri.toString())).join(', ');
-    // UI notification: showWarningMessage never rejects, so void is safe.
-    void vscode.window.showWarningMessage(
-      vscode.l10n.t(
-        "Japanese Novel: couldn't update {0} — the new location is outside the workspace folder.",
-        names,
-      ),
-    );
-  }
+  await vscode.workspace.applyEdit(edit);
 }
 
 /** Registers the tracker; called once from `ensureStarted()` (novel workspaces only). */

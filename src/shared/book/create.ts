@@ -1,11 +1,12 @@
 /**
  * The panel's file-creating dialogs, pure and vscode-free: the starter content of a new cover
- * or book, and the normalization that turns one typed path into a root-relative `.jpnov` /
- * `.jpbook` entry.
+ * or book, and the normalization that turns one typed path into a `.jpnov` / `.jpbook` path
+ * from the book's folder.
  */
 import { BUILD_CHROME_DEFAULT } from '../config/settings.ts';
 import { isAbsoluteLocation } from '../config/validate.ts';
-import { FENCE, HEADER, META_KEYS, metaLine, pathSegments, type MetaKey } from './jpbook.ts';
+import { pathSegments } from '../uri.ts';
+import { FENCE, HEADER, META_KEYS, metaLine, type MetaKey } from './jpbook.ts';
 
 /**
  * Starter content of a cover file created from the panel: README's 応募用の表紙 sample,
@@ -41,15 +42,15 @@ export function bookTemplate(stem: string): string {
 }
 
 /** Why a typed path is unusable; the command maps each code to a localized message. */
-export type FileInputError = 'empty' | 'absolute' | 'escapes' | 'badName';
+export type FileInputError = 'empty' | 'absolute' | 'badName';
 
 /**
- * A typed path (`src/my-chapter`, either separator) normalized into a root-relative file
- * path: segments collapsed, `suffix` appended when missing (one already typed counts in any
- * letter case and stays as typed), NFC. Rejects what the `.jpbook`
- * grammar or a filesystem would: absolute/home/scheme locations, `..` segments, and
- * per-segment the Windows-forbidden character set or leading/trailing dots and
- * whitespace (dotfiles would be invisible to the chapter picker).
+ * A typed path (`src/my-chapter`, either separator) normalized into a file path from the
+ * book's folder: segments collapsed (`..` folded, a leading one kept), `suffix` appended when
+ * missing (one already typed counts in any letter case and stays as typed), NFC. Rejects what
+ * the `.jpbook` grammar or a filesystem would: absolute/home/scheme locations, and per-segment
+ * the Windows-forbidden character set or leading/trailing dots and whitespace (dotfiles would
+ * be invisible to the chapter picker).
  */
 export function normalizeFileInput(
   raw: string,
@@ -63,11 +64,8 @@ export function normalizeFileInput(
     return { ok: false, error: 'absolute' };
   }
   const segments = pathSegments(trimmed);
-  if (segments.some((s) => s === '..')) {
-    return { ok: false, error: 'escapes' };
-  }
   const last = segments.pop();
-  if (last === undefined) {
+  if (last === undefined || last === '..') {
     return { ok: false, error: 'empty' };
   }
   const suffixed = last.toLowerCase().endsWith(suffix);
@@ -76,7 +74,7 @@ export function normalizeFileInput(
     return { ok: false, error: 'empty' };
   }
   for (const part of [...segments, stem]) {
-    if (/[\p{Cc}:*?"<>|]/u.test(part) || /^[\s.]|[\s.]$/u.test(part)) {
+    if (part !== '..' && (/[\p{Cc}:*?"<>|]/u.test(part) || /^[\s.]|[\s.]$/u.test(part))) {
       return { ok: false, error: 'badName' };
     }
   }

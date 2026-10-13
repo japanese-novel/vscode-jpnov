@@ -7,6 +7,7 @@
  * editing one rewrites or removes the lines of that key alone. Chapters and covers are the
  * two entry lists; a list action takes an `EntryList` and never touches the other list.
  */
+import { homedir } from 'node:os';
 import { posix } from 'node:path';
 
 import * as vscode from 'vscode';
@@ -33,6 +34,7 @@ import {
   type EntryList,
   type MetaKey,
   type ParsedLine,
+  jpbookStem,
 } from '#/shared/book/jpbook.ts';
 import { FURNITURE_ALIGNS, type FurnitureAlign } from '#/shared/compiler/chrome.ts';
 import { BUILD_CHROME_DEFAULT } from '#/shared/config/settings.ts';
@@ -42,7 +44,7 @@ import type { BookEntry } from '#/shared/protocol.ts';
 
 import { command } from '../commands.ts';
 import { renderMessage } from '../messages.ts';
-import { chapterUri, FIND_FILES_EXCLUDE, lastPathSegment, splitRelPath } from '../paths.ts';
+import { bookDir, compareStr, FIND_FILES_EXCLUDE, lastPathSegment, resolveUri, splitRelPath } from '../paths.ts';
 import { normalizeFsPath } from './rename.ts';
 import type { BookNode, EntryNode } from './nodes.ts';
 import type { BooksViewProvider } from './view.ts';
@@ -158,14 +160,21 @@ function listText(list: EntryList): { placeholder: string; create: string } {
   };
 }
 
-/** The `.jpnov` files under the book's root as sorted paths from that root, the form an entry takes. */
-async function findJpnovFiles(rootUri: vscode.Uri): Promise<string[]> {
-  const found = await vscode.workspace.findFiles(new vscode.RelativePattern(rootUri, '**/*.jpnov'), FIND_FILES_EXCLUDE);
-  const rootPath = normalizeFsPath(rootUri.fsPath);
-  return found.map((uri) => posix.relative(rootPath, normalizeFsPath(uri.fsPath))).sort();
+/**
+ * The `.jpnov` files under the book's workspace folder (its own folder when none contains it), as
+ * paths from the book's folder, the form an entry takes: sorted, those under the book's folder first.
+ */
+async function findJpnovFiles(dir: vscode.Uri): Promise<string[]> {
+  const base = vscode.workspace.getWorkspaceFolder(dir)?.uri ?? dir;
+  const found = await vscode.workspace.findFiles(new vscode.RelativePattern(base, '**/*.jpnov'), FIND_FILES_EXCLUDE);
+  const dirPath = normalizeFsPath(dir.fsPath);
+  const above = (rel: string): number => Number(rel.startsWith('../'));
+  return found
+    .map((uri) => posix.relative(dirPath, normalizeFsPath(uri.fsPath)))
+    .sort((a, b) => above(a) - above(b) || compareStr(a, b));
 }
 
-/** What the picker returns: ticked files on disk, then names to create, both root-relative. */
+/** What the picker returns: ticked files on disk, then names to create, both from the book's folder. */
 interface PickedFiles {
   readonly existing: readonly string[];
   readonly created: readonly string[];
@@ -298,8 +307,8 @@ async function addFiles(arg: unknown): Promise<void> {
   if (node?.kind !== 'list') {
     return;
   }
-  // Entries are root-relative, so candidates come from THIS book's workspace folder only.
-  const onDisk = await findJpnovFiles(vscode.Uri.parse(node.entry.rootUri));
+  const dir = bookDir(node.entry.uri);
+  const onDisk = await findJpnovFiles(dir);
   // The lists dedupe independently: a file that is already a chapter may still become a cover.
   const listed = listedEntries(parseJpbook((await bookText(node.entry)).text).lines, node.list);
   const picked = await pickFiles(onDisk, listed, listText(node.list));
@@ -310,7 +319,7 @@ async function addFiles(arg: unknown): Promise<void> {
   const rels = [...picked.existing];
   let last: vscode.Uri | undefined;
   for (const rel of picked.created) {
-    const target = await writeNewFile(node.entry.rootUri, rel, node.list === 'covers' ? COVER_TEMPLATE : '');
+    const target = await writeNewFile(dir, rel, node.list === 'covers' ? COVER_TEMPLATE : '');
     if (target !== null) {
       rels.push(rel);
       last = target;
@@ -347,9 +356,9 @@ async function pickFolder(): Promise<vscode.WorkspaceFolder | undefined> {
 /**
  * The parked-suffix input box for a new book. Caret at 0, `.jpbook` after it: typing (IME
  * composition included) inserts before the suffix, so the value is never rewritten
- * mid-composition. Returns the normalized root-relative path; undefined = dismissed or unusable.
+ * mid-composition. Returns the normalized path from `base`; undefined = dismissed or unusable.
  */
-async function promptNewBook(rootUri: string): Promise<string | undefined> {
+async function promptNewBook(base: vscode.Uri): Promise<string | undefined> {
   const suffix = '.jpbook';
   const raw = await vscode.window.showInputBox({
     prompt: vscode.l10n.t('File name of the new book'),
@@ -361,7 +370,7 @@ async function promptNewBook(rootUri: string): Promise<string | undefined> {
       if (!parsed.ok) {
         return fileNameError(parsed.error);
       }
-      return (await fileExists(chapterUri(rootUri, parsed.rel)))
+      return (await fileExists(resolveUri(base, parsed.rel)))
         ? vscode.l10n.t('{0} already exists', parsed.rel)
         : null;
     },
@@ -378,52 +387,78 @@ async function promptNewBook(rootUri: string): Promise<string | undefined> {
   return parsed.rel;
 }
 
-/** Creates `rel` holding `content` (parent folders included) under the root; null = exists / write failed (toasted). */
-async function writeNewFile(rootUri: string, rel: string, content = ''): Promise<vscode.Uri | null> {
-  const root = vscode.Uri.parse(rootUri);
-  const segments = rel.split('/');
-  const target = vscode.Uri.joinPath(root, ...segments);
+/**
+ * Creates `rel` holding `content` (parent folders included) from `base`; null = exists / write
+ * failed (toasted). A `../` path may leave the workspace folder `base` sits in: the file is
+ * created all the same, with a warning, since the Explorer does not show it and renames there
+ * are not tracked.
+ */
+async function writeNewFile(base: vscode.Uri, rel: string, content = ''): Promise<vscode.Uri | null> {
+  const target = resolveUri(base, rel);
   if (await fileExists(target)) {
     void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel: {0} already exists. Nothing was created.', rel));
     return null;
   }
   try {
-    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(root, ...segments.slice(0, -1)));
+    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(target, '..'));
     await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(content));
   } catch (err) {
     const message = errorText(err);
     void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel: couldn't write {0}. {1}", rel, message));
     return null;
   }
+  if (vscode.workspace.getWorkspaceFolder(base) !== undefined && vscode.workspace.getWorkspaceFolder(target) === undefined) {
+    void vscode.window.showWarningMessage(vscode.l10n.t(
+      'Japanese Novel: {0} was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
+      rel,
+    ));
+  }
   return target;
 }
 
 /**
- * `jpbook.createFile` (title bar, welcome, palette) — one input creates a `.jpbook` holding the
- * {@link bookTemplate} (every required key, titled after the file) in the chosen folder, the
- * parked suffix trailing what's typed, and reveals it in the panel; entries and metadata are
- * then edited right there. Chapters and covers are created from their lists.
+ * Where a new book goes: without a workspace folder a save dialog names the file; with one, the
+ * folder pick (when there are several) then the parked-suffix prompt. Undefined = dismissed or unusable.
  */
-export async function createFile(view: BooksViewProvider | undefined): Promise<void> {
+async function newBookTarget(): Promise<{ base: vscode.Uri; rel: string } | undefined> {
   if ((vscode.workspace.workspaceFolders ?? []).length === 0) {
-    // The `+` and the palette entry hide without a folder (workspaceFolderCount); the
-    // walkthrough's command link can still land here, so open the folder picker instead.
-    void vscode.commands.executeCommand('workbench.action.files.openFolder');
-    return;
+    const picked = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.joinPath(vscode.Uri.file(homedir()), `${vscode.l10n.t('My Book')}.jpbook`),
+      filters: { [vscode.l10n.t('Book file')]: ['jpbook'] },
+      saveLabel: vscode.l10n.t('Create'),
+    });
+    if (picked === undefined) {
+      return undefined;
+    }
+    return { base: vscode.Uri.joinPath(picked, '..'), rel: `${jpbookStem(lastPathSegment(picked.toString()))}.jpbook` };
   }
   const folder = await pickFolder();
   if (folder === undefined) {
+    return undefined;
+  }
+  const rel = await promptNewBook(folder.uri);
+  return rel === undefined ? undefined : { base: folder.uri, rel };
+}
+
+/**
+ * `jpbook.createFile` (title bar, welcome, palette) — one dialog names a `.jpbook` holding the
+ * {@link bookTemplate} (every required key, titled after the file) and reveals it in the panel;
+ * entries and metadata are then edited right there. A book under no workspace folder stays open
+ * in the editor, which is what lists it. Chapters and covers are created from their lists.
+ */
+export async function createFile(view: BooksViewProvider | undefined): Promise<void> {
+  const picked = await newBookTarget();
+  if (picked === undefined) {
     return;
   }
-  const root = folder.uri.toString();
-  const rel = await promptNewBook(root);
-  if (rel === undefined) {
+  const target = await writeNewFile(picked.base, picked.rel, bookTemplate(jpbookStem(splitRelPath(picked.rel).name)));
+  if (target === null) {
     return;
   }
-  const target = await writeNewFile(root, rel, bookTemplate(splitRelPath(rel).name.replace(/\.jpbook$/i, '')));
-  if (target !== null) {
-    await view?.revealNewBook(target);
+  if (vscode.workspace.getWorkspaceFolder(target) === undefined) {
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target), { preview: false, preserveFocus: true });
   }
+  await view?.revealNewBook(target);
 }
 
 async function removeEntryCmd(arg: unknown): Promise<void> {

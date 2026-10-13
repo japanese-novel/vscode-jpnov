@@ -460,19 +460,14 @@ function renderList(): void {
     app.replaceChildren(scrollPane(h('div', { class: 'empty' }, L.loading), h('div', { class: 'empty' }, L.loadingHint)));
     return;
   }
-  if (state?.noFolder) {
-    app.replaceChildren(scrollPane(
-      welcome(L.noFolderTitle, L.noFolderBody, [['openFolder', L.openFolder], ['openGuide', L.openGuide]])));
-    return;
-  }
   if (counts().total === 0) {
     app.replaceChildren(scrollPane(
-      welcome(L.noBooksTitle, L.noBooksBody, [['createBook', L.createBook], ['openGuide', L.openGuide]])));
+      welcome(L.noBooksTitle, state?.noFolder ? [L.noBooksBody, L.noFolderHint] : [L.noBooksBody], [['createBook', L.createBook], ['openGuide', L.openGuide]])));
     return;
   }
   const groups = state?.groups ?? [];
   const flat = groups.flatMap((g) => g.books); // row neighbours run across group boundaries
-  // One grid container per root group, named as its heading is; a single root's grid is "Books".
+  // One grid container per group, named as its heading is; a single group's grid is "Books".
   app.replaceChildren(
     scrollPane(h('div', { class: 'list' }, ...groups.flatMap((g) => {
       const rows = g.books.map((b) => {
@@ -480,8 +475,8 @@ function renderList(): void {
         return bookRow(b, flat[i + 1], flat[i - 1]);
       });
       return [
-        g.rootLabel !== null && h('h2', { class: 'group-header' }, g.rootLabel),
-        h('div', { class: 'grid', role: 'grid', 'data-grid': 'books', 'aria-label': g.rootLabel ?? L.books }, ...rows),
+        g.label !== null && h('h2', { class: 'group-header' }, g.label),
+        h('div', { class: 'grid', role: 'grid', 'data-grid': 'books', 'aria-label': g.label ?? L.books }, ...rows),
       ];
     }))),
     footer(),
@@ -832,10 +827,10 @@ function metaRow(d: DetailMessage, mi: MetaVM): HTMLElement {
   return h('div', { class: 'row metarow', role: 'row' }, cell(btn, 'lead'));
 }
 
-function welcome(title: string, body: string, actions: readonly (readonly [WelcomeAction, string])[]): HTMLElement {
+function welcome(title: string, body: readonly string[], actions: readonly (readonly [WelcomeAction, string])[]): HTMLElement {
   return h('div', { class: 'welcome' },
     h('div', { class: 'wtitle' }, title),
-    h('div', { class: 'wbody' }, body),
+    ...body.map((text) => h('div', { class: 'wbody' }, text)),
     ...actions.map(([action, label]) =>
       h('button', { class: 'btn welcomebtn', 'data-fk': 'welcome:' + action, onClick: poster({ type: 'welcome', action }) }, label)));
 }

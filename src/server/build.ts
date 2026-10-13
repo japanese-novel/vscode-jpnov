@@ -1,16 +1,17 @@
 /**
  * The `jpnov/build` and `jpnov/listBooks` request handlers. Constraints:
  * - the request's `projectDirs` map DEFINES the targeted roots; every `*.jpbook` under a root
- *   is a book (dot-folders, `node_modules` and the resolved output dirs are never scanned);
- * - a root nested in another is a root of its own: the outer walk stops there, so a book has ONE
- *   root, the innermost — the folder the live editor features resolve against;
- * - two book files that derive the same output path (`jpbookOutRel`) are a build error and
- *   neither is emitted;
+ *   is a book (dot-folders, `node_modules` and every other targeted root are never scanned); the
+ *   `openBooks` it names are books too;
+ * - two book files that resolve to the same output file are a build error and neither is written;
+ * - everything about a book comes from its own directory: its entries resolve against it, as the
+ *   live editor features resolve them, and its output lands in `<dir>/<outDir>/<stem>.<ext>`,
+ *   the stem being the `.jpbook`'s file name (a `${workspaceFolder}/…` outDir, the default
+ *   included, counts from the book's root instead, when it has one);
  * - a `.jpbook` with an Error line, or with a required key missing, is that book's build error
  *   (the first such line's message, else the missing keys); the book is never built partially;
- * - `.jpbook` entries resolve against the WORKSPACE FOLDER ROOT (the same base the live editor
- *   features use), and page furniture comes from each book's OWN metadata
- *   (`composeBookChrome`), so one batch build carries a different header per volume;
+ * - page furniture comes from each book's OWN metadata (`composeBookChrome`), so one batch build
+ *   carries a different header per volume;
  * - the server never touches `vscode.fs` nor decodes bytes: manuscript text arrives through
  *   `jpnov/readText` (the client answers with the text the editor shows) and artifacts leave
  *   here as text the CLIENT writes (owning the `.txt` encoding);
@@ -22,16 +23,15 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken, WorkDoneProgressReporter } from 'vscode-languageserver/node';
 
-import { checkJpbook, composeBookChrome, coverPathOf, jpbookOutRel, parseJpbook } from '#/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedLine } from '#/shared/book/jpbook.ts';
 import { concatBookText, renderBook } from '#/shared/compiler/document.ts';
-import type { BookInput, TitledBook } from '#/shared/compiler/document.ts';
+import type { TitledBook } from '#/shared/compiler/document.ts';
 import { epubMembers } from '#/shared/compiler/epub.ts';
 import { errorText } from '#/shared/errors.ts';
 import { LocalizedError } from '#/shared/messages.ts';
 import { resolveHtmlSettings } from '#/shared/config/settings.ts';
-import { resolveContained } from '#/shared/config/validate.ts';
-import { PROJECT_DEFAULT } from '#/shared/config/types.ts';
+import { OUT_DIR_DEFAULT, outDirSubpath, type OutDir } from '#/shared/config/validate.ts';
 import type {
   BookEntry,
   BuildArtifact,
@@ -46,26 +46,23 @@ import type {
   ProjectDirsMap,
   ReadTextResult,
 } from '#/shared/protocol.ts';
-
 import { fileLevelError } from './diagnostics.ts';
 import { diagnoseJpbook } from './jpbook.ts';
-import { childUri, isFileScheme, normalizeRootUri } from './fsUri.ts';
+import { baseName, childUri, isFileScheme, normalizeRootUri, parentUri, resolveUri } from './fsUri.ts';
 import type { ServerContext } from './context.ts';
 
-/** A `*.jpbook` discovered under a workspace folder root. */
-interface DiscoveredJpbook {
-  /** Path relative to the workspace folder root (POSIX separators), e.g. `"part1/vol2.jpbook"`. */
-  readonly fileRel: string;
-  /** Absolute URI of the `.jpbook` file (diagnostics target). */
-  readonly uri: string;
-}
-
-/** One targeted root, always `file:`: its normalized URI plus the RESOLVED output dir URI. */
+/** One targeted root, always `file:`: its normalized URI and the validated `outDir`. */
 interface ProjectRoot {
   readonly rootUri: string;
+  /** `jpnov.layout.outDir` as the server joins it ({@link outDirSubpath}, else the default). */
+  readonly outDir: OutDir;
+  /** The {@link dirKey} of every targeted root; a nested root ends the walk. */
+  readonly rootDirs: ReadonlySet<string>;
+}
+
+/** One book to list or build: a {@link BookEntry} discovered under a root or sent open, with its resolved output directory. */
+interface BookTarget extends Omit<BookEntry, 'title'> {
   readonly outDirUri: string;
-  /** The {@link dirKey} of every targeted root and every output dir; the roots of a request share one set. */
-  readonly skipDirs: ReadonlySet<string>;
 }
 
 /**
@@ -81,36 +78,51 @@ interface BuildSelection {
   readonly settings: HtmlSettings;
 }
 
-function joinRel(parent: string, name: string): string {
-  return parent === '' ? name : `${parent}/${name}`;
-}
-
 /**
- * A directory's fs path as a {@link ProjectRoot.skipDirs} key. NFC: the disk may hold a name
+ * A directory's fs path as a {@link ProjectRoot.rootDirs} key. NFC: the disk may hold a name
  * decomposed where the folder's URI holds it composed.
  */
 function dirKey(fsPath: string): string {
   return fsPath.normalize('NFC');
 }
 
+/** The validated `outDir` of a request field, NFC; the default when the value names no folder. */
+function outDirOf(value: string): OutDir {
+  return outDirSubpath(value.normalize('NFC')) ?? OUT_DIR_DEFAULT;
+}
+
 /**
- * Recursively walks one targeted root collecting every `*.jpbook` file. Four fixed exclusions,
- * deliberately NOT configurable ("your output folder, dot-folders, and node_modules are never
- * scanned"): dot-DIRECTORIES (dot-files still match), any `node_modules` at any depth, every
- * resolved output dir, and every other targeted root — a root nested in this one keeps its
- * books to itself. The comparison happens in DECODED fs-path space (the walk needs the fs path
- * for `readdir` anyway), so it never depends on percent-encoding. Symlinked dirents report
- * neither file nor directory under `withFileTypes`, so links are never followed (no cycle
- * risk). Results are sorted by `fileRel` for deterministic output and stable collision reporting.
+ * A book's output directory: `outDir` from its workspace folder when the value says so and it has
+ * one, else from its own directory. A validated `rel` always encodes, so the null arm is never
+ * taken; an empty `rel` (`.`) resolves to the base with a trailing slash, which dirs never carry.
  */
-async function discoverJpbooks(target: ProjectRoot): Promise<DiscoveredJpbook[]> {
-  const found = await Array.fromAsync(walkJpbooks(target.rootUri, fileURLToPath(target.rootUri), '', target.skipDirs));
+function outDirUriOf(bookUri: string, rootUri: string | null, outDir: OutDir): string {
+  const base = outDir.fromRoot && rootUri !== null ? rootUri : parentUri(bookUri);
+  return normalizeRootUri(resolveUri(base, outDir.rel) ?? base);
+}
+
+/**
+ * Recursively walks one targeted root collecting every `*.jpbook` file. Three fixed exclusions,
+ * deliberately NOT configurable: dot-DIRECTORIES (dot-files still match), any `node_modules` at
+ * any depth, and every other targeted root — a root nested in this one keeps its books to
+ * itself. The root comparison happens in DECODED fs-path space (the walk needs the fs path for
+ * `readdir` anyway), so it never depends on percent-encoding. Symlinked dirents report neither
+ * file nor directory under `withFileTypes`, so links are never followed (no cycle risk).
+ * Results are sorted by `fileRel` for deterministic output.
+ */
+async function discoverJpbooks(root: ProjectRoot): Promise<BookTarget[]> {
+  const found = await Array.fromAsync(walkJpbooks(root.rootUri, fileURLToPath(root.rootUri), '', root.rootDirs));
   found.sort((a, b) => (a.fileRel < b.fileRel ? -1 : a.fileRel > b.fileRel ? 1 : 0));
-  return found;
+  return found.map(({ uri, fileRel }) => ({ uri, rootUri: root.rootUri, fileRel, outDirUri: outDirUriOf(uri, root.rootUri, root.outDir) }));
 }
 
 /** The recursive walk behind {@link discoverJpbooks}; yields matches depth-first in `readdir` order. */
-async function* walkJpbooks(dirUri: string, dirPath: string, dirRel: string, skipDirs: ReadonlySet<string>): AsyncGenerator<DiscoveredJpbook> {
+async function* walkJpbooks(
+  dirUri: string,
+  dirPath: string,
+  dirRel: string,
+  rootDirs: ReadonlySet<string>,
+): AsyncGenerator<{ uri: string; fileRel: string }> {
   let dirents;
   try {
     dirents = await readdir(dirPath, { withFileTypes: true });
@@ -118,45 +130,74 @@ async function* walkJpbooks(dirUri: string, dirPath: string, dirRel: string, ski
     return;
   }
   for (const dirent of dirents) {
+    const rel = dirRel === '' ? dirent.name : `${dirRel}/${dirent.name}`;
     if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.jpbook')) {
-      yield {
-        fileRel: joinRel(dirRel, dirent.name),
-        uri: childUri(dirUri, dirent.name),
-      };
+      yield { uri: childUri(dirUri, dirent.name), fileRel: rel };
     } else if (dirent.isDirectory()) {
       if (dirent.name.startsWith('.') || dirent.name === 'node_modules') {
         continue;
       }
       const childPath = join(dirPath, dirent.name);
-      if (skipDirs.has(dirKey(childPath))) {
+      if (rootDirs.has(dirKey(childPath))) {
         continue;
       }
-      yield* walkJpbooks(childUri(dirUri, dirent.name), childPath, joinRel(dirRel, dirent.name), skipDirs);
+      yield* walkJpbooks(childUri(dirUri, dirent.name), childPath, rel, rootDirs);
     }
   }
 }
 
 /**
- * Reads the `ok` entries of one parsed `.jpbook` in order (skipping blank/metadata/
- * duplicate lines; an Error line has already failed the book in {@link buildRoot}), each
- * resolved relative to the WORKSPACE FOLDER ROOT and read through the client, into the shape
- * {@link renderBook} consumes. Throws on the first escaping/unreadable/missing entry so the
- * caller can convert it into a per-book build error (the diagnostic is published separately).
+ * The roots a request targets: every `file:` entry of `projectDirs` with its `outDir` validated —
+ * the map is the SOLE source of discoverable roots. A virtual-fs tree cannot be enumerated, so
+ * such a root yields no books.
  */
-async function readBookFiles(
-  ctx: ServerContext,
-  rootUri: string,
-  lines: readonly ParsedLine[],
-  token?: CancellationToken,
-): Promise<BookInput> {
-  const files: { name: string; src: string }[] = [];
-  for (const pl of lines) {
-    if (pl.kind !== 'ok') {
-      continue;
+function targetRoots(projectDirs: ProjectDirsMap): ProjectRoot[] {
+  const resolved = Object.entries(projectDirs)
+    .map(([rawUri, dirs]) => ({ rootUri: normalizeRootUri(rawUri), outDir: outDirOf(dirs.outDir) }))
+    .filter(({ rootUri }) => isFileScheme(rootUri));
+  const rootDirs = new Set(resolved.map((r) => dirKey(fileURLToPath(r.rootUri))));
+  return resolved.map((r) => ({ ...r, rootDirs }));
+}
+
+/** Every book a request names: those discovered under its roots (root by root), then its open books. */
+async function bookTargets(params: ListBooksParams): Promise<BookTarget[]> {
+  const discovered = await Promise.all(targetRoots(params.projectDirs).map(discoverJpbooks));
+  const open = (params.openBooks ?? []).map((book): BookTarget => ({
+    uri: book.uri,
+    rootUri: null,
+    fileRel: baseName(book.uri),
+    outDirUri: outDirUriOf(book.uri, null, outDirOf(book.outDir)),
+  }));
+  return [...discovered.flat(), ...open];
+}
+
+/** The output stem of a book: its file name without `.jpbook`. */
+function stemOf(uri: string): string {
+  return jpbookStem(baseName(uri));
+}
+
+/** The output file (no extension) a book's artifacts share: what two books must not resolve alike. */
+function outPathOf(book: BookTarget): string {
+  return childUri(book.outDirUri, stemOf(book.uri));
+}
+
+/**
+ * The books whose output path another book also claims, mapped to the collision message. Judged
+ * over EVERY book the request names, selected or not: building either would clobber the other's
+ * output, so a later full build could never be trusted.
+ */
+function collisionsOf(books: readonly BookTarget[]): Map<string, LocalizableMessage> {
+  const byPath = Map.groupBy(books, outPathOf);
+  const collisions = new Map<string, LocalizableMessage>();
+  for (const [path, claimants] of byPath) {
+    if (claimants.length > 1) {
+      const list = claimants.map((b) => b.fileRel).sort().join(', ');
+      for (const book of claimants) {
+        collisions.set(book.uri, { code: 'build.outPathCollision', args: [path, list] });
+      }
     }
-    files.push({ name: pl.value, src: await readEntry(ctx, rootUri, pl.value, token) });
   }
-  return { files };
+  return collisions;
 }
 
 /** The reply's text, or the {@link LocalizedError} its failure maps to; `rel` names the file in the message. */
@@ -178,38 +219,34 @@ function textOf(reply: ReadTextResult, rel: string): string {
   }
 }
 
-/** Reads one root-relative entry through the client; throws a {@link LocalizedError} per failure mode. */
-async function readEntry(ctx: ServerContext, rootUri: string, rel: string, token?: CancellationToken): Promise<string> {
-  const resolved = resolveContained(rootUri, rel);
-  if (!resolved.ok) {
-    throw new LocalizedError({ code: resolved.code });
+/** Reads one entry, resolved from the book's directory, through the client; throws a {@link LocalizedError} per failure mode. */
+async function readEntry(ctx: ServerContext, dirUri: string, rel: string, token?: CancellationToken): Promise<string> {
+  const uri = resolveUri(dirUri, rel);
+  if (uri === null) {
+    throw new LocalizedError({ code: 'book.entryFileNotFound', args: [rel] });
   }
-  if (!isFileScheme(resolved.abs)) {
-    throw new LocalizedError({ code: 'book.entryNeedsFileScheme', args: [rel] });
-  }
-  return textOf(await ctx.readText(resolved.abs, token), rel);
+  return textOf(await ctx.readText(uri, token), rel);
 }
 
 /**
- * Reads the built cover entries (`'coverEntry'` only — duplicates and muted lines are
- * skipped, like chapter duplicates) in manifest order, same failure modes as the chapters.
+ * Reads the built entries of one `kind` (`'ok'` chapters or `'coverEntry'` covers; duplicates
+ * and muted lines are skipped, an Error line has already failed the book) in manifest order,
+ * each resolved from the book's directory. Throws on the first unreadable/missing entry so the
+ * caller can convert it into a per-book build error (the diagnostic is published separately).
  */
-async function readCoverFiles(
+async function readEntries(
   ctx: ServerContext,
-  rootUri: string,
+  dirUri: string,
   lines: readonly ParsedLine[],
+  kind: 'ok' | 'coverEntry',
   token?: CancellationToken,
 ): Promise<{ name: string; src: string }[]> {
   const files: { name: string; src: string }[] = [];
   for (const pl of lines) {
-    if (pl.kind !== 'coverEntry') {
-      continue;
+    const entry = pl.kind === kind ? entryPathOf(pl) : null;
+    if (entry !== null) {
+      files.push({ name: entry.value, src: await readEntry(ctx, dirUri, entry.value, token) });
     }
-    const entry = coverPathOf(pl);
-    if (entry === null) {
-      continue;
-    }
-    files.push({ name: entry.value, src: await readEntry(ctx, rootUri, entry.value, token) });
   }
   return files;
 }
@@ -222,8 +259,8 @@ function toBuildMessage(cause: unknown): LocalizableMessage {
   return { code: 'build.failed', args: [errorText(cause)] };
 }
 
-/** One `buildRoot` product: an artifact to return + the root's output dir it lands under
- *  (rolled up into `BuildResult.outDirs`), or an error attributed to one book. */
+/** One `buildBook` product: an artifact to return + the output dir it lands under
+ *  (rolled up into `BuildResult.outDirs`), or an error attributed to the book. */
 type BuildOutput =
   | { readonly kind: 'artifact'; readonly outDir: string; readonly artifact: BuildArtifact }
   | { readonly kind: 'error'; readonly error: BuildError };
@@ -235,7 +272,7 @@ type BuildOutput =
 function emitArtifact(
   outDirUri: string,
   selection: BuildSelection,
-  outRel: string,
+  stem: string,
   input: TitledBook,
   meta: JpbookMeta,
 ): BuildArtifact {
@@ -243,7 +280,7 @@ function emitArtifact(
     case 'txt':
       return {
         kind: 'txt',
-        path: childUri(outDirUri, `${outRel}.txt`),
+        path: childUri(outDirUri, `${stem}.txt`),
         content: concatBookText(input, selection.settings.charsPerLine),
       };
     case 'html':
@@ -252,7 +289,7 @@ function emitArtifact(
       // carry a different header per volume).
       return {
         kind: 'html',
-        path: childUri(outDirUri, `${outRel}.html`),
+        path: childUri(outDirUri, `${stem}.html`),
         content: renderBook({
           books: [input],
           charsPerLine: selection.settings.charsPerLine,
@@ -269,10 +306,10 @@ function emitArtifact(
     case 'epub':
       return {
         kind: 'epub',
-        path: childUri(outDirUri, `${outRel}.epub`),
+        path: childUri(outDirUri, `${stem}.epub`),
         members: epubMembers({
           book: input,
-          outRel,
+          outRel: stem,
           kinsoku: selection.settings.kinsoku,
           dash: selection.settings.dash,
           charsPerLine: selection.settings.charsPerLine,
@@ -288,116 +325,64 @@ function emitArtifact(
 }
 
 /**
- * Builds the book files under one targeted root, yielding artifacts + per-book errors in
- * book order. `selection.books` (when set) restricts WHICH books are built, but the
- * output-path collision map is still computed over ALL of them — a selected book that
- * collides with an UNSELECTED one still errors, so a later full build can never silently
- * clobber it. A manifest with an Error line fails before any chapter is read. A throw while
- * compiling one book is that book's own failure: it becomes the book's error and the
- * remaining books still build.
+ * Builds one book: its artifact, or its error. An output path another book claims fails it
+ * first (published on the file), then a manifest with an Error line, before any chapter is read;
+ * a throw while compiling is the book's own failure. Null when the file has disappeared since it
+ * was listed (nothing to report).
  */
-async function* buildRoot(
+async function buildBook(
   ctx: ServerContext,
-  target: ProjectRoot,
+  book: BookTarget,
   selection: BuildSelection,
+  collision: LocalizableMessage | undefined,
   token?: CancellationToken,
-): AsyncGenerator<BuildOutput> {
-  const jpbooks = await discoverJpbooks(target);
-  // Group by derived output path to detect collisions across the whole root up front.
-  const byOutRel = Map.groupBy(jpbooks, (fl) => jpbookOutRel(fl.fileRel));
-
-  for (const fl of jpbooks) {
-    // Subset build: skip books outside the requested set entirely (no read, no diagnostics).
-    if (selection.books && !selection.books.has(fl.uri)) {
-      continue;
+): Promise<BuildOutput | null> {
+  const manifest = await ctx.readText(book.uri, token);
+  if (!manifest.ok && manifest.reason === 'notFound') {
+    return null;
+  }
+  try {
+    const parsed = parseJpbook(textOf(manifest, book.fileRel));
+    const dirUri = parentUri(book.uri);
+    // Per-line diagnostics (same path the live editor uses); published on the .jpbook URI.
+    // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.
+    const lineDiags = await diagnoseJpbook(dirUri, parsed);
+    void ctx.connection.sendDiagnostics({ uri: book.uri, diagnostics: collision ? [...lineDiags, fileLevelError(collision)] : lineDiags });
+    if (collision) {
+      return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...collision } };
     }
-    const manifest = await ctx.readText(fl.uri, token);
-    if (!manifest.ok && manifest.reason === 'notFound') {
-      // Disappeared mid-build; skip silently rather than error on a non-existent file.
-      continue;
+    // An Error line or a missing key fails the book whatever the format; the first Error line
+    // is the root cause.
+    const verdict = checkJpbook(parsed);
+    if (!verdict.ok) {
+      return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...verdict.error } };
     }
-    try {
-      const parsed = parseJpbook(textOf(manifest, fl.fileRel));
-      // Per-line diagnostics (same path the live editor uses); published on the .jpbook URI.
-      const lineDiags = await diagnoseJpbook(target.rootUri, parsed);
-      const outRel = jpbookOutRel(fl.fileRel);
-      const colliding = (byOutRel.get(outRel) ?? []).filter((other) => other !== fl);
-
-      if (colliding.length > 0) {
-        const list = [fl.fileRel, ...colliding.map((c) => c.fileRel)].sort().join(', ');
-        const collision = { code: 'build.outPathCollision' as const, args: [outRel, list] };
-        // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.
-        void ctx.connection.sendDiagnostics({
-          uri: fl.uri,
-          diagnostics: [...lineDiags, fileLevelError(collision)],
-        });
-        yield { kind: 'error', error: { book: fl.fileRel, uri: fl.uri, ...collision } };
-        continue;
-      }
-
-      void ctx.connection.sendDiagnostics({ uri: fl.uri, diagnostics: lineDiags });
-      // An Error line or a missing key fails the book whatever the format; the first Error line
-      // is the root cause (a `cover: value` line reports itself, not the items it orphaned).
-      const verdict = checkJpbook(parsed);
-      if (!verdict.ok) {
-        yield { kind: 'error', error: { book: fl.fileRel, uri: fl.uri, ...verdict.error } };
-        continue;
-      }
-      // The divider and the タイトル／ペンネーム values are BODY-side inputs and ride the
-      // BookInput; composeBookChrome carries only the page furniture. Covers are html-only, so a
-      // missing cover file cannot fail a txt/epub build; chapters read first, so a book missing
-      // both reports the same error whichever format is built.
-      const { meta } = verdict;
-      const bookFiles = await readBookFiles(ctx, target.rootUri, parsed.lines, token);
-      const coverFiles = selection.format === 'html' ? await readCoverFiles(ctx, target.rootUri, parsed.lines, token) : [];
-      const input: TitledBook = {
-        ...bookFiles,
-        divider: meta.divider,
-        title: meta.title,
-        author: meta.author,
-        ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
-      };
-      yield { kind: 'artifact', outDir: target.outDirUri, artifact: emitArtifact(target.outDirUri, selection, outRel, input, meta) };
-    } catch (cause) {
-      yield { kind: 'error', error: { book: fl.fileRel, uri: fl.uri, ...toBuildMessage(cause) } };
-    }
+    // The divider and the タイトル／ペンネーム values are BODY-side inputs and ride the
+    // BookInput; composeBookChrome carries only the page furniture. Covers are html-only, so a
+    // missing cover file cannot fail a txt/epub build; chapters read first, so a book missing
+    // both reports the same error whichever format is built.
+    const { meta } = verdict;
+    const files = await readEntries(ctx, dirUri, parsed.lines, 'ok', token);
+    const coverFiles = selection.format === 'html' ? await readEntries(ctx, dirUri, parsed.lines, 'coverEntry', token) : [];
+    const input: TitledBook = {
+      files,
+      divider: meta.divider,
+      title: meta.title,
+      author: meta.author,
+      ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
+    };
+    return { kind: 'artifact', outDir: book.outDirUri, artifact: emitArtifact(book.outDirUri, selection, stemOf(book.uri), input, meta) };
+  } catch (cause) {
+    return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...toBuildMessage(cause) } };
   }
 }
 
 /**
- * Resolves one configured project dir against its root: a contained relative path becomes
- * its absolute URI; anything invalid (empty / absolute / escaping / `.` …) silently falls
- * back to the default.
- */
-function resolveProjectDir(rootUri: string, value: string, fallback: string): string {
-  const resolved = resolveContained(rootUri, value);
-  // The defaults are single-segment relative paths, so this join cannot escape the root.
-  return resolved.ok ? resolved.abs : childUri(rootUri, fallback);
-}
-
-/**
- * The roots a request targets: every `file:` entry of `projectDirs` with its output dir resolved —
- * the map is the SOLE source of buildable roots. A virtual-fs tree cannot be enumerated, so such
- * a root yields no books.
- */
-function targetRoots(projectDirs: ProjectDirsMap): ProjectRoot[] {
-  const resolved = Object.entries(projectDirs)
-    .map(([rawUri, dirs]) => {
-      const rootUri = normalizeRootUri(rawUri);
-      return { rootUri, outDirUri: resolveProjectDir(rootUri, dirs.outDir, PROJECT_DEFAULT.outDir) };
-    })
-    .filter(({ rootUri }) => isFileScheme(rootUri));
-  const skipDirs = new Set(resolved.flatMap((r) => [r.rootUri, r.outDirUri]).map((uri) => dirKey(fileURLToPath(uri))));
-  return resolved.map((r) => ({ ...r, skipDirs }));
-}
-
-/**
- * Handles `jpnov/build` for every root in `projectDirs`. Reports coarse
- * `$/progress` via the supplied work-done reporter (one tick per root). The result is
- * `ok` when no build-level errors were collected; per-book errors are surfaced in
- * `errors[]` and as diagnostics on each offending `.jpbook`. A cancelled `token` makes it
- * stop between books and return what's done — the client has stopped listening, so no
- * RequestCancelled is raised.
+ * Handles `jpnov/build` for every book the request names. Reports coarse `$/progress` via the
+ * supplied work-done reporter (one tick per book). The result is `ok` when no error was
+ * collected; per-book errors are surfaced in `errors[]` and as diagnostics on each offending
+ * `.jpbook`. A cancelled `token` makes it stop between books and return what's done — the
+ * client has stopped listening, so no RequestCancelled is raised.
  */
 export async function handleBuild(
   ctx: ServerContext,
@@ -405,7 +390,8 @@ export async function handleBuild(
   progress?: WorkDoneProgressReporter,
   token?: CancellationToken,
 ): Promise<BuildResult> {
-  const roots = targetRoots(params.projectDirs);
+  const books = await bookTargets(params);
+  const collisions = collisionsOf(books);
   const artifacts: BuildArtifact[] = [];
   const outDirs = new Set<string>();
   const errors: BuildError[] = [];
@@ -413,7 +399,7 @@ export async function handleBuild(
   // `books` ABSENT => build every discovered book; PRESENT (even empty `[]`, which is truthy)
   // => restrict to exactly that set, so an empty selection legitimately builds nothing.
   // Settings are re-resolved once here (clamp + enum coercion of the untrusted payload)
-  // and shared by every root in this build.
+  // and shared by every book in this build.
   const selection: BuildSelection = {
     books: params.books ? new Set(params.books) : undefined,
     format: params.format,
@@ -424,28 +410,22 @@ export async function handleBuild(
   // its own localized progress notification, so begin with no English label.
   progress?.begin('', 0, undefined, false);
 
-  for (const [index, target] of roots.entries()) {
+  for (const [index, book] of books.entries()) {
     if (token?.isCancellationRequested) {
       break;
     }
-    try {
-      // for-await (not Array.fromAsync) so outputs yielded before a mid-root throw are kept;
-      // the throw itself (book discovery, iteration) becomes a root-level error.
-      for await (const output of buildRoot(ctx, target, selection, token)) {
-        if (token?.isCancellationRequested) {
-          break;
-        }
-        if (output.kind === 'artifact') {
-          artifacts.push(output.artifact);
-          outDirs.add(output.outDir);
-        } else {
-          errors.push(output.error);
-        }
-      }
-    } catch (cause) {
-      errors.push({ book: target.rootUri, ...toBuildMessage(cause) });
+    // Subset build: skip books outside the requested set entirely (no read, no diagnostics).
+    if (selection.books && !selection.books.has(book.uri)) {
+      continue;
     }
-    progress?.report(Math.round(((index + 1) / roots.length) * 100));
+    const output = await buildBook(ctx, book, selection, collisions.get(book.uri), token);
+    if (output?.kind === 'artifact') {
+      artifacts.push(output.artifact);
+      outDirs.add(output.outDir);
+    } else if (output !== null) {
+      errors.push(output.error);
+    }
+    progress?.report(Math.round(((index + 1) / books.length) * 100));
   }
 
   progress?.done();
@@ -455,25 +435,21 @@ export async function handleBuild(
 }
 
 /**
- * Handles `jpnov/listBooks`: enumerates every `*.jpbook` under each targeted root as a
- * {@link BookEntry} for the client's Books panel. Each file is read ONCE, through the client
- * like a build, for its `title` (display metadata; an unreadable file simply lists
- * untitled) — but no diagnostics and no output-path collision check (those belong to an actual build).
+ * Handles `jpnov/listBooks`: every book the request names as a {@link BookEntry} for the
+ * client's Books panel. Each file is read ONCE, through the client like a build, for its
+ * `title` (display metadata; an unreadable file simply lists untitled) — but no diagnostics
+ * (those belong to an actual build).
  */
 export async function handleListBooks(ctx: ServerContext, params: ListBooksParams): Promise<ListBooksResult> {
-  const perRoot = await Promise.all(targetRoots(params.projectDirs).map(async (target) => {
-    const jpbooks = await discoverJpbooks(target);
-    return Promise.all(jpbooks.map(async (fl): Promise<BookEntry> => {
-      const reply = await ctx.readText(fl.uri);
-      const title = reply.ok ? parseJpbook(reply.text).meta.title : undefined;
-      return {
-        uri: fl.uri,
-        rootUri: target.rootUri,
-        fileRel: fl.fileRel,
-        outRel: jpbookOutRel(fl.fileRel),
-        ...(title !== undefined ? { title } : {}),
-      };
-    }));
+  const books = await Promise.all((await bookTargets(params)).map(async (book): Promise<BookEntry> => {
+    const reply = await ctx.readText(book.uri);
+    const title = reply.ok ? parseJpbook(reply.text).meta.title : undefined;
+    return {
+      uri: book.uri,
+      rootUri: book.rootUri,
+      fileRel: book.fileRel,
+      ...(title !== undefined ? { title } : {}),
+    };
   }));
-  return { books: perRoot.flat() };
+  return { books };
 }

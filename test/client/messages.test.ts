@@ -26,11 +26,10 @@ const { renderMessage } = await import('../../src/client/messages.ts');
 // Representative args per code. `Record<MsgCode, ...>` forces an entry for EVERY code, so adding a
 // new MsgCode without a case here is a COMPILE error — keeping the guard exhaustive.
 const ARGS: Record<MsgCode, readonly (string | number)[]> = {
-  'book.entryNeedsFileScheme': ['a.jpnov'],
   'book.entryFileNotFound': ['a.jpnov'],
   'book.entryReadFailed': ['a.jpnov', 'EACCES: permission denied'],
   'book.entryNotText': ['a.jpnov'],
-  'build.outPathCollision': ['vol1', 'a.jpbook, b.jpbook'],
+  'build.outPathCollision': ['dist/index.html', 'a/index.jpbook, b/index.jpbook'],
   'build.failed': ['boom'],
   'jpbook.backslashSeparator': ['sub\\a.jpnov'],
   'jpbook.notJpnov': ['note.md'],
@@ -46,13 +45,6 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'jpbook.versionUnsupported': ['2', '1'],
   'jpbook.metaEmptyValue': ['title'],
   'jpbook.coverItemWithoutKey': ['- cover.jpnov'],
-  'jpbook.coverNeedsList': ['cover: 表紙.jpnov'],
-  'path.empty': [],
-  'path.rootDot': [],
-  'path.homeRelative': [],
-  'path.absolute': [],
-  'path.invalid': [],
-  'path.escapesRoot': [],
   'syntax.unclosedAnnotation': [],
   'syntax.unterminatedBlock': [],
   'syntax.danglingBlockEnd': [],

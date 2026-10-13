@@ -360,13 +360,35 @@ test('appendEntries(covers) follows a CRLF document', () => {
   assert.equal(apply(noKey, [e2]), 'title: t\r\ncover:\r\n  - b.jpnov\r\n---\r\n');
 });
 
-test('appendEntries(covers) leaves a `cover: value` error line alone and opens a real list', () => {
+test('appendEntries(covers) extends a list opened by an inline `cover: path`, mirroring its `- ` items', () => {
   const text = 'cover: a.jpnov\n---\n';
   const edit = appendEntries(text, 'covers', ['b.jpnov']);
   assert.ok(edit);
   const out = apply(text, [edit]);
-  assert.equal(out, 'cover: a.jpnov\ncover:\n  - b.jpnov\n---\n');
-  assert.deepEqual(kindsOf(out), ['error', 'cover', 'coverEntry', 'fence', 'blank']);
+  assert.equal(out, 'cover: a.jpnov\n  - b.jpnov\n---\n');
+  assert.deepEqual(kindsOf(out), ['coverEntry', 'coverEntry', 'fence', 'blank']);
+  assert.equal(appendEntries(text, 'covers', ['a.jpnov']), null);
+  const items = 'cover: a.jpnov\n- b.jpnov\n---\n';
+  const e2 = appendEntries(items, 'covers', ['c.jpnov']);
+  assert.ok(e2);
+  assert.equal(apply(items, [e2]), 'cover: a.jpnov\n- b.jpnov\n- c.jpnov\n---\n');
+});
+
+test('removeEntry and moveEntryTo keep the list open around an inline `cover: path`', () => {
+  const text = 'cover: a.jpnov\n  - b.jpnov\n---\n';
+  const removed = removeEntry(text, 'covers', 0);
+  assert.ok(removed);
+  assert.equal(apply(text, [removed]), 'cover:\n  - b.jpnov\n---\n');
+  // The inline entry travels as a `- ` item.
+  const toEnd = moveEntryTo(text, 'covers', 0, null);
+  assert.ok(toEnd);
+  assert.equal(apply(text, toEnd), 'cover:\n  - b.jpnov\n  - a.jpnov\n---\n');
+  // Moving before it turns it into an item under a bare key.
+  const before = moveEntryTo(text, 'covers', 1, 0);
+  assert.ok(before);
+  assert.equal(apply(text, before), 'cover:\n  - b.jpnov\n  - a.jpnov\n---\n');
+  assert.deepEqual(entryLines(parseJpbook(text).lines, 'covers'), [0, 1]);
+  assert.equal(resolveEntry(parseJpbook(text).lines, 'covers', { line: 0, path: 'a.jpnov' }), 0);
 });
 
 test('appendEntries(covers) extends the OPEN list; a muted second list is neither anchor nor dedupe source', () => {

@@ -1,3 +1,5 @@
+import { OUT_DIR_DEFAULT, WORKSPACE_FOLDER_TOKEN } from './validate.ts';
+
 /**
  * Inclusive bounds for `jpnov.layout.charsPerLine` / `jpnov.layout.linesPerPage`.
  */
@@ -68,9 +70,8 @@ export const LAYOUT_DEFAULT: LayoutSettings = {
 };
 
 /**
- * `jpnov.layout.outDir` defaults — the single source for the schema defaults and the server's
- * silent fallback when a configured path fails containment; the config-codegen test locks
- * package.json to these values. A single-segment relative path, so resolving it against
- * any root always stays inside it.
+ * `jpnov.layout.outDir` defaults as setting values — the single source for the schema defaults;
+ * the config-codegen test locks package.json to them. The server's silent fallback is the parsed
+ * form, {@link OUT_DIR_DEFAULT}.
  */
-export const PROJECT_DEFAULT = { outDir: 'dist' } as const;
+export const PROJECT_DEFAULT = { outDir: `${WORKSPACE_FOLDER_TOKEN}/${OUT_DIR_DEFAULT.rel}` } as const;

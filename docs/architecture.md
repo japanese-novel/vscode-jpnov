@@ -179,29 +179,35 @@ belongs to the IR must not reach the stages above it.
 
 ## Books and workspace folders
 
+Everything about a book comes from the directory of its `.jpbook`. Its entries
+count from there, as an `import` counts from its module: `../` goes up, and
+nothing stops it at a workspace folder. Its output folder is that directory
+joined with `jpnov.layout.outDir` (a `${workspaceFolder}/…` value, the default
+included, joins onto the book's root instead, and onto the book's directory
+when it has none), and its output name is its own file name.
+The same file means the same book whichever folder is open, and with none.
+
 A root is a workspace folder, and a folder nested in another is a root of its
-own. A book has one root: the innermost root that contains its `.jpbook`. VS Code
-picks the folder of a file the same way, for its settings and for
-`getWorkspaceFolder`.
+own. A root decides three things only: which `.jpbook` files discovery finds
+(the walk stops at every other root, at dot-folders and at `node_modules`), the group a
+book is listed under, and the `outDir` value of the books found under it. A
+`.jpbook` open in the editor that no root contains is listed too, with the
+`outDir` the client reads for its uri (`rootUri: null`, the 「開いているファイル」
+group). The folder a chapter sits in decides only the settings of that file:
+the narration vocabulary it is highlighted with, the encoding it is read in.
 
-Everything about a book comes from that root: where its entries count from, what
-they may not escape, the group it is listed under, its output path and its output
-folder. An entry may name a file inside a nested root. The folder a chapter sits
-in decides only the settings of that file: the narration vocabulary it is
-highlighted with, the encoding it is read in.
+Each reader takes the book's directory from one place:
 
-Each reader takes the root from one place:
-
-| Reader | Takes the root from |
+| Reader | Takes the directory from |
 | --- | --- |
-| The list and the builds (`src/server/build.ts`) | the walk that reached the book; a walk stops at every other root |
-| An open `.jpbook` (`src/server/server.ts`) | `WorkspaceRoots.rootOf` |
-| The Books view (`src/client/book/`) | `BookEntry.rootUri`, as the server listed it |
-| Rename tracking (`src/client/book/tracking.ts`) | `getWorkspaceFolder` of the book |
+| The list and the builds (`src/server/build.ts`) | `parentUri(book.uri)`, the book discovered or sent open |
+| An open `.jpbook` (`src/server/server.ts`) | `parentUri(doc.uri)` |
+| The Books view and 「章を追加…」 (`src/client/book/`) | `BookEntry.uri`; `rootUri` only names the group |
+| Rename tracking (`src/client/book/tracking.ts`) | the book's own path after the event, mapped back through the renames for the path before |
 
 The client never asks VS Code for a workspace-relative path. `asRelativePath`
-counts from the innermost folder of the file it is given, and that file is the
-chapter.
+counts from the workspace folder of the file it is given; a book entry counts
+from the directory of its `.jpbook`.
 
 ## What keeps this true
 
@@ -223,8 +229,9 @@ chapter.
 - **The dual of the text build** (`test/shared/compiler/document.test.ts`):
   rendering the concatenated text gives the pages that rendering the chapters
   gave.
-- **The root of a book** (`eslint.config.mjs`, `test/server/build.test.ts`):
-  `src/client/` may not call `asRelativePath`, and the tests hold the list and the
-  builds to the root the editor resolves the same book against.
+- **The directory of a book** (`eslint.config.mjs`, `test/server/build.test.ts`):
+  `src/client/` may not call `asRelativePath` (it counts from the folder; a book
+  entry counts from the `.jpbook`), and the tests hold the list and the builds to
+  the book's own directory, the one the editor resolves the same book against.
 - **End to end** (`test/e2e/`): the bundled server over LSP, and the pages it
   renders in a headless browser.

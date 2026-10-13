@@ -11,7 +11,7 @@ import {
   entryIdentity,
   KNOWN_KEYS,
   isCover,
-  jpbookOutRel,
+  isInlineCover,
   HEADER,
   JPBOOK_VERSION,
   META_KEYS,
@@ -110,7 +110,12 @@ test('parseJpbook marks later exact repeats as duplicate; first stays ok', () =>
   assert.deepEqual(chapterKinds('a.jpnov\nb.jpnov\na.jpnov'), ['ok', 'ok', 'duplicate']);
 });
 
-test('parseJpbook dedupes by entryIdentity: ./, empty segments and NFC name one file (#86)', () => {
+test('parseJpbook dedupes by entryIdentity: ./, empty segments, a folded .. and NFC name one file (#86, #193)', () => {
+  assert.deepEqual(chapterKinds('a.jpnov\nx/../a.jpnov'), ['ok', 'duplicate']);
+  // A path above the book is its own entry; two spellings of it are one.
+  assert.deepEqual(chapterKinds('a.jpnov\n../a.jpnov\n../x/../a.jpnov'), ['ok', 'ok', 'duplicate']);
+  assert.equal(entryIdentity('x/../a.jpnov'), 'a.jpnov');
+  assert.equal(entryIdentity('../x/../a.jpnov'), '../a.jpnov');
   assert.deepEqual(chapterKinds('a.jpnov\n./a.jpnov\nb//c.jpnov\nb/c.jpnov\nが.jpnov\nが.jpnov'), [
     'ok', 'duplicate', 'ok', 'duplicate', 'ok', 'duplicate',
   ]);
@@ -357,20 +362,20 @@ test('cover: a bare key opens a list of "- " items; the body still parses', () =
   ]);
 });
 
-test('cover: a value on the key line is an error steering to the list form', () => {
-  // ONE spelling: a `key: value` paints as a string, where VS Code withholds completion.
-  const NEEDS_LIST = (value: string): JpbookLineKind => ({
-    error: { code: 'jpbook.coverNeedsList', args: [value] },
+test('cover: a value on the key line opens the list and is its first item', () => {
+  assert.deepEqual(kinds('cover: c.jpnov\n'), ['coverEntry', 'blank']);
+  assert.deepEqual(kinds('cover: c.jpnov\n- c2.jpnov\n'), ['coverEntry', 'coverEntry', 'blank']);
+  assert.deepEqual(kinds('cover: c.jpnov\n- c.jpnov\n'), ['coverEntry', 'coverDuplicate', 'blank']);
+  // The key is taken either way: a second key, valued or bare, is a muted duplicate.
+  assert.deepEqual(kinds('cover: c.jpnov\ncover:\n- c2.jpnov\n'), ['coverEntry', DUP_COVER, DUP_COVER, 'blank']);
+  assert.deepEqual(kinds('cover:\ncover: c.jpnov\n'), ['cover', DUP_COVER, 'blank']);
+  // A bad value still opens the list and reports itself, quoting the whole line.
+  assert.deepEqual(kinds('cover: note.md\n- c.jpnov\n'), [
+    { error: { code: 'jpbook.notJpnov', args: ['cover: note.md'] } }, 'coverEntry', 'blank',
+  ]);
+  assert.deepEqual(parse('cover: sub\\c.jpnov\n').lines[0]?.kind, {
+    error: { code: 'jpbook.backslashSeparator', args: ['cover: sub\\c.jpnov'] },
   });
-  assert.deepEqual(kinds('cover: c.jpnov\n'), [NEEDS_LIST('cover: c.jpnov'), 'blank']);
-  // The rejected key opens nothing…
-  assert.deepEqual(kinds('cover: c.jpnov\n- c2.jpnov\n'), [
-    NEEDS_LIST('cover: c.jpnov'), ORPHAN('- c2.jpnov'), 'blank',
-  ]);
-  // …and does not consume the key, so a real list still works below it.
-  assert.deepEqual(kinds('cover: c.jpnov\ncover:\n- c2.jpnov\n'), [
-    NEEDS_LIST('cover: c.jpnov'), 'cover', 'coverEntry', 'blank',
-  ]);
 });
 
 test('cover: an item with no open list is an error; the fence and any other key close one', () => {
@@ -401,9 +406,7 @@ test('cover: items take a full-width dash and need no space after it', () => {
 
 test('cover: the key takes a full-width colon like every other key', () => {
   assert.deepEqual(kinds('cover：\n- c.jpnov\n'), ['cover', 'coverEntry', 'blank']);
-  assert.deepEqual(parse('cover：c.jpnov\n').lines[0]?.kind, {
-    error: { code: 'jpbook.coverNeedsList', args: ['cover：c.jpnov'] },
-  });
+  assert.deepEqual(kinds('cover：c.jpnov\n'), ['coverEntry', 'blank']);
 });
 
 test('cover: item paths validate like chapter paths, quoting the line an item stands on', () => {
@@ -442,11 +445,10 @@ test('cover: repeats dedupe among covers only — a chapter may also be a cover'
   assert.deepEqual(kinds('cover:\n- a.jpnov\n---\na.jpnov\n'), ['cover', 'coverEntry', 'fence', 'ok', 'blank']);
 });
 
-test('cover: a duplicate key warns; a duplicate bare key mutes its items (no orphan cascade)', () => {
+test('cover: a duplicate key warns and mutes its items (no orphan cascade)', () => {
   assert.deepEqual(kinds('cover:\n- c1.jpnov\ncover:\n- c2.jpnov\n'), [
     'cover', 'coverEntry', DUP_COVER, DUP_COVER, 'blank',
   ]);
-  // A second BARE key is the only duplicate shape left; each `cover: value` line is its own error.
   assert.deepEqual(kinds('cover:\ncover:\n'), ['cover', DUP_COVER, 'blank']);
 });
 
@@ -473,13 +475,28 @@ test('coverPathOf returns null for the bare key line (no path to point at)', () 
   assert.ok(key);
   assert.equal(key.kind, 'cover');
   assert.equal(isCover(key), false);
+  assert.equal(isInlineCover(key), false);
   assert.equal(coverPathOf(key), null);
+});
+
+test('coverPathOf spans the value of an inline cover: key line, past the colon and its whitespace', () => {
+  const lines = parse('cover: src/c.jpnov\n  cover：  c.jpnov\n- d.jpnov\n').lines;
+  const [inline, wide, item] = lines;
+  assert.ok(inline && wide && item);
+  assert.deepEqual(coverPathOf(inline), { value: 'src/c.jpnov', range: { startChar: 7, endChar: 18 } });
+  assert.ok(isInlineCover(inline));
+  // The second key is a muted duplicate: no path to point at, however it is written.
+  assert.equal(coverPathOf(wide), null);
+  assert.equal(isInlineCover(item), false);
+  const indented = parse('  cover：  c.jpnov\n').lines[0];
+  assert.ok(indented);
+  assert.deepEqual(coverPathOf(indented), { value: 'c.jpnov', range: { startChar: 10, endChar: 17 } });
 });
 
 // --- writtenKeysOf -----------------------------------------------------------
 
 test('writtenKeysOf: the keys of every metadata line (in Error or not), chapters excluded, a line opted out', () => {
-  const parsed = parse('title:\nTitle: x\nfooterAlign: bad\ncover:\n- c.jpnov\ntitle: y\n---\na.jpnov\nheader: h\n');
+  const parsed = parse('title:\nTitle: x\nfooterAlign: bad\ncover: c0.jpnov\n- c.jpnov\ntitle: y\n---\na.jpnov\nheader: h\n');
   // Every key as written; completion only ever asks about the known ones.
   assert.deepEqual([...writtenKeysOf(parsed)], ['title', 'Title', 'footerAlign', 'cover']);
   assert.deepEqual([...writtenKeysOf(parsed, 0)], ['Title', 'footerAlign', 'cover', 'title']);
@@ -549,10 +566,11 @@ test('checkJpbook: the first Error line in document order (the root cause, not i
     ok: false,
     error: { code: 'jpbook.notJpnov', args: ['b.txt'] },
   });
-  // A `cover: value` line comes before the orphan items it leaves behind.
-  assert.deepEqual(checkJpbook(parseJpbook(`${metaWith('cover: x.jpnov\n- y.jpnov')}a.jpnov`)), {
+  // A `cover: value` line is an entry; a bad value on it is the first error.
+  assert.equal(checkJpbook(parseJpbook(`${metaWith('cover: x.jpnov\n- y.jpnov')}a.jpnov`)).ok, true);
+  assert.deepEqual(checkJpbook(parseJpbook(`${metaWith('cover: note.md\n- y.jpnov')}a.jpnov`)), {
     ok: false,
-    error: { code: 'jpbook.coverNeedsList', args: ['cover: x.jpnov'] },
+    error: { code: 'jpbook.notJpnov', args: ['cover: note.md'] },
   });
 });
 
@@ -604,32 +622,6 @@ test('composeBookChrome: the metadata values are the furniture, as written; the 
   const hidden = composeBookChrome(BASE, { header: '', headerAlign: 'center', footer: '', footerAlign: 'right' });
   assert.equal(hidden.header, '');
   assert.equal(hidden.footer, '');
-});
-
-// --- jpbookOutRel --------------------------------------------------------
-
-test('jpbookOutRel: flat name maps to its stem', () => {
-  assert.equal(jpbookOutRel('volume01.jpbook'), 'volume01');
-});
-
-test('jpbookOutRel: index collapses to the parent directory', () => {
-  assert.equal(jpbookOutRel('volume01/index.jpbook'), 'volume01');
-  assert.equal(jpbookOutRel('part1/vol2/index.jpbook'), 'part1/vol2');
-});
-
-test('jpbookOutRel: nested segments path-join (mirror the source tree)', () => {
-  assert.equal(jpbookOutRel('part1/vol2.jpbook'), 'part1/vol2');
-  assert.equal(jpbookOutRel('a/b/c.jpbook'), 'a/b/c');
-  assert.equal(jpbookOutRel('part1\\vol2.jpbook'), 'part1/vol2');
-  assert.equal(jpbookOutRel('01-volume/01-volume/index.jpbook'), '01-volume/01-volume');
-});
-
-test('jpbookOutRel: root-level index keeps index (no parent)', () => {
-  assert.equal(jpbookOutRel('index.jpbook'), 'index');
-});
-
-test('jpbookOutRel collision: index form and flat form produce the same path', () => {
-  assert.equal(jpbookOutRel('volume01/index.jpbook'), jpbookOutRel('volume01.jpbook'));
 });
 
 // --- completeEntryLine --------------------------------------------------

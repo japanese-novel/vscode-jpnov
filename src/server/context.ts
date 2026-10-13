@@ -12,7 +12,6 @@ import type { RuleSelection } from '#/shared/lint/select.ts';
 import type { ReadTextResult } from '#/shared/protocol.ts';
 
 import type { HighlightStore } from './highlight/vocabulary.ts';
-import type { WorkspaceRoots } from './roots.ts';
 
 /** Text of one `file:` URI as the client decodes it (`jpnov/readText`); tests inject a Node reader. */
 export type ReadText = (uri: string, token?: CancellationToken) => Promise<ReadTextResult>;
@@ -31,6 +30,4 @@ export interface ServerContext {
   lintSelection: RuleSelection;
   /** Per-root narration vocabulary (characters/keywords), fed by the client's `jpnov.editor.highlight.*` pushes. */
   readonly highlight: HighlightStore;
-  /** Workspace folders (standard LSP), for root-relative `.jpbook` entry resolution. */
-  readonly roots: WorkspaceRoots;
 }
