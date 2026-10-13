@@ -3,7 +3,7 @@
  * and the management commands (`manage.ts`) so neither has to import the other for types. The
  * provider synthesizes one of these from a webview message and dispatches it to the matching
  * `jpbook.*` command; `manage.ts` narrows on `kind`. `list` names one of the book's two entry
- * lists (chapters / covers); `meta` carries one of the fixed front-matter keys (META_KEYS) and
+ * lists (chapters / covers); `meta` carries one of the fixed metadata keys (META_KEYS) and
  * its current value; `entry` carries the row as the panel rendered it (`line`, `path`, document
  * `version`), which the command checks against the live text.
  */

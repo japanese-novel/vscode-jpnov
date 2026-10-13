@@ -94,7 +94,7 @@ novel-sample/
 ├── 第一章.jpnov        ← paste the source below
 ├── 第二章.jpnov        ← a few plain lines are enough
 ├── 表紙.jpnov          ← the cover sample from README「応募用の表紙と扉」
-├── 作品集.jpbook       ← the front-mattered sample below
+├── 作品集.jpbook       ← the sample below
 └── .vscode/settings.json
 ```
 
@@ -110,10 +110,13 @@ novel-sample/
 `作品集.jpbook` source:
 
 ```
----
+jpbook/1
 title: My 作品集
 author: みんな
 header: 作品集　その一
+headerAlign: center
+footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
+footerAlign: right
 divider: ＊　＊　＊
 cover:
   - 表紙.jpnov

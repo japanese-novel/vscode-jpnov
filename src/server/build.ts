@@ -6,10 +6,10 @@
  *   root, the innermost — the folder the live editor features resolve against;
  * - two book files that derive the same output path (`jpbookOutRel`) are a build error and
  *   neither is emitted;
- * - a `.jpbook` with an Error line is that book's build error (the first such line's message);
- *   the book is never built partially;
+ * - a `.jpbook` with an Error line, or with a required key missing, is that book's build error
+ *   (the first such line's message, else the missing keys); the book is never built partially;
  * - `.jpbook` entries resolve against the WORKSPACE FOLDER ROOT (the same base the live editor
- *   features use), and page furniture comes from each book's OWN front matter
+ *   features use), and page furniture comes from each book's OWN metadata
  *   (`composeBookChrome`), so one batch build carries a different header per volume;
  * - the server never touches `vscode.fs` nor decodes bytes: manuscript text arrives through
  *   `jpnov/readText` (the client answers with the text the editor shows) and artifacts leave
@@ -22,13 +22,11 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken, WorkDoneProgressReporter } from 'vscode-languageserver/node';
 
-import { displayText } from '#/shared/chars.ts';
-import { composeBookChrome, coverPathOf, firstErrorOf, jpbookOutRel, parseJpbook } from '#/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, coverPathOf, jpbookOutRel, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedLine } from '#/shared/book/jpbook.ts';
 import { concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { BookInput, TitledBook } from '#/shared/compiler/document.ts';
-import { chapterStem, epubMembers } from '#/shared/compiler/epub.ts';
-import { nonBlank } from '#/shared/compiler/reflow.ts';
+import { epubMembers } from '#/shared/compiler/epub.ts';
 import { errorText } from '#/shared/errors.ts';
 import { LocalizedError } from '#/shared/messages.ts';
 import { resolveHtmlSettings } from '#/shared/config/settings.ts';
@@ -139,7 +137,7 @@ async function* walkJpbooks(dirUri: string, dirPath: string, dirRel: string, ski
 }
 
 /**
- * Reads the `ok` entries of one parsed `.jpbook` in order (skipping blank/front-matter/
+ * Reads the `ok` entries of one parsed `.jpbook` in order (skipping blank/metadata/
  * duplicate lines; an Error line has already failed the book in {@link buildRoot}), each
  * resolved relative to the WORKSPACE FOLDER ROOT and read through the client, into the shape
  * {@link renderBook} consumes. Throws on the first escaping/unreadable/missing entry so the
@@ -250,7 +248,7 @@ function emitArtifact(
       };
     case 'html':
       // Grid geometry and 禁則 come from the request's settings snapshot; the page furniture
-      // is composed per book from its own front matter (this is what lets one batch build
+      // is composed per book from its own metadata (this is what lets one batch build
       // carry a different header per volume).
       return {
         kind: 'html',
@@ -287,11 +285,6 @@ function emitArtifact(
       throw new Error(`emitArtifact: unhandled format ${JSON.stringify(exhaustive)}`);
     }
   }
-}
-
-/** Whether a title or an author is written and shows something in an output. */
-function shows(value: string | undefined): value is string {
-  return value !== undefined && nonBlank(displayText(value)) !== null;
 }
 
 /**
@@ -343,30 +336,28 @@ async function* buildRoot(
       }
 
       void ctx.connection.sendDiagnostics({ uri: fl.uri, diagnostics: lineDiags });
-      // An Error line fails the book whatever the format; the first one is the root cause (an
-      // unclosed front matter reports its fence, not the chapter lines it swallowed).
-      const lineError = firstErrorOf(parsed.lines);
-      if (lineError !== null) {
-        yield { kind: 'error', error: { book: fl.fileRel, uri: fl.uri, ...lineError } };
+      // An Error line or a missing key fails the book whatever the format; the first Error line
+      // is the root cause (a `cover: value` line reports itself, not the items it orphaned).
+      const verdict = checkJpbook(parsed);
+      if (!verdict.ok) {
+        yield { kind: 'error', error: { book: fl.fileRel, uri: fl.uri, ...verdict.error } };
         continue;
       }
       // The divider and the タイトル／ペンネーム values are BODY-side inputs and ride the
-      // BookInput (a title that is missing or shows nothing gives way to the stem of the output
-      // name, and such an author counts as unset, decided here for every format);
-      // composeBookChrome carries only the page furniture. Covers are html-only, so a missing
-      // cover file cannot fail a txt/epub build; chapters read first, so a book missing both
-      // reports the same error whichever format is built.
-      const { title, author } = parsed.meta;
+      // BookInput; composeBookChrome carries only the page furniture. Covers are html-only, so a
+      // missing cover file cannot fail a txt/epub build; chapters read first, so a book missing
+      // both reports the same error whichever format is built.
+      const { meta } = verdict;
       const bookFiles = await readBookFiles(ctx, target.rootUri, parsed.lines, token);
       const coverFiles = selection.format === 'html' ? await readCoverFiles(ctx, target.rootUri, parsed.lines, token) : [];
       const input: TitledBook = {
         ...bookFiles,
-        divider: parsed.meta.divider,
-        title: shows(title) ? title : chapterStem(outRel),
-        author: shows(author) ? author : undefined,
+        divider: meta.divider,
+        title: meta.title,
+        author: meta.author,
         ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
       };
-      yield { kind: 'artifact', outDir: target.outDirUri, artifact: emitArtifact(target.outDirUri, selection, outRel, input, parsed.meta) };
+      yield { kind: 'artifact', outDir: target.outDirUri, artifact: emitArtifact(target.outDirUri, selection, outRel, input, meta) };
     } catch (cause) {
       yield { kind: 'error', error: { book: fl.fileRel, uri: fl.uri, ...toBuildMessage(cause) } };
     }
@@ -466,7 +457,7 @@ export async function handleBuild(
 /**
  * Handles `jpnov/listBooks`: enumerates every `*.jpbook` under each targeted root as a
  * {@link BookEntry} for the client's Books panel. Each file is read ONCE, through the client
- * like a build, for its front-matter `title` (display metadata; an unreadable file simply lists
+ * like a build, for its `title` (display metadata; an unreadable file simply lists
  * untitled) — but no diagnostics and no output-path collision check (those belong to an actual build).
  */
 export async function handleListBooks(ctx: ServerContext, params: ListBooksParams): Promise<ListBooksResult> {

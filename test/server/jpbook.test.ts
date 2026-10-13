@@ -10,31 +10,41 @@ import assert from 'node:assert/strict';
 import { CompletionItemKind, DiagnosticSeverity } from 'vscode-languageserver/node';
 
 import { INDENT_MAX, indentAnnotation } from '../../src/shared/ast/notation.ts';
-import { parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { HEADER, JPBOOK_VERSION, parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import {
   completeJpbook,
   diagnoseJpbook,
   documentLinksForJpbook,
 } from '../../src/server/jpbook.ts';
 import { INDENT_TOO_LARGE } from '../../src/server/syntax.ts';
+import { FENCE_LINE, HEAD, meta, metaBody, metaLineOf, metaWith } from '../shared/book/_fixture.ts';
 import { makeTmpWorkspace, writeUnder } from './helpers.ts';
 
-/** Single-line completion helper: the parse and the line are the same one-liner. */
+const DIVIDER_LINE = metaLineOf('divider');
+
+/** Chapter-line completion helper: `line` is the second chapter, so only paths are offered. */
 function completeLine(rootUri: string | null, line: string, character: number): ReturnType<typeof completeJpbook> {
-  return completeJpbook(rootUri, parseJpbook(line), line, { line: 0, character });
+  const doc = `${meta()}a.jpnov\n${line}`;
+  return completeJpbook(rootUri, parseJpbook(doc), line, { line: FENCE_LINE + 2, character });
+}
+
+/** The `{code}` each diagnostic carries in `.data` (the localized text lives client-side). */
+function codesOf(diags: readonly { data?: unknown }[]): string[] {
+  return diags.map((d) => (d.data as { code: string }).code);
 }
 
 test('diagnoseJpbook flags missing / directory / backslash / non-.jpnov as Error and dupes as Warning', async () => {
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'src/ok.jpnov', 'x');
   await writeUnder(ws.dir, 'adir.jpnov/keep', 'x'); // makes adir.jpnov a directory
-  const text = ['src/ok.jpnov', 'missing.jpnov', 'adir.jpnov', 'sub\\bad.jpnov', 'note.md', 'src/ok.jpnov', './src/ok.jpnov'].join('\n');
+  const text = meta() +
+    ['src/ok.jpnov', 'missing.jpnov', 'adir.jpnov', 'sub\\bad.jpnov', 'note.md', 'src/ok.jpnov', './src/ok.jpnov'].join('\n');
 
   const diags = await diagnoseJpbook(ws.uri, parseJpbook(text));
-  // The localized text lives client-side; each diagnostic carries its {code,args} in `.data`.
-  const codes = diags.map((d) => (d.data as { code: string }).code);
+  const codes = codesOf(diags);
 
-  assert.equal(diags.length, 6, 'src/ok.jpnov (first) produces no diagnostic');
+  assert.equal(diags.length, 6, 'the metadata and src/ok.jpnov (first) produce no diagnostic');
   assert.equal(diags.filter((d) => d.severity === DiagnosticSeverity.Error).length, 4);
   assert.equal(diags.filter((d) => d.severity === DiagnosticSeverity.Warning).length, 2); // the repeat, and its ./ spelling
   assert.ok(codes.includes('jpbook.fileNotFound')); // missing.jpnov
@@ -48,42 +58,107 @@ test('diagnoseJpbook flags missing / directory / backslash / non-.jpnov as Error
 
 test('diagnoseJpbook flags an entry escaping the workspace folder root', async () => {
   await using ws = await makeTmpWorkspace();
-  const diags = await diagnoseJpbook(ws.uri, parseJpbook('../outside.jpnov'));
+  const diags = await diagnoseJpbook(ws.uri, parseJpbook(`${meta()}../outside.jpnov`));
   assert.equal(diags.length, 1);
   assert.equal((diags[0]?.data as { code: string }).code, 'path.escapesRoot');
 });
 
-test('diagnoseJpbook surfaces front-matter warnings/errors with the metadata severities', async () => {
+test('diagnoseJpbook surfaces metadata warnings; a colon-less metadata line is an Error', async () => {
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'ok.jpnov', 'x');
-  const text = ['---', 'title: 一', 'publisher: x', 'title: 二', 'no colon here', '---', 'ok.jpnov'].join('\n');
+  const text = `${metaWith('publisher: x\ntitle: 二\nno colon here')}ok.jpnov`;
 
   const diags = await diagnoseJpbook(ws.uri, parseJpbook(text));
   const byCode = new Map(diags.map((d) => [(d.data as { code: string }).code, d]));
 
-  assert.equal(diags.length, 3, 'valid meta lines, fences, and the ok chapter stay silent');
+  assert.equal(diags.length, 3, 'valid meta lines and the ok chapter stay silent');
   assert.equal(byCode.get('jpbook.metaUnknownKey')?.severity, DiagnosticSeverity.Warning);
   assert.equal(byCode.get('jpbook.metaDuplicateKey')?.severity, DiagnosticSeverity.Warning);
   assert.equal(byCode.get('jpbook.metaNotKeyValue')?.severity, DiagnosticSeverity.Error);
+  assert.deepEqual((byCode.get('jpbook.metaNotKeyValue')?.data as { args: unknown[] }).args, ['no colon here']);
 });
 
-test('diagnoseJpbook flags an unterminated front matter even with NO owning root', async () => {
-  const diags = await diagnoseJpbook(null, parseJpbook('---\ntitle: t'));
-  assert.equal(diags.length, 1);
-  const only = diags[0];
-  assert.ok(only);
-  assert.equal((only.data as { code: string }).code, 'jpbook.metaUnterminated');
-  assert.equal(only.range.start.line, 0);
-  assert.equal(only.severity, DiagnosticSeverity.Error);
+test('diagnoseJpbook flags the unwritten keys that cannot be empty on the fence, and no fence on the first line, even with NO owning root', async () => {
+  assert.deepEqual(await diagnoseJpbook(null, parseJpbook(`${meta()}a.jpnov`)), [], 'every key written: nothing');
+
+  const diags = await diagnoseJpbook(null, parseJpbook(`${HEAD}\n  title: t\n ---\na.jpnov`));
+  assert.deepEqual(
+    diags.map((d) => ({ data: d.data as unknown, range: d.range, severity: d.severity })),
+    ['headerAlign', 'footerAlign'].map((key) => ({
+      data: { code: 'jpbook.metaEmptyValue', args: [key] },
+      range: { start: { line: 3, character: 1 }, end: { line: 3, character: 4 } },
+      severity: DiagnosticSeverity.Error,
+    })),
+  );
+
+  // No fence: the metadata runs to the end, and that is the one thing reported about it.
+  const unclosed = await diagnoseJpbook(null, parseJpbook(`${HEAD}\n  title: t\na.jpnov`));
+  assert.deepEqual(
+    unclosed.map((d) => [(d.data as { code: string }).code, d.range.start.line, d.range.start.character]),
+    [['jpbook.metaUnterminated', 2, 2], ['jpbook.metaNotKeyValue', 3, 0]],
+  );
+
+  // A header alone: the metadata never closes, and the header is the line that says so.
+  const bare = await diagnoseJpbook(null, parseJpbook(HEAD));
+  assert.deepEqual(codesOf(bare), ['jpbook.metaUnterminated']);
+  assert.deepEqual(bare[0]?.range, { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } });
+
+  // An empty file has no header, and that is all that is said about it.
+  const empty = await diagnoseJpbook(null, parseJpbook(''));
+  assert.deepEqual(empty.map((d) => [d.data as unknown, d.range]), [
+    [{ code: 'jpbook.headerMissing', args: [HEADER] }, { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }],
+  ]);
+});
+
+test('diagnoseJpbook: a key in Error reports itself on its line; an unwritten key is an empty one', async () => {
+  const at = (text: string): Promise<unknown[][]> =>
+    diagnoseJpbook(null, parseJpbook(text)).then((diags) =>
+      diags.map((d) => [(d.data as { code: string }).code, (d.data as { args: unknown[] }).args, d.severity, d.range.start.line]));
+  // `title:` (empty) and `footerAlign: どこか` report themselves; the unwritten divider is simply none.
+  assert.deepEqual(await at(meta({ title: '', footerAlign: 'どこか' }, ['divider']) + 'a.jpnov'), [
+    ['jpbook.metaEmptyValue', ['title'], DiagnosticSeverity.Error, metaLineOf('title')],
+    ['jpbook.metaBadEnum', ['footerAlign', 'どこか', FURNITURE_ALIGNS.join(', ')], DiagnosticSeverity.Error, metaLineOf('footerAlign')],
+  ]);
+  // An unwritten title or alignment is the same Error its empty line would be, on the fence.
+  assert.deepEqual(await at(meta({}, ['title', 'headerAlign']) + 'a.jpnov'), [
+    ['jpbook.metaEmptyValue', ['title'], DiagnosticSeverity.Error, FENCE_LINE - 2],
+    ['jpbook.metaEmptyValue', ['headerAlign'], DiagnosticSeverity.Error, FENCE_LINE - 2],
+  ]);
+});
+
+test('diagnoseJpbook: a header this extension does not read is the one Error, whatever lies below it', async () => {
+  // A broken body below (an empty title, a stray line, a non-.jpnov chapter) goes unreported: nothing was read.
+  const body = `${metaBody({ title: '' })}---\nstray\na.txt\n`;
+  const at = (text: string, data: unknown, endChar: number): Promise<void> =>
+    diagnoseJpbook(null, parseJpbook(text)).then((diags) => {
+      assert.deepEqual(diags.map((d) => [d.data as unknown, d.severity, d.range]), [
+        [data, DiagnosticSeverity.Error, { start: { line: 0, character: 0 }, end: { line: 0, character: endChar } }],
+      ], text);
+    });
+  for (const version of ['2', '1.0', '']) {
+    await at(`jpbook/${version}\n${body}`, { code: 'jpbook.versionUnsupported', args: [version, JPBOOK_VERSION] }, 7 + version.length);
+  }
+  await at(`version: 1.0\n${body}`, { code: 'jpbook.headerMissing', args: [HEADER] }, 12);
+  await at(`\n${HEAD}${body}`, { code: 'jpbook.headerMissing', args: [HEADER] }, 0);
+});
+
+test('diagnoseJpbook: the chapters never return to metadata (later key and item lines are paths)', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'c.jpnov', 'x');
+  const diags = await diagnoseJpbook(ws.uri, parseJpbook(`${meta()}c.jpnov\ntitle: x\n- c.jpnov`));
+  assert.deepEqual(
+    diags.map((d) => [(d.data as { code: string }).code, (d.data as { args: unknown[] }).args]),
+    [['jpbook.notJpnov', ['title: x']], ['jpbook.fileNotFound', ['- c.jpnov']]],
+  );
 });
 
 test('diagnoseJpbook degrades to syntax-only without a root, and skips fs off file:', async () => {
   // No owning workspace folder: containment/existence unverifiable, so a valid-but-missing
   // path stays un-flagged…
-  assert.equal((await diagnoseJpbook(null, parseJpbook('missing.jpnov'))).length, 0);
+  assert.equal((await diagnoseJpbook(null, parseJpbook(`${meta()}missing.jpnov`))).length, 0);
   // …and a virtual-scheme root verifies containment but never stats.
   assert.equal(
-    (await diagnoseJpbook('vscode-vfs://host/root', parseJpbook('missing.jpnov'))).length,
+    (await diagnoseJpbook('vscode-vfs://host/root', parseJpbook(`${meta()}missing.jpnov`))).length,
     0,
   );
 });
@@ -106,29 +181,55 @@ test('completeJpbook offers matching .jpnov files and drillable subdirs; hides .
   assert.ok(!all.some((i) => i.label === 'index.jpbook'), '.jpbook files are hidden');
 });
 
-test('completeJpbook routes front-matter lines to key/value completion (root-free)', async () => {
-  const parsed = parseJpbook('---\nfoot\n---\na.jpnov'); // meta completion needs no root at all
-
-  const keys = await completeJpbook(null, parsed, 'foot', { line: 1, character: 4 });
+test('completeJpbook routes metadata lines to key/value completion (root-free)', async () => {
+  // A half-typed key above the fence (an Error until its colon) gets the keys.
+  const typing = `${metaWith('foot', {}, ['footer', 'footerAlign'])}a.jpnov`;
+  const keys = await completeJpbook(null, parseJpbook(typing), 'foot', { line: FENCE_LINE - 2, character: 4 });
   assert.deepEqual(keys.map((i) => i.label), ['footer', 'footerAlign']);
   const firstKey = keys[0];
   assert.ok(firstKey);
   assert.equal(firstKey.kind, CompletionItemKind.Property);
   assert.equal(firstKey.textEdit?.newText, 'footer: ');
 
-  const vals = await completeJpbook(null, parsed, 'headerAlign: c', { line: 1, character: 14 });
+  const valued = `${metaWith('headerAlign: c', {}, ['headerAlign'])}a.jpnov`;
+  const vals = await completeJpbook(null, parseJpbook(valued), 'headerAlign: c', { line: FENCE_LINE - 1, character: 14 });
   assert.deepEqual(vals.map((i) => i.label), ['center']);
   assert.equal(vals[0]?.kind, CompletionItemKind.EnumMember);
-
-  // On the fences themselves: nothing.
-  assert.equal((await completeJpbook(null, parsed, '---', { line: 0, character: 3 })).length, 0);
-  assert.equal((await completeJpbook(null, parsed, '---', { line: 2, character: 3 })).length, 0);
 });
 
-test('completeJpbook keeps offering keys inside an UNTERMINATED front matter', async () => {
-  const parsed = parseJpbook('---\nti');
-  const items = await completeJpbook(null, parsed, 'ti', { line: 1, character: 2 });
-  assert.deepEqual(items.map((i) => i.label), ['title']);
+test('completeJpbook leaves out the keys already written', async () => {
+  // A blank line among the keys: the keys no line took.
+  const partial = `${HEAD}title: 作品名\n\nauthor:\n---\na.jpnov`;
+  const some = await completeJpbook(null, parseJpbook(partial), '', { line: 2, character: 0 });
+  assert.deepEqual(some.map((i) => i.label), ['header', 'headerAlign', 'footer', 'footerAlign', 'divider', 'cover']);
+
+  // Every required key written: only `cover` is left to offer…
+  const full = `${metaWith('')}a.jpnov`;
+  const rest = await completeJpbook(null, parseJpbook(full), '', { line: FENCE_LINE, character: 0 });
+  assert.deepEqual(rest.map((i) => i.label), ['cover']);
+
+  // …and once that is written too, nothing.
+  const covered = `${metaWith('cover:\n- c.jpnov\n')}a.jpnov`;
+  assert.deepEqual(await completeJpbook(null, parseJpbook(covered), '', { line: FENCE_LINE + 2, character: 0 }), []);
+
+  // The line being edited does not count as written (retyping `title` on its own line).
+  const own = await completeJpbook(null, parseJpbook(`${meta()}a.jpnov`), 'ti', { line: metaLineOf('title'), character: 2 });
+  assert.deepEqual(own.map((i) => i.label), ['title']);
+});
+
+test('completeJpbook: keys above the fence, nothing on it, paths below; unclosed metadata is all keys', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'chapter1.jpnov', 'x');
+  const at = (doc: string, lineText: string, line: number): ReturnType<typeof completeJpbook> =>
+    completeJpbook(ws.uri, parseJpbook(doc), lineText, { line, character: lineText.length });
+
+  assert.deepEqual((await at(`${metaWith('c')}chapter1.jpnov`, 'c', FENCE_LINE)).map((i) => i.label), ['cover']);
+  assert.deepEqual(await at(`${meta()}chapter1.jpnov`, '---', FENCE_LINE), []);
+  assert.deepEqual((await at(`${meta()}c`, 'c', FENCE_LINE + 1)).map((i) => i.label), ['chapter1.jpnov']);
+  assert.deepEqual((await at(`${HEAD}title: t\nc`, 'c', 2)).map((i) => i.label), ['cover']);
+  // The header line offers nothing, nor does a book whose header no parser reads.
+  assert.deepEqual(await at(`${meta()}chapter1.jpnov`, HEADER, 0), []);
+  assert.deepEqual(await at(`jpbook/2\n${metaBody()}---\nc`, 'c', FENCE_LINE + 1), []);
 });
 
 test('completeJpbook suppresses suggestions when the whole line already names a file', async () => {
@@ -174,9 +275,9 @@ test('diagnoseJpbook and completeJpbook take # and % in names literally (issue #
   await writeUnder(ws.dir, 'sub#1/b(1).jpnov', 'x');
 
   // Existing files pass; a missing one spelled with the same characters is flagged.
-  assert.deepEqual(await diagnoseJpbook(ws.uri, parseJpbook('第1巻#改稿.jpnov\n50%.jpnov\nsub#1/b(1).jpnov')), []);
-  const missing = await diagnoseJpbook(ws.uri, parseJpbook('x#y.jpnov'));
-  assert.deepEqual(missing.map((d) => (d.data as { code: string }).code), ['jpbook.fileNotFound']);
+  assert.deepEqual(await diagnoseJpbook(ws.uri, parseJpbook(`${meta()}第1巻#改稿.jpnov\n50%.jpnov\nsub#1/b(1).jpnov`)), []);
+  const missing = await diagnoseJpbook(ws.uri, parseJpbook(`${meta()}x#y.jpnov`));
+  assert.deepEqual(codesOf(missing), ['jpbook.fileNotFound']);
 
   // Completion lists the on-disk names and drills into a directory with # in its name…
   assert.deepEqual((await completeLine(ws.uri, '第', 1)).map((i) => i.label), ['第1巻#改稿.jpnov']);
@@ -186,13 +287,13 @@ test('diagnoseJpbook and completeJpbook take # and % in names literally (issue #
 });
 
 test("documentLinksForJpbook targets are percent-encoded like the client's Uri strings", () => {
-  const links = documentLinksForJpbook('file:///proj', parseJpbook('b#c.jpnov\n50%.jpnov'));
+  const links = documentLinksForJpbook('file:///proj', parseJpbook(`${HEAD}---\nb#c.jpnov\n50%.jpnov`));
   assert.deepEqual(links.map((l) => l.target), ['file:///proj/b%23c.jpnov', 'file:///proj/50%25.jpnov']);
 });
 
 test('documentLinksForJpbook links every valid chapter line (existence not required); meta lines never link', () => {
   // Pure URI resolution — no fs needed, so a literal root URI suffices.
-  const parsed = parseJpbook('---\ntitle: link.jpnov\n---\nsrc/vol1/chapter1.jpnov\nmissing.jpnov\n\nnote.md');
+  const parsed = parseJpbook(`${meta({ title: 'link.jpnov' })}src/vol1/chapter1.jpnov\nmissing.jpnov\n\nnote.md`);
   const links = documentLinksForJpbook('file:///proj', parsed);
   // The two syntactically-ok paths link; the meta value, blank, and note.md (non-.jpnov) do not.
   const targets = links.map((l) => l.target);
@@ -207,40 +308,40 @@ test('documentLinksForJpbook links every valid chapter line (existence not requi
 test('diagnoseJpbook flags a hand-edited divider Shift JIS cannot hold, on the character itself', async () => {
   // The Books panel refuses such a mark, and the prose lint never sees a `.jpbook`, so this is the
   // only thing standing between a hand edit and a 〓 at every chapter seam.
-  const text = '---\ndivider: 😀\n---\na.jpnov';
+  const text = `${meta({ divider: '😀' })}a.jpnov`;
   const diags = await diagnoseJpbook(null, parseJpbook(text));
   assert.deepEqual(
     diags.map((d) => ({ code: (d.data as { code: string }).code, range: d.range, severity: d.severity })),
     [{
       code: 'jpbook.dividerNotEncodable',
-      range: { start: { line: 1, character: 9 }, end: { line: 1, character: 11 } },
+      range: { start: { line: DIVIDER_LINE, character: 9 }, end: { line: DIVIDER_LINE, character: 11 } },
       severity: DiagnosticSeverity.Warning,
     }],
   );
   // The flagged span is exactly the offending character.
-  assert.equal(text.split('\n')[1]?.slice(9, 11), '😀');
+  assert.equal(text.split('\n')[DIVIDER_LINE]?.slice(9, 11), '😀');
 });
 
 test('diagnoseJpbook warns on a divider 字下げ above INDENT_MAX, over the annotation', async () => {
   const over = indentAnnotation(INDENT_MAX + 1);
   const line = `divider: ${over}＊`;
-  const diags = await diagnoseJpbook(null, parseJpbook(`---\n${line}\n---\na.jpnov`));
+  const diags = await diagnoseJpbook(null, parseJpbook(`${meta({ divider: `${over}＊` })}a.jpnov`));
   const start = line.indexOf(over);
   assert.deepEqual(
     diags.map((d) => ({ data: d.data as unknown, range: d.range, severity: d.severity })),
     [{
       data: INDENT_TOO_LARGE,
-      range: { start: { line: 1, character: start }, end: { line: 1, character: start + over.length } },
+      range: { start: { line: DIVIDER_LINE, character: start }, end: { line: DIVIDER_LINE, character: start + over.length } },
       severity: DiagnosticSeverity.Warning,
     }],
   );
-  const atMax = `---\ndivider: ${indentAnnotation(INDENT_MAX)}＊\n---\na.jpnov`;
+  const atMax = `${meta({ divider: `${indentAnnotation(INDENT_MAX)}＊` })}a.jpnov`;
   assert.deepEqual(await diagnoseJpbook(null, parseJpbook(atMax)), []);
 });
 
 test('diagnoseJpbook leaves an encodable divider and the HTML-only metadata alone', async () => {
   // ◇ encodes; title/header ride the HTML build, which is UTF-8, so an emoji there is fine.
-  const text = '---\ndivider: ◇\ntitle: 😀\nheader: 𠮷\n---\na.jpnov';
+  const text = `${meta({ divider: '◇', title: '😀', header: '𠮷' })}a.jpnov`;
   assert.deepEqual(await diagnoseJpbook(null, parseJpbook(text)), []);
 });
 
@@ -250,21 +351,17 @@ test('diagnoseJpbook checks cover paths on the PATH span', async () => {
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'src/c1.jpnov', 'x');
   await writeUnder(ws.dir, 'adir.jpnov/keep', 'x');
-  const inlineOnly = [
-    '---',
+  const inlineOnly = metaWith([
     'cover:',
     '  - src/c1.jpnov', // fine
     '  - src/missing.jpnov', // Error: not found
     '  - adir.jpnov', // Error: directory
     '  - ../outside.jpnov', // Error: escapes the root
     '  - src/c1.jpnov', // Warning: duplicate
-    '---',
-    'src/c1.jpnov',
-  ].join('\n');
+  ].join('\n')) + 'src/c1.jpnov';
 
   const diags = await diagnoseJpbook(ws.uri, parseJpbook(inlineOnly));
-  const codes = diags.map((d) => (d.data as { code: string }).code);
-  assert.deepEqual(codes, [
+  assert.deepEqual(codesOf(diags), [
     'jpbook.fileNotFound',
     'jpbook.entryIsDirectory',
     'path.escapesRoot',
@@ -280,7 +377,7 @@ test('diagnoseJpbook checks cover paths on the PATH span', async () => {
   assert.deepEqual((diags[0]?.data as { args: unknown[] }).args, ['src/missing.jpnov']);
 
   // A value on the key line never becomes a path: it is one error steering to the list form.
-  const valued = await diagnoseJpbook(ws.uri, parseJpbook('---\ncover: src/c1.jpnov\n---\nsrc/c1.jpnov'));
+  const valued = await diagnoseJpbook(ws.uri, parseJpbook(`${metaWith('cover: src/c1.jpnov')}src/c1.jpnov`));
   assert.equal(valued.length, 1);
   assert.equal((valued[0]?.data as { code: string }).code, 'jpbook.coverNeedsList');
   assert.equal(valued[0]?.severity, DiagnosticSeverity.Error);
@@ -289,40 +386,47 @@ test('diagnoseJpbook checks cover paths on the PATH span', async () => {
 test('diagnoseJpbook: the bare cover: key is clean, an orphan item is an Error', async () => {
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'c.jpnov', 'x');
-  const ok = await diagnoseJpbook(ws.uri, parseJpbook('---\ncover:\n- c.jpnov\n---\nc.jpnov'));
+  const ok = await diagnoseJpbook(ws.uri, parseJpbook(`${metaWith('cover:\n- c.jpnov')}c.jpnov`));
   assert.deepEqual(ok, []);
 
-  const orphan = await diagnoseJpbook(ws.uri, parseJpbook('---\ntitle: t\n- c.jpnov\n---\nc.jpnov'));
+  const orphan = await diagnoseJpbook(ws.uri, parseJpbook(`${metaWith('- c.jpnov')}c.jpnov`));
   assert.equal(orphan.length, 1);
   assert.equal((orphan[0]?.data as { code: string }).code, 'jpbook.coverItemWithoutKey');
   assert.equal(orphan[0]?.severity, DiagnosticSeverity.Error);
   // An orphan is a whole-line problem — it has no cover path to point at.
   assert.equal(orphan[0].range.start.character, 0);
+
+  // A `---` right under the header closes an empty metadata block at once: the title and the
+  // alignments are missing there, and the keys below read as (invalid) chapter paths.
+  const fence = await diagnoseJpbook(ws.uri, parseJpbook(`${HEAD}---\n${metaBody()}---\nc.jpnov`));
+  assert.deepEqual(
+    fence.slice(0, 4).map((d) => [(d.data as { code: string }).code, d.range.start.line]),
+    [['jpbook.metaEmptyValue', 1], ['jpbook.metaEmptyValue', 1], ['jpbook.metaEmptyValue', 1], ['jpbook.notJpnov', 2]],
+  );
 });
 
 test('documentLinksForJpbook links cover paths, spanning the path alone', () => {
-  const parsed = parseJpbook('---\ncover:\n  - src/c1.jpnov\ncover2: x\n---\nch.jpnov');
+  const parsed = parseJpbook(`${metaWith('cover:\n  - src/c1.jpnov\ncover2: x')}ch.jpnov`);
   const links = documentLinksForJpbook('file:///proj', parsed);
   assert.equal(links.length, 2);
   assert.ok(links[0]?.target?.endsWith('/proj/src/c1.jpnov'));
   assert.deepEqual(links[0]?.range, {
-    start: { line: 2, character: 4 },
-    end: { line: 2, character: 16 },
+    start: { line: FENCE_LINE + 1, character: 4 },
+    end: { line: FENCE_LINE + 1, character: 16 },
   });
   assert.ok(links[1]?.target?.endsWith('/proj/ch.jpnov'));
 });
 
 test('documentLinksForJpbook leaves a valued cover key alone (it names no path)', () => {
-  assert.deepEqual(documentLinksForJpbook('file:///proj', parseJpbook('---\ncover: src/c1.jpnov\n---\n')), []);
+  assert.deepEqual(documentLinksForJpbook('file:///proj', parseJpbook(metaWith('cover: src/c1.jpnov'))), []);
 });
 
 test('completeJpbook offers cover as a key and file paths after the item marker', async () => {
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'src/c1.jpnov', 'x');
-  const doc = (line: string): ReturnType<typeof parseJpbook> =>
-    parseJpbook(['---', line, '---', 'ch.jpnov'].join('\n'));
+  const doc = (line: string): ReturnType<typeof parseJpbook> => parseJpbook(`${metaWith(line)}ch.jpnov`);
   const at = async (line: string, character: number): Promise<ReturnType<typeof completeJpbook>> =>
-    completeJpbook(ws.uri, doc(line), line, { line: 1, character });
+    completeJpbook(ws.uri, doc(line), line, { line: FENCE_LINE, character });
 
   const keys = await at('cov', 3);
   assert.deepEqual(keys.map((c) => c.label), ['cover']);
@@ -331,7 +435,7 @@ test('completeJpbook offers cover as a key and file paths after the item marker'
   const item = await at('- src/', 6);
   assert.deepEqual(item.map((c) => c.label), ['c1.jpnov']);
   assert.deepEqual(item[0]?.textEdit, {
-    range: { start: { line: 1, character: 6 }, end: { line: 1, character: 6 } },
+    range: { start: { line: FENCE_LINE, character: 6 }, end: { line: FENCE_LINE, character: 6 } },
     newText: 'c1.jpnov',
   });
   // A valued key line offers nothing — it is an error, not a path.
@@ -346,6 +450,6 @@ test('completeJpbook suppresses cover suggestions once the path names a file', a
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'src/c1.jpnov', 'x');
   const line = '- src/c1.jpnov';
-  const parsed = parseJpbook(['---', 'cover:', line, '---'].join('\n'));
-  assert.deepEqual(await completeJpbook(ws.uri, parsed, line, { line: 2, character: line.length }), []);
+  const parsed = parseJpbook(metaWith(`cover:\n${line}`));
+  assert.deepEqual(await completeJpbook(ws.uri, parsed, line, { line: FENCE_LINE + 1, character: line.length }), []);
 });

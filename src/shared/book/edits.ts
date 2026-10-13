@@ -3,7 +3,8 @@
  * range replacements against the CURRENT `.jpbook` text, which the client applies as one
  * `WorkspaceEdit` (text stays the single source of truth — the panel and code mode can
  * never disagree). Metadata is edited by KEY, not by line: setting a key leaves ONE line
- * for it, clearing it leaves none, and the lines of every other key stay where they are.
+ * for it (an empty value is written as `key:`), and the lines of every other key stay where
+ * they are.
  * The entry planners take an {@link EntryList} (chapters = body lines, covers = the `- path`
  * items under `cover:`) and never touch the other list.
  */
@@ -12,17 +13,19 @@ import {
   coverPathOf,
   entryIdentity,
   entryPathOf,
-  FRONT_MATTER_KEYS,
+  FENCE,
+  KNOWN_KEYS,
   isCover,
   isEntryOf,
-  keepsEmptyValue,
   META_KEYS,
+  metaLinesOf,
   metaKeyOf,
-  metaRegionOf,
+  metaLine,
   parseJpbook,
   type EntryList,
   type JpbookMeta,
   type MetaKey,
+  type ParsedJpbook,
   type ParsedLine,
 } from './jpbook.ts';
 
@@ -96,30 +99,28 @@ function deleteLines(lines: readonly ParsedLine[], doomed: readonly ParsedLine[]
   return runs.map((run) => deleteRun(lines, run.first, run.last));
 }
 
-/** A line written for `key`: its valid line, a repeat, a rejected value, or the key in another case or width. */
+/**
+ * A metadata line written for `key`, whatever its kind: its valid line, a repeat, a rejected
+ * value, an empty `title:`, or the key in another case or width. A chapter line never holds a
+ * key, so a `header: h` below the fence (an invalid path) stays what it is.
+ */
 function holdsKey(pl: ParsedLine, key: MetaKey): boolean {
-  const written = pl.kind === 'meta' || (typeof pl.kind === 'object' && 'warning' in pl.kind);
-  return written && metaKeyOf(pl.value)?.normalize('NFKC').toLowerCase() === key.toLowerCase();
+  return metaKeyOf(pl.value)?.normalize('NFKC').toLowerCase() === key.toLowerCase();
 }
 
 /**
- * Sets `key` to `value` (canonical `key: value` form), or unsets it — `undefined`, or an empty
- * value for a key that does not hold one ({@link keepsEmptyValue}). The key's valid line — else
- * the first line written for it — is rewritten in place and every other line of the key is
- * deleted; a key without a line is inserted at its position. Empty when an unset key has no line.
+ * Sets `key` to `value` in canonical `key: value` form (`key:` for an empty value). The key's
+ * valid line — else the first line written for it — is rewritten in place and every other line
+ * of the key is deleted; a key without a line is inserted at its position.
  */
-export function setMeta(text: string, key: MetaKey, value: string | undefined): TextReplace[] {
+export function setMeta(text: string, key: MetaKey, value: string): TextReplace[] {
   const parsed = parseJpbook(text);
-  const clean = value === undefined ? undefined : sanitizeValue(value);
-  const held = parsed.lines.filter((pl) => holdsKey(pl, key));
-  if (clean === undefined || (clean === '' && !keepsEmptyValue(key))) {
-    return deleteLines(parsed.lines, held);
-  }
-
-  const entry = clean === '' ? `${key}:` : `${key}: ${clean}`;
+  const clean = sanitizeValue(value);
+  const held = metaLinesOf(parsed).filter((pl) => holdsKey(pl, key));
+  const entry = metaLine(key, clean);
   const target = held.find((pl) => pl.kind === 'meta') ?? held[0];
   if (target === undefined) {
-    return [insertMeta(parsed.lines, eolOf(text), key, entry)];
+    return [insertMeta(parsed, eolOf(text), key, entry)];
   }
   return [
     { start: at(target.line, target.range.startChar), end: at(target.line, target.range.endChar), newText: entry },
@@ -128,22 +129,23 @@ export function setMeta(text: string, key: MetaKey, value: string | undefined): 
 }
 
 /**
- * Inserts a new key line at its {@link FRONT_MATTER_KEYS} position: after the nearest earlier
- * key the block holds, else before the nearest later one, else at the end of the block. Only
- * a `'meta'` line anchors an insert AFTER it: a line right under `cover:` would close the list.
+ * Inserts a new key line at its {@link KNOWN_KEYS} position: after the nearest earlier
+ * key the metadata holds (its line in Error included), else before the nearest later one, else
+ * at the end of the metadata. `cover` is the last key, so a bare `cover:` is only ever a LATER
+ * key: the insert goes above it, never right under it where it would close the list.
  */
-function insertMeta(lines: readonly ParsedLine[], eol: string, key: MetaKey, entry: string): TextReplace {
+function insertMeta(parsed: ParsedJpbook, eol: string, key: MetaKey, entry: string): TextReplace {
   const keyLines = new Map<string, ParsedLine>();
-  for (const pl of lines) {
-    const name = pl.kind === 'meta' || pl.kind === 'cover' ? metaKeyOf(pl.value) : null;
-    if (name !== null) {
+  for (const pl of metaLinesOf(parsed)) {
+    const name = metaKeyOf(pl.value);
+    if (name !== null && !keyLines.has(name)) {
       keyLines.set(name, pl);
     }
   }
 
-  const order = FRONT_MATTER_KEYS.indexOf(key);
-  const held = FRONT_MATTER_KEYS.map((k) => keyLines.get(k));
-  const earlier = held.slice(0, order).findLast((pl) => pl?.kind === 'meta');
+  const order = KNOWN_KEYS.indexOf(key);
+  const held = KNOWN_KEYS.map((k) => keyLines.get(k));
+  const earlier = held.slice(0, order).findLast((pl) => pl !== undefined);
   if (earlier !== undefined) {
     return appendAfterLine(earlier, `${eol}${entry}`);
   }
@@ -151,23 +153,16 @@ function insertMeta(lines: readonly ParsedLine[], eol: string, key: MetaKey, ent
   if (later !== undefined) {
     return { start: at(later.line, 0), end: at(later.line, 0), newText: `${entry}${eol}` };
   }
-  return insertMetaBlock(lines, eol, entry);
+  return insertAtMetaEnd(parsed, eol, entry);
 }
 
-/** Inserts front-matter line(s) at the end of the block, creating the block when absent. */
-function insertMetaBlock(lines: readonly ParsedLine[], eol: string, block: string): TextReplace {
-  const region = metaRegionOf(lines);
-  if (region === null) {
-    // No front matter: create the block above everything (the fence must be the first
-    // non-blank line, and line 0 always satisfies that).
-    return { start: at(0, 0), end: at(0, 0), newText: `---${eol}${block}${eol}---${eol}` };
+/** Inserts metadata line(s) at the end of the metadata: right above the fence, else (no fence:
+ *  the whole document is metadata) at the end of the document. */
+function insertAtMetaEnd(parsed: ParsedJpbook, eol: string, block: string): TextReplace {
+  if (parsed.fence === null) {
+    return appendAtEnd(parsed.lines, eol, block);
   }
-  if (region.close !== null) {
-    return { start: at(region.close, 0), end: at(region.close, 0), newText: `${block}${eol}` };
-  }
-  // Unterminated block (an Error state): everything below the fence is already metadata
-  // territory, so appending at the end of the document stays inside it.
-  return appendAtEnd(lines, eol, block);
+  return { start: at(parsed.fence, 0), end: at(parsed.fence, 0), newText: `${block}${eol}` };
 }
 
 /** The path an entry line lists (a cover item's marker excluded) — what the panel rows show and dedupe by. */
@@ -183,9 +178,10 @@ export function listedEntries(lines: readonly ParsedLine[], list: EntryList): Se
 
 /**
  * Appends entries (root-relative paths) to `list`, skipping any already listed there (a GUI
- * add must not manufacture `duplicate` warnings). Chapters go at the end of the document;
+ * add must not manufacture `duplicate` warnings). Chapters go at the end of the document,
+ * below a `---` added first when none closes the metadata;
  * covers after the open list's last item (its indent and marker mirrored), or as a new
- * `cover:` key at the end of the front matter. Null when nothing is new.
+ * `cover:` key at the end of the metadata. Null when nothing is new.
  */
 export function appendEntries(text: string, list: EntryList, rels: readonly string[]): TextReplace | null {
   const parsed = parseJpbook(text);
@@ -196,14 +192,16 @@ export function appendEntries(text: string, list: EntryList, rels: readonly stri
     return null;
   }
   if (list === 'chapters') {
-    return appendAtEnd(parsed.lines, eol, fresh.join(eol));
+    // No fence yet: close the metadata first, or the new lines would read as metadata.
+    const lines = parsed.fence === null ? [FENCE, ...fresh] : fresh;
+    return appendAtEnd(parsed.lines, eol, lines.join(eol));
   }
 
   // Only the first bare `cover:` opens a list (a repeat is a muted warning), so every
   // `isCover` line belongs to it.
   const key = parsed.lines.find((pl) => pl.kind === 'cover');
   if (key === undefined) {
-    return insertMetaBlock(parsed.lines, eol, [`${COVER_KEY}:`, ...fresh.map((rel) => `${COVER_ITEM_PREFIX}${rel}`)].join(eol));
+    return insertAtMetaEnd(parsed, eol, [`${COVER_KEY}:`, ...fresh.map((rel) => `${COVER_ITEM_PREFIX}${rel}`)].join(eol));
   }
   const items = parsed.lines.filter(isCover);
   const last = items[items.length - 1];
@@ -298,6 +296,6 @@ export function entryLines(lines: readonly ParsedLine[], list: EntryList): numbe
 }
 
 /** Fixed display order + current values for the panel's metadata rows (absent = undefined). */
-export function metaRows(meta: JpbookMeta): { key: MetaKey; value: string | undefined }[] {
+export function metaRows(meta: Partial<JpbookMeta>): { key: MetaKey; value: string | undefined }[] {
   return META_KEYS.map((key) => ({ key, value: meta[key] }));
 }

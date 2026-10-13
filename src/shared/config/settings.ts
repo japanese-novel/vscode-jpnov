@@ -35,8 +35,8 @@ export const BUILD_PAPER_DEFAULT = {
 
 /**
  * `lineNumbers`/`edgeLine` default the `jpnov.layout.paper.*` settings; the page-furniture fields
- * (`header`/`headerAlign`/`footer`/`footerAlign`) are NOT settings — they default a `.jpbook`'s
- * front matter when it omits the key (see `composeBookChrome`).
+ * (`header`/`headerAlign`/`footer`/`footerAlign`) are NOT settings — they are what a new
+ * `.jpbook`'s template writes (`bookTemplate`) and what the panel's "Default" footer pick writes.
  */
 export const BUILD_CHROME_DEFAULT = {
   lineNumbers: false,

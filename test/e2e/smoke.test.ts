@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type { CodeAction, DocumentHighlight, WorkspaceEdit } from 'vscode-languageserver/node';
 
+import { bookTemplate } from '../../src/shared/book/create.ts';
 import { HEADER_BAND, PREVIEW_MARGIN_LINES, fitPaper } from '../../src/shared/compiler/geometry.ts';
 import { LINE_PITCHES } from '../../src/shared/config/types.ts';
 import type {
@@ -217,7 +218,7 @@ test('jpnov/listBooks + jpnov/build round-trip a real workspace over the wire', 
   cleanups.push(wsDir);
   const wsUri = pathToFileURL(wsDir).href.replace(/\/$/, '');
   await writeFile(join(wsDir, 'hon.jpnov'), CHAPTER_TEXT, 'utf8');
-  await writeFile(join(wsDir, 'hon.jpbook'), '---\ntitle: 試験本\n---\nhon.jpnov\n', 'utf8');
+  await writeFile(join(wsDir, 'hon.jpbook'), bookTemplate('試験本') + 'hon.jpnov\n', 'utf8');
   const projectDirs = { [wsUri]: { outDir: 'dist' } };
 
   const list = await conn().request<ListBooksResult>('jpnov/listBooks', { projectDirs });
@@ -413,7 +414,7 @@ test('the built page follows every 行送り tier (column width and fitted font 
     '',
   ].join('\n');
   await writeFile(join(wsDir, 'hon.jpnov'), pitchText, 'utf8');
-  await writeFile(join(wsDir, 'hon.jpbook'), '---\ntitle: 試験本\n---\nhon.jpnov\n', 'utf8');
+  await writeFile(join(wsDir, 'hon.jpbook'), bookTemplate('試験本') + 'hon.jpnov\n', 'utf8');
   const projectDirs = { [wsUri]: { outDir: 'dist' } };
   const MM_TO_PX = 96 / 25.4;
 

@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { VALUE_NAMES } from '../../../src/shared/ast/notation.ts';
-import { COVER_TEMPLATE, normalizeFileInput } from '../../../src/shared/book/create.ts';
+import { bookTemplate, COVER_TEMPLATE, normalizeFileInput } from '../../../src/shared/book/create.ts';
+import { checkJpbook, HEADER, META_KEYS, parseJpbook } from '../../../src/shared/book/jpbook.ts';
+import { BUILD_CHROME_DEFAULT } from '../../../src/shared/config/settings.ts';
 import { nodesOf } from '../ast/_shape.ts';
 import { readRepoFile } from '../repo.ts';
 
@@ -70,4 +72,30 @@ test('COVER_TEMPLATE shows values the notation names', () => {
   // Any other name prints as itself and raises no diagnostic: only this catches a renamed value.
   const shown = nodesOf(COVER_TEMPLATE).flatMap((node) => (node.kind === 'valueField' ? [node.name.text] : []));
   assert.deepEqual(shown, [VALUE_NAMES.title, VALUE_NAMES.author, VALUE_NAMES.totalPages, VALUE_NAMES.sheets]);
+});
+
+test('bookTemplate writes every required key, titled after the file, and builds as written', () => {
+  const parsed = parseJpbook(bookTemplate('作品名'));
+  assert.equal(parsed.fence, parsed.lines.length - 2);
+  assert.deepEqual(checkJpbook(parsed), {
+    ok: true,
+    meta: {
+      title: '作品名',
+      author: '',
+      header: BUILD_CHROME_DEFAULT.header,
+      headerAlign: BUILD_CHROME_DEFAULT.headerAlign,
+      footer: BUILD_CHROME_DEFAULT.footer,
+      footerAlign: BUILD_CHROME_DEFAULT.footerAlign,
+      divider: '',
+    },
+  });
+  assert.deepEqual(parsed.lines.slice(0, -1).map((l) => l.kind), ['header', ...META_KEYS.map(() => 'meta'), 'fence']);
+  assert.equal(parsed.lines[0]?.value, HEADER);
+  assert.ok(bookTemplate('x').endsWith('\n'));
+});
+
+test('bookTemplate is the README sample, verbatim, in both languages', () => {
+  for (const file of ['README.md', 'README.en.md']) {
+    assert.ok(readRepoFile(file).includes(bookTemplate('作品名').trimEnd()), file);
+  }
 });

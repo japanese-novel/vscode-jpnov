@@ -13,7 +13,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { INDENT_MAX, fullWidthDigits } from '../../src/shared/ast/notation.ts';
-import { FRONT_MATTER_KEYS } from '../../src/shared/book/jpbook.ts';
+import { HEADER, KNOWN_KEYS } from '../../src/shared/book/jpbook.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import { renderEnglish } from '../../src/shared/messages.ts';
 import type { MsgCode } from '../../src/shared/protocol.ts';
@@ -38,10 +38,13 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'jpbook.entryIsDirectory': ['adir.jpnov'],
   'jpbook.fileNotFound': ['missing.jpnov'],
   'jpbook.metaNotKeyValue': ['just text'],
-  'jpbook.metaUnknownKey': ['publisher', FRONT_MATTER_KEYS.join(', ')],
+  'jpbook.metaUnknownKey': ['publisher', KNOWN_KEYS.join(', ')],
   'jpbook.metaDuplicateKey': ['title'],
   'jpbook.metaBadEnum': ['footerAlign', 'middle', FURNITURE_ALIGNS.join(', ')],
   'jpbook.metaUnterminated': [],
+  'jpbook.headerMissing': [HEADER],
+  'jpbook.versionUnsupported': ['2', '1'],
+  'jpbook.metaEmptyValue': ['title'],
   'jpbook.coverItemWithoutKey': ['- cover.jpnov'],
   'jpbook.coverNeedsList': ['cover: 表紙.jpnov'],
   'path.empty': [],

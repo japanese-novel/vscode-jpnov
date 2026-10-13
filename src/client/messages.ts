@@ -58,6 +58,12 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('invalid value "{1}" for {0} (allowed: {2})', s(0), s(1), s(2));
     case 'jpbook.metaUnterminated':
       return vscode.l10n.t('unterminated metadata block (missing a closing ---)');
+    case 'jpbook.headerMissing':
+      return vscode.l10n.t('the first line must be the header "{0}"', s(0));
+    case 'jpbook.versionUnsupported':
+      return vscode.l10n.t('unsupported .jpbook version "{0}" (this extension reads {1})', s(0), s(1));
+    case 'jpbook.metaEmptyValue':
+      return vscode.l10n.t('{0} needs a value', s(0));
     case 'jpbook.coverItemWithoutKey':
       return vscode.l10n.t(
         'a "- " item needs a bare "cover:" line above it; any other key ends the list: {0}',

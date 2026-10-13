@@ -12,7 +12,9 @@ import assert from 'node:assert/strict';
 
 import { fullWidthDigits, INDENT_MAX } from '../../src/shared/ast/notation.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
+import { BUILD_CHROME_DEFAULT } from '../../src/shared/config/settings.ts';
 import { buildVscode, createMockState, doc, FakeQuickPick, FileType, resetMockState, Uri } from './_vscodeMock.ts';
+import { HEAD } from '../shared/book/_fixture.ts';
 
 const state = createMockState();
 mock.module('vscode', { namedExports: buildVscode(state) });
@@ -30,9 +32,9 @@ function listNode(list: List = 'chapters'): unknown {
   return { kind: 'list', list, entry: ENTRY };
 }
 
-/** The book document with `text`, and the .jpnov sweep results of its root. */
+/** The book document with `text` below the header (fixtures and expected lines count from there), and the .jpnov sweep results of its root. */
 function seed(text: string, files: readonly string[]): void {
-  state.textDocuments.push(doc(BOOK, 'jpbook', text));
+  state.textDocuments.push(doc(BOOK, 'jpbook', HEAD + text));
   state.findFilesResults.set(ROOT, files.map((rel) => Uri.parse(`${ROOT}/${rel}`)));
 }
 
@@ -68,7 +70,7 @@ beforeEach(() => {
 });
 
 test('addFiles(chapters) offers unlisted .jpnov files sorted, split into label/description', async () => {
-  seed('ichi.jpnov\n', ['zoku/ni.jpnov', 'ichi.jpnov', '第三章.jpnov']);
+  seed('---\nichi.jpnov\n', ['zoku/ni.jpnov', 'ichi.jpnov', '第三章.jpnov']);
   state.quickPickQueue.push([{ toggle: '第三章.jpnov' }, 'accept']);
   await runAddFiles();
 
@@ -99,7 +101,7 @@ test('addFiles with no .jpnov files still opens the picker for a typed name', as
 });
 
 test('addFiles with every file listed still opens the picker for a typed name', async () => {
-  seed('a.jpnov\nzoku/b.jpnov\n', ['a.jpnov', 'zoku/b.jpnov']);
+  seed('---\na.jpnov\nzoku/b.jpnov\n', ['a.jpnov', 'zoku/b.jpnov']);
   await runAddFiles();
   assert.deepEqual(picker().items, []);
   assert.deepEqual(state.infoMessages, []);
@@ -121,7 +123,7 @@ test('a dismissed picker, or Enter with nothing ticked, applies nothing', async 
 // --- typed names: creating files from the same picker ------------------------------
 
 test('a typed name that is no file yet rides as a create row; ticking it parks it and clears the input', async () => {
-  seed('ichi.jpnov\n', ['ichi.jpnov']);
+  seed('---\nichi.jpnov\n', ['ichi.jpnov']);
   // Backslash separator and a missing suffix: both normalized while typing.
   state.quickPickQueue.push([{ type: 'src\\my-chapter' }, { toggle: 'src/my-chapter.jpnov' }, 'accept']);
   await runAddFiles();
@@ -144,7 +146,7 @@ test('a typed name that is no file yet rides as a create row; ticking it parks i
 });
 
 test('ticked files come first and the new names after them, in one edit; the last new file opens', async () => {
-  seed('ichi.jpnov\n', ['ichi.jpnov', 'b.jpnov', 'a.jpnov']);
+  seed('---\nichi.jpnov\n', ['ichi.jpnov', 'b.jpnov', 'a.jpnov']);
   state.quickPickQueue.push([
     { toggle: 'b.jpnov' },
     { type: 'new2' },
@@ -164,7 +166,7 @@ test('ticked files come first and the new names after them, in one edit; the las
 });
 
 test('Enter takes the typed name along with the ticks, without a tick on its row', async () => {
-  seed('ichi.jpnov\n', ['ichi.jpnov', 'b.jpnov']);
+  seed('---\nichi.jpnov\n', ['ichi.jpnov', 'b.jpnov']);
   state.quickPickQueue.push([{ toggle: 'b.jpnov' }, { type: '三章' }, 'accept']);
   await runAddFiles();
 
@@ -199,7 +201,7 @@ test('an unusable name is a row that says so, cannot stay ticked, and is not tak
 });
 
 test('a typed name of a file on disk is no create row: listed = told so, unlisted = its candidate row', async () => {
-  seed('taken.jpnov\n', ['taken.jpnov', 'zoku/ni.jpnov']);
+  seed('---\ntaken.jpnov\n', ['taken.jpnov', 'zoku/ni.jpnov']);
   state.quickPickQueue.push([{ type: 'zoku\\ni' }, { type: 'taken' }, { toggle: 'taken.jpnov' }, 'accept']);
   await runAddFiles();
 
@@ -213,7 +215,7 @@ test('a typed name of a file on disk is no create row: listed = told so, unliste
 });
 
 test('re-creating a listed chapter whose file went missing writes it, appends nothing, and opens it', async () => {
-  seed('src/lost.jpnov\n', []);
+  seed('---\nsrc/lost.jpnov\n', []);
   state.quickPickQueue.push([{ type: 'src/lost.jpnov' }, { toggle: 'src/lost.jpnov' }, 'accept']);
   await runAddFiles();
 
@@ -236,7 +238,7 @@ test('a file that appeared on disk after the sweep is never overwritten', async 
 // --- the cover list ---------------------------------------------------------------
 
 test('addFiles(covers) offers files not yet in the cover list — chapters included — under the cover wording', async () => {
-  seed('---\ncover:\n  - c.jpnov\n---\na.jpnov\n', ['a.jpnov', 'c.jpnov', 'd.jpnov']);
+  seed('cover:\n  - c.jpnov\n---\na.jpnov\n', ['a.jpnov', 'c.jpnov', 'd.jpnov']);
   state.quickPickQueue.push([{ toggle: 'd.jpnov' }, 'accept']);
   await runAddFiles('covers');
 
@@ -250,7 +252,7 @@ test('addFiles(covers) offers files not yet in the cover list — chapters inclu
 });
 
 test('a new cover page seeds the sample, opens a cover list, and opens in the editor', async () => {
-  seed('---\ntitle: t\n---\na.jpnov\n', []);
+  seed('title: t\n---\na.jpnov\n', []);
   state.quickPickQueue.push([{ type: '表紙' }, { toggle: '表紙.jpnov' }, 'accept']);
   await runAddFiles('covers');
 
@@ -261,12 +263,12 @@ test('a new cover page seeds the sample, opens a cover list, and opens in the ed
   assert.deepEqual(opened(), [`${ROOT}/表紙.jpnov`]);
 });
 
-test('a new cover in a book without front matter creates the block at the top', async () => {
-  seed('a.jpnov\n', []);
+test('a new cover in a book with empty metadata opens the list right above the fence', async () => {
+  seed('---\na.jpnov\n', []);
   state.quickPickQueue.push([{ type: 'cover' }, { toggle: 'cover.jpnov' }, 'accept']);
   await runAddFiles('covers');
 
-  assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [0, 0, 0, 0], newText: '---\ncover:\n  - cover.jpnov\n---\n' }]);
+  assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [1, 0, 1, 0], newText: 'cover:\n  - cover.jpnov\n' }]);
 });
 
 /** Runs a row command with a node naming the row as the panel rendered it (`version` = the document's, 1). */
@@ -279,7 +281,7 @@ async function runEntry(command: string, list: List, line: number, path: string,
 
 test('removeEntry / moveEntryUp / moveEntryDown plan edits inside the named list only', async () => {
   // The mock records edits without rewriting the document, so every run sees this text.
-  seed('---\ncover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
+  seed('cover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
 
   await runEntry('jpbook.removeEntry', 'covers', 2, 'a.jpnov');
   assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 0, 3, 0], newText: '' }]);
@@ -299,7 +301,7 @@ test('removeEntry / moveEntryUp / moveEntryDown plan edits inside the named list
 });
 
 test('a row the panel rendered before the text changed plans nothing (#77)', async () => {
-  seed('---\ncover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
+  seed('cover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
 
   // The text moved past the version the row came from (an earlier verb, an unsaved edit).
   await runEntry('jpbook.removeEntry', 'covers', 2, 'a.jpnov', 2);
@@ -356,60 +358,81 @@ test('editMeta edits the lines of ONE key and saves the book', async () => {
   }
   const cases: readonly (readonly [name: string, text: string, key: string, given: Answer | readonly Answer[], edits: readonly Planned[]])[] = [
     [
-      'an emptied input box deletes the line',
-      '---\ntitle: 作品名\nheader: 作品名　一\n---\na.jpnov\n', 'title', { typed: '' },
-      [{ range: [1, 0, 2, 0], newText: '' }],
+      'an emptied input box writes `key:`',
+      'title: 作品名\nheader: 作品名　一\n---\na.jpnov\n', 'title', { typed: '' },
+      [{ range: [1, 0, 1, 10], newText: 'title:' }],
     ],
     [
       'whitespace alone is an empty value',
-      '---\ntitle: 作品名\nheader: 作品名　一\n---\na.jpnov\n', 'title', { typed: ' 　 ' },
-      [{ range: [1, 0, 2, 0], newText: '' }],
+      'title: 作品名\nheader: 作品名　一\n---\na.jpnov\n', 'title', { typed: ' 　 ' },
+      [{ range: [1, 0, 1, 10], newText: 'title:' }],
     ],
     [
-      'Enter on an unset key deletes the lines written for it',
-      '---\nTitle: 作品名\ntitle:\n---\n', 'title', { typed: '' },
-      [{ range: [1, 0, 3, 0], newText: '' }],
+      'a key without a line is inserted at its position (before a later key)',
+      'header: 作品名　一\n---\na.jpnov\n', 'title', { typed: '' },
+      [{ range: [1, 0, 1, 0], newText: 'title:\n' }],
     ],
     [
-      'the footer pick "No footer" is written as a value',
-      '---\ntitle: 作品名\n---\n', 'footer', { picked: [{ pick: 'No footer' }, 'accept'] },
+      'a key in an empty metadata block goes right above the fence',
+      '---\na.jpnov\n', 'title', { typed: '作品名' },
+      [{ range: [1, 0, 1, 0], newText: 'title: 作品名\n' }],
+    ],
+    [
+      'a key without a line, the last in order, lands after the last key',
+      'title: 作品名\n\n---\na.jpnov\n', 'divider',
+      [{ picked: { label: '＊', pick: 'preset' } }, { picked: { label: 'Centred', indented: false } }],
+      [{ range: [1, 10, 1, 10], newText: '\ndivider: ＊' }],
+    ],
+    [
+      'Enter on a key with no valid line rewrites its first line and deletes the rest',
+      'Title: 作品名\ntitle:\n---\n', 'title', { typed: '' },
+      [{ range: [1, 0, 1, 10], newText: 'title:' }, { range: [2, 0, 3, 0], newText: '' }],
+    ],
+    [
+      'the footer pick "No footer" is written as `footer:`',
+      'title: 作品名\n---\n', 'footer', { picked: [{ pick: 'No footer' }, 'accept'] },
       [{ range: [1, 10, 1, 10], newText: '\nfooter:' }],
     ],
     [
-      'the footer pick "Default" deletes the line',
-      '---\ntitle: 作品名\nfooter:\n---\n', 'footer', { picked: [{ pick: 'Default' }, 'accept'] },
-      [{ range: [2, 0, 3, 0], newText: '' }],
+      'the footer pick "Default" writes the default footer out',
+      'title: 作品名\nfooter:\n---\n', 'footer', { picked: [{ pick: 'Default' }, 'accept'] },
+      [{ range: [2, 0, 2, 7], newText: `footer: ${BUILD_CHROME_DEFAULT.footer}` }],
+    ],
+    [
+      'the footer pick "Default" on an unwritten footer inserts it',
+      'header: 作品名　一\n---\na.jpnov\n', 'footer', { picked: [{ pick: 'Default' }, 'accept'] },
+      [{ range: [1, 13, 1, 13], newText: `\nfooter: ${BUILD_CHROME_DEFAULT.footer}` }],
     ],
     [
       'a typed footer is the first item, taken as typed',
-      '---\ntitle: 作品名\nfooter:\n---\n', 'footer', { picked: [{ type: ' ページ番号 ' }, 'accept'] },
+      'title: 作品名\nfooter:\n---\n', 'footer', { picked: [{ type: ' ページ番号 ' }, 'accept'] },
       [{ range: [2, 0, 2, 7], newText: 'footer: ページ番号' }],
     ],
     [
-      'the divider picker\'s "(none)" deletes the line',
-      '---\ntitle: 作品名\ndivider: ＊\n---\n', 'divider', { picked: { label: '(none)', pick: 'none' } },
-      [{ range: [2, 0, 3, 0], newText: '' }],
+      'the divider picker\'s "(none)" writes `divider:`',
+      'title: 作品名\ndivider: ＊\n---\n', 'divider', { picked: { label: '(none)', pick: 'none' } },
+      [{ range: [2, 0, 2, 10], newText: 'divider:' }],
     ],
     [
       'an indented divider is written with its 字下げ (full-width digits accepted)',
-      '---\ntitle: 作品名\ndivider: ＊\n---\n', 'divider',
+      'title: 作品名\ndivider: ＊\n---\n', 'divider',
       [{ picked: { label: '＊', pick: 'preset' } }, { picked: { label: 'Indented', indented: true } }, { typed: '３' }],
       [{ range: [2, 0, 2, 10], newText: 'divider: ［＃３字下げ］＊' }],
     ],
     [
       'a picked alignment replaces the rejected line',
-      '---\nfooterAlign: bottom\n---\n', 'footerAlign', { picked: { label: 'Left', description: 'left', value: 'left' } },
+      'footerAlign: bottom\n---\n', 'footerAlign', { picked: { label: 'Left', description: 'left', value: 'left' } },
       [{ range: [1, 0, 1, 19], newText: 'footerAlign: left' }],
     ],
     [
-      'the rewrite comes first, then the deletions',
-      '---\nfooterAlign: bottom\nfooterAlign: left\n---\n', 'footerAlign',
+      'the valid line is rewritten first, then the others deleted',
+      'FooterAlign: left\nfooterAlign: right\n---\n', 'footerAlign',
       { picked: { label: 'Alternate: right, then left', description: 'rightLeft', value: 'rightLeft' } },
-      [{ range: [2, 0, 2, 17], newText: 'footerAlign: rightLeft' }, { range: [1, 0, 2, 0], newText: '' }],
+      [{ range: [2, 0, 2, 18], newText: 'footerAlign: rightLeft' }, { range: [1, 0, 2, 0], newText: '' }],
     ],
     [
       'a picked header alignment lands after the header',
-      '---\nheader: 作品名　一\n---\n', 'headerAlign', { picked: { label: 'Right', description: 'right', value: 'right' } },
+      'header: 作品名　一\n---\n', 'headerAlign', { picked: { label: 'Right', description: 'right', value: 'right' } },
       [{ range: [1, 13, 1, 13], newText: '\nheaderAlign: right' }],
     ],
   ];
@@ -423,7 +446,7 @@ test('editMeta edits the lines of ONE key and saves the book', async () => {
 });
 
 test('the divider 字下げ box takes 1-99 only: the line head is not on offer (#86)', async () => {
-  reseed('---\ntitle: 作品名\ndivider: ＊\n---\n');
+  reseed('title: 作品名\ndivider: ＊\n---\n');
   answer({ picked: { label: '＊', pick: 'preset' } }, { picked: { label: 'Indented', indented: true } }, { typed: undefined });
   assert.equal(await runEditMeta('divider'), 0);
   const validate = state.inputBoxCalls.at(-1)?.options?.validateInput;
@@ -439,7 +462,7 @@ test('the divider 字下げ box takes 1-99 only: the line head is not on offer (
 test('editMeta offers the five alignments for the header and the footer, each with its own prompt', async () => {
   const labels = ['Right', 'Left', 'Alternate: right, then left', 'Alternate: left, then right', 'Center'];
   for (const [key, placeHolder] of [['headerAlign', 'Where the header goes'], ['footerAlign', 'Where the footer goes']] as const) {
-    reseed('---\nheader: 作品名　一\n---\n');
+    reseed('header: 作品名　一\n---\n');
     state.quickPickCalls.length = 0;
     answer({ picked: undefined });
     assert.equal(await runEditMeta(key), 0, key);
@@ -452,15 +475,15 @@ test('editMeta offers the five alignments for the header and the footer, each wi
   }
 });
 
-test('editMeta with nothing to change applies nothing and saves nothing', async () => {
+test('a dismissed dialog applies nothing and saves nothing', async () => {
   const cases: readonly (readonly [name: string, key: string, given: Answer])[] = [
-    ['a cleared key without a line', 'title', { typed: '' }],
     ['a dismissed input box', 'title', { typed: undefined }],
-    ['the footer pick "Default" on an unwritten footer', 'footer', { picked: [{ pick: 'Default' }, 'accept'] }],
     ['a dismissed footer pick', 'footer', { picked: undefined }],
+    ['a dismissed divider pick', 'divider', { picked: undefined }],
+    ['a dismissed alignment pick', 'headerAlign', { picked: undefined }],
   ];
   for (const [name, key, given] of cases) {
-    reseed('---\nheader: 作品名　一\n---\na.jpnov\n');
+    reseed('header: 作品名　一\n---\na.jpnov\n');
     answer(given);
     const saves = await runEditMeta(key);
     assert.deepEqual(state.appliedEdits, [], name);
@@ -472,12 +495,12 @@ test('a refused edit or a failed save is toasted (#90)', async () => {
   const run = async (): Promise<void> => {
     const handler = state.registeredCommands.get('jpbook.removeEntry');
     assert.ok(handler, 'jpbook.removeEntry must be registered');
-    await handler({ kind: 'entry', list: 'chapters', entry: ENTRY, line: 0, path: 'a.jpnov', version: 1 });
+    await handler({ kind: 'entry', list: 'chapters', entry: ENTRY, line: 2, path: 'a.jpnov', version: 1 });
   };
 
   let saves = 0;
   const book = (save: boolean): void => {
-    state.textDocuments.push({ ...doc(BOOK, 'jpbook', 'a.jpnov\n'), save: () => {
+    state.textDocuments.push({ ...doc(BOOK, 'jpbook', `${HEAD}---\na.jpnov\n`), save: () => {
       saves += 1;
       return Promise.resolve(save);
     } });

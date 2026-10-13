@@ -58,7 +58,7 @@ function movedTo(abs: string, renames: readonly FileRename[]): string | null {
  * Computes the edits one `.jpbook` needs for `renames`, entries resolved against
  * `rootPath` (its owning workspace folder). Chapter and cover lines are rewritten,
  * duplicates included (a duplicate must keep duplicating whatever it duplicated); blank,
- * front-matter, and error/warning lines are never touched. Each edit replaces exactly the
+ * metadata, and error/warning lines are never touched. Each edit replaces exactly the
  * path span — a cover line's `- `/`cover: ` marker and any surrounding whitespace survive.
  */
 export function planBookEdits(

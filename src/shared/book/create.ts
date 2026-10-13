@@ -1,9 +1,11 @@
 /**
- * Pure input normalization for the panel's file-creating dialogs (the add-files picker, the
- * new-book prompt): one typed path becomes a root-relative `.jpnov` / `.jpbook` entry. vscode-free.
+ * The panel's file-creating dialogs, pure and vscode-free: the starter content of a new cover
+ * or book, and the normalization that turns one typed path into a root-relative `.jpnov` /
+ * `.jpbook` entry.
  */
+import { BUILD_CHROME_DEFAULT } from '../config/settings.ts';
 import { isAbsoluteLocation } from '../config/validate.ts';
-import { pathSegments } from './jpbook.ts';
+import { FENCE, HEADER, META_KEYS, metaLine, pathSegments, type MetaKey } from './jpbook.ts';
 
 /**
  * Starter content of a cover file created from the panel: README's 応募用の表紙 sample,
@@ -13,6 +15,30 @@ export const COVER_TEMPLATE = '［＃５字下げ］［＃ここに「タイト�
   '［＃７字下げ］［＃ここに「ペンネーム」の値を表示］\n' +
   '［＃７字下げ］全［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］ページ\n' +
   '［＃７字下げ］４００字詰め原稿用紙換算［＃縦中横］［＃ここに「原稿用紙換算枚数」の値を表示］［＃縦中横終わり］枚\n';
+
+/**
+ * The metadata a book created from the panel starts with: the title from the file's stem, the
+ * page furniture at the product defaults, the rest empty. `Record` keeps the table one line
+ * per key, so a new {@link META_KEYS} entry fails to compile until it has one.
+ */
+export function templateValues(stem: string): Record<MetaKey, string> {
+  return {
+    title: stem,
+    author: '',
+    header: BUILD_CHROME_DEFAULT.header,
+    headerAlign: BUILD_CHROME_DEFAULT.headerAlign,
+    footer: BUILD_CHROME_DEFAULT.footer,
+    footerAlign: BUILD_CHROME_DEFAULT.footerAlign,
+    divider: '',
+  };
+}
+
+/** Starter content of a book created from the panel: the header line, {@link templateValues}, and the `---` the chapters follow. */
+export function bookTemplate(stem: string): string {
+  const values = templateValues(stem);
+  const lines = [HEADER, ...META_KEYS.map((key) => metaLine(key, values[key])), FENCE];
+  return `${lines.join('\n')}\n`;
+}
 
 /** Why a typed path is unusable; the command maps each code to a localized message. */
 export type FileInputError = 'empty' | 'absolute' | 'escapes' | 'badName';

@@ -62,12 +62,15 @@ export type MsgCode =
   | 'jpbook.duplicateEntry' // args: [value]
   | 'jpbook.entryIsDirectory' // args: [value]
   | 'jpbook.fileNotFound' // args: [value]
-  | 'jpbook.metaNotKeyValue' // args: [value] — a front-matter line with no key before its colon (or no colon)
+  | 'jpbook.metaNotKeyValue' // args: [value] — a metadata line (above the `---`) with no key before its colon (or no colon)
   | 'jpbook.metaUnknownKey' // args: [key, knownList]
   | 'jpbook.metaDuplicateKey' // args: [key]  (first value wins)
   | 'jpbook.metaBadEnum' // args: [key, value, allowedList]
   | 'jpbook.dividerNotEncodable' // args: [char]
-  | 'jpbook.metaUnterminated' // args: [] — front matter opened but no closing ---; range = the opening fence
+  | 'jpbook.metaUnterminated' // args: [] — no `---` closes the metadata; range = the first non-blank line below the header, else the header
+  | 'jpbook.headerMissing' // args: [header] — the first line is not `jpbook/…`; range = that line (nothing below it is read)
+  | 'jpbook.versionUnsupported' // args: [version, supported] — a `jpbook/<version>` header this extension has no parser for; range = that line
+  | 'jpbook.metaEmptyValue' // args: [key] — a key that needs a value (title, headerAlign, footerAlign) written without one (range = its line) or not written (range = the closing `---`)
   | 'jpbook.coverItemWithoutKey' // args: [value] — a "- path" list item with no bare "cover:" line open above it
   | 'jpbook.coverNeedsList' // args: [value] — `cover:` written with a value; it takes "- path" item lines
   | 'path.empty' // args: [] — the path.* codes are resolveContained's verdicts on a book entry
@@ -233,7 +236,7 @@ export interface PreviewSettings extends LayoutSettings, PreviewChrome {}
  * request. Every artifact reads its slice (`.txt`: charsPerLine; `.epub`: kinsoku, dash); the
  * paper and chrome fields are `.html`-only. The `.txt` encoding is a client-side setting, never
  * part of this snapshot. Page furniture (ヘッダー/ページ番号) is ABSENT: it is book identity,
- * carried by each `.jpbook`'s own front matter (`composeBookChrome`).
+ * carried by each `.jpbook`'s own metadata (`composeBookChrome`).
  */
 export interface HtmlSettings extends LayoutSettings {
   /** Line-head numbers on built pages (proofing chrome — workspace preference, not book identity). */
@@ -361,7 +364,7 @@ export interface BookEntry {
   readonly fileRel: string;
   /** Derived output relative path (`jpbookOutRel`, POSIX `/`); the build appends the format extension. */
   readonly outRel: string;
-  /** The front-matter `title`, when present and non-empty — display metadata for the Books panel. */
+  /** The `title`, when written and non-empty — display metadata for the Books panel. */
   readonly title?: string;
 }
 

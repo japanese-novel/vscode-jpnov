@@ -49,6 +49,12 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return `invalid value "${a(1)}" for ${a(0)} (allowed: ${a(2)})`;
     case 'jpbook.metaUnterminated':
       return 'unterminated metadata block (missing a closing ---)';
+    case 'jpbook.headerMissing':
+      return `the first line must be the header "${a(0)}"`;
+    case 'jpbook.versionUnsupported':
+      return `unsupported .jpbook version "${a(0)}" (this extension reads ${a(1)})`;
+    case 'jpbook.metaEmptyValue':
+      return `${a(0)} needs a value`;
     case 'jpbook.coverItemWithoutKey':
       return `a "- " item needs a bare "cover:" line above it; any other key ends the list: ${a(0)}`;
     case 'jpbook.coverNeedsList':

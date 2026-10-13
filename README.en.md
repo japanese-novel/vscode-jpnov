@@ -55,11 +55,10 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
    new book opens right there with its **Book Info**, **Cover pages** and
    **Chapters** sections. One `.jpbook` is one book: a plain text file with
    one chapter path per line, each relative to the workspace folder, so
-   moving the `.jpbook` never breaks them. An optional `---`-fenced block at
-   the top carries the book's own metadata — title, running head,
-   page-number style (see
-   [Per-book metadata](#per-book-metadata-front-matter)). Editing the file
-   by hand does the same thing the view does.
+   moving the `.jpbook` never breaks them. The lines above its `---` carry the
+   book's own metadata — title, running head, page-number style (see
+   [Per-book metadata](#per-book-metadata)); Create a Book writes them all.
+   Editing the file by hand does the same thing the view does.
 2. **Write chapters.** Click **Add chapters…** under **Chapters**, type a
    name and press Enter: the `.jpnov` file is created, listed in the book,
    and opened in the editor. Aozora Bunko annotations are highlighted as you type;
@@ -282,8 +281,7 @@ chip folds back to the one-line summary.
 ## Building books
 
 The **Books** view in the Activity Bar lists every discovered `.jpbook` as
-a book with a checkbox (labelled by its front-matter `title` when it declares
-one). The buttons at the bottom of the view build the checked books (EPUB
+a book with a checkbox (labelled by its `title`). The buttons at the bottom of the view build the checked books (EPUB
 is an icon button):
 
 - **Print / Save as PDF** — builds the HTML and opens it in your default
@@ -305,8 +303,8 @@ is an icon button):
 
 Outputs land in `<outDir>/<book path>.{html,epub,txt}` with `outDir`
 defaulting to `dist`. Two book files that resolve to the same output path fail
-the build with a diagnostic. A `.jpbook` with a syntax error (an unclosed `---`
-block, a backslash in a path, an entry that is not a `.jpnov` file) fails that
+the build with a diagnostic. A `.jpbook` with an error (a missing metadata key or
+closing `---`, a backslash in a path, an entry that is not a `.jpnov` file) fails that
 book's build with its first error; the other books still build. Warnings, such
 as unknown keys or duplicates, never stop a build.
 
@@ -365,40 +363,45 @@ to update every `.jpbook` that references it —
 move. Renames made outside VS Code
 can't be tracked; the missing path is flagged in the editor instead.
 
-### Per-book metadata (front matter)
+### Per-book metadata
 
 Page furniture belongs to the book: two volumes in one workspace can carry
 different running heads, and the chapter divider is part of a book's identity
-too. A `.jpbook` therefore starts with an
-optional `---`-fenced block of `key: value` lines:
+too. A `.jpbook` therefore opens with the header line `jpbook/1` (the format
+and its version), then its metadata, one `key: value` line each, closed by a
+`---` line that the chapters follow. Create a Book writes exactly this:
 
 ```text
----
-title: 作品名　第一巻
-header: 作品名　一
+jpbook/1
+title: 作品名
+author:
+header:
 headerAlign: center
 footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
 footerAlign: right
-divider: ＊　＊　＊
+divider:
 ---
 01_prologue.jpnov
 02_chapter1.jpnov
 ```
 
-| Key | Default | Meaning |
+| Key | Template value | Meaning |
 | --- | --- | --- |
-| `title` | — | Display name in the Books view and the EPUB title (the output path still derives from the file name) |
-| `author` | — | Author name; becomes the EPUB creator metadata |
-| `header` | `""` | Running head at the top of every page; omit for none |
+| `title` | the file name | Display name in the Books view and the EPUB title (the output path still derives from the file name); never empty |
+| `author` | empty | Author name; becomes the EPUB creator metadata; empty for none |
+| `header` | empty | Running head at the top of every page; empty for none |
 | `headerAlign` | `center` | Header placement: pinned (`right`, `left`), alternating per page (`rightLeft`, `leftRight`), or centred (`center`) |
-| `footer` | `［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］` | Footer line, `12 / 215` by default; blank suppresses it |
+| `footer` | `［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］` | Footer line, `12 / 215` with the template value; empty suppresses it |
 | `footerAlign` | `right` | Footer placement: pinned (`right`, `left`), alternating per page (`rightLeft`, `leftRight`), or centred (`center`) |
-| `divider` | — | Chapter divider inserted between chapters that do not open with a heading (e.g. `＊　＊　＊`); a bare mark is centred along the line at build time, a `［＃３字下げ］` prefix indents it instead; omit for a single blank line |
+| `divider` | empty | Chapter divider inserted between chapters that do not open with a heading (e.g. `＊　＊　＊`); a bare mark is centred along the line at build time, a `［＃３字下げ］` prefix indents it instead; empty for a single blank line |
 | `cover` | — | Cover pages placed before the body: a cover sheet, a title page, a synopsis (see below) |
 
-Every key is optional; unknown keys warn and are ignored, so future keys stay
-forward-compatible. For `title`, `author`, `header` and `divider`, an empty
-value is the same as leaving the key out. The seven keys from `title` to `divider`
+The header is the first line, exactly `jpbook/1`: a first line that is anything
+else, or that names a version this extension has no parser for, fails the build,
+and nothing below it is read. A key that is not written is an empty one; `title`,
+`headerAlign` and `footerAlign` cannot be empty, so a book without them is not
+built, and its `---` line is flagged. Unknown keys
+warn and are ignored, so future keys stay forward-compatible. The seven keys from `title` to `divider`
 are also editable from the **Book Info** rows in the Books view, and `cover`
 from its **Cover pages** section.
 
@@ -412,9 +415,14 @@ sheet, a title page, a synopsis. The files listed under `cover` become those
 pages, in order:
 
 ```text
----
+jpbook/1
 title: 作品名
 author: ペンネーム
+header:
+headerAlign: center
+footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
+footerAlign: right
+divider:
 cover:
   - cover.jpnov
   - synopsis.jpnov
@@ -560,8 +568,8 @@ highlighting lists are per workspace folder.
 | `jpnov.layout.outDir` | `dist` | Output folder (per workspace folder), never scanned for books |
 
 The running head and page number are **per-book** properties and live in each
-`.jpbook`'s front matter, not in settings — see
-[Per-book metadata](#per-book-metadata-front-matter).
+`.jpbook`'s metadata, not in settings — see
+[Per-book metadata](#per-book-metadata).
 
 ### Japanese Novel — Lint
 

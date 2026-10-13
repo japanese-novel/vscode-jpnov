@@ -6,11 +6,10 @@
 import { readdir } from 'node:fs/promises';
 
 import { parse } from '../../src/shared/ast/parse.ts';
-import { composeBookChrome, coverPathOf, parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, coverPathOf, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { EDGE_INSET } from '../../src/shared/compiler/geometry.ts';
 import { renderBook } from '../../src/shared/compiler/document.ts';
 import type { BookInput } from '../../src/shared/compiler/document.ts';
-import { chapterStem } from '../../src/shared/compiler/epub.ts';
 import { renderPreview } from '../../src/shared/compiler/preview.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT, PREVIEW_CHROME_DEFAULT } from '../../src/shared/config/settings.ts';
 import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
@@ -45,9 +44,13 @@ async function loadTexts(): Promise<Texts> {
   return { sample: (file) => get(samples, file, 'sample'), specimen: (name) => get(specimens, name, 'specimen') };
 }
 
-/** A `.jpbook` in src/samples/ → the compiler's book input, chrome composed from its front matter. */
+/** A `.jpbook` in src/samples/ → the compiler's book input, chrome composed from its metadata as the build reads it. */
 function bookFromJpbook(texts: Texts, name: string, chrome: BookSample['chrome']): { input: BookInput; chrome: ReturnType<typeof composeBookChrome> } {
   const parsed = parseJpbook(texts.sample(name));
+  const verdict = checkJpbook(parsed);
+  if (!verdict.ok) {
+    throw new Error(`render: ${name} does not build: ${verdict.error.code}`);
+  }
   const files = parsed.lines.filter((pl) => pl.kind === 'ok').map((pl) => ({ name: pl.value, src: texts.sample(pl.value) }));
   const covers = parsed.lines
     .filter((pl) => pl.kind === 'coverEntry')
@@ -56,12 +59,12 @@ function bookFromJpbook(texts: Texts, name: string, chrome: BookSample['chrome']
     .map((entry) => ({ name: entry.value, src: texts.sample(entry.value) }));
   const input: BookInput = {
     files,
-    divider: parsed.meta.divider,
-    title: parsed.meta.title ?? chapterStem(name),
-    author: parsed.meta.author ?? '',
+    divider: verdict.meta.divider,
+    title: verdict.meta.title,
+    author: verdict.meta.author,
     ...(covers.length > 0 ? { cover: { files: covers } } : {}),
   };
-  return { input, chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...chrome }, parsed.meta) };
+  return { input, chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...chrome }, verdict.meta) };
 }
 
 function renderBookSample(texts: Texts, sample: BookSample): { render: BookRender; html: string } {

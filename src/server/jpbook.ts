@@ -11,7 +11,7 @@
  * build passes its target root. A null root (a `.jpbook` outside every workspace folder)
  * degrades to syntax/metadata-only: no containment or existence checks, no links, no path
  * completion. Filesystem access is `file:`-scheme only (the server never touches
- * `vscode.fs`); a non-`file:` root degrades the same way existence-wise, and front-matter
+ * `vscode.fs`); a non-`file:` root degrades the same way existence-wise, and metadata
  * completion (fs-free) works everywhere.
  *
  * vscode-free: only `import type`/value-imports of the language-SERVER package (never the
@@ -30,8 +30,9 @@ import {
   completeMetaLine,
   entryPathOf,
   isCoverMark,
+  metaEndOf,
   metaKeyOf,
-  metaRegionOf,
+  writtenKeysOf,
   type JpbookCompletion,
   type JpbookRange,
   type ParsedJpbook,
@@ -59,7 +60,7 @@ function lineRange(pl: ParsedLine): Range {
 
 /**
  * Warns for each character of a `divider` value that Shift JIS cannot hold. Only `divider` is
- * checked: it is the one front-matter value that reaches the built `.txt`, and it repeats at every
+ * checked: it is the one metadata value that reaches the built `.txt`, and it repeats at every
  * chapter seam. This is manifest validation like every other `jpbook.*` diagnostic, NOT the
  * `shiftJisSafe` prose rule — that one never sees a `.jpbook`, and a divider is a symbol rather
  * than a character an author mistyped.
@@ -120,12 +121,13 @@ export async function diagnoseJpbook(rootUri: string | null, parsed: ParsedJpboo
   const canCheckFs = rootUri !== null && isFileScheme(rootUri);
   const diagnostics: Diagnostic[] = [];
 
+  for (const metaError of parsed.metaErrors) {
+    diagnostics.push(diagnostic(charRange(metaError.line, metaError.range), metaError.error, DiagnosticSeverity.Error));
+  }
+
   for (const pl of parsed.lines) {
     if (pl.kind === 'meta') {
       diagnostics.push(...dividerWarnings(pl));
-      continue;
-    }
-    if (pl.kind === 'blank' || pl.kind === 'fence' || pl.kind === 'cover') {
       continue;
     }
     if (typeof pl.kind === 'object') {
@@ -177,7 +179,7 @@ export async function diagnoseJpbook(rootUri: string | null, parsed: ParsedJpboo
 /**
  * Cmd+click targets: one {@link DocumentLink} per syntactically-valid, contained chapter or
  * cover line (`ok`/`duplicate`/`coverEntry`/`coverDuplicate`), pointing at the root-resolved
- * file URI; a cover line's link covers just its path portion. Blank, front-matter,
+ * file URI; a cover line's link covers just its path portion. Blank, metadata,
  * error/warning lines — and every line when no root owns the book — get no link. No fs
  * access: links resolve as URIs and are cheap, so a not-yet-existing target still links
  * (its squiggle says so).
@@ -240,14 +242,16 @@ function coverPathStart(prefix: string): number | null {
 }
 
 /**
- * Completions for the cursor on `lineText` at `position`. Inside the front-matter region
- * (strictly between the fences) it offers metadata keys / enum values — pure, fs-free, so
- * it works with or without a root — and, on cover-shaped lines (`- ` items, `cover: `),
- * file paths. On chapter lines it lists the directory the current path prefix points into
- * (relative to the OWNING ROOT) and hands it to the pure {@link completeEntryLine}; the
- * path branch returns nothing without a `file:` root, or when the line's path already
- * names an existing file with the cursor at its end (per the "no more suggestions once the
- * line matches" rule). Folder items re-trigger suggestions so the user keeps drilling.
+ * Completions for the cursor on `lineText` at `position`. In the metadata (above the closing
+ * `---`, or the whole file while none closes it) it offers the keys not yet written / enum
+ * values — pure, fs-free, so it works with or without a root — and, on cover-shaped lines
+ * (`- ` items, `cover: `), file paths. On chapter lines it lists the directory the current
+ * path prefix points into (relative to the OWNING ROOT) and hands it to the pure
+ * {@link completeEntryLine}; the path branch returns nothing without a `file:` root, or when
+ * the line's path already names an existing file with the cursor at its end (per the "no more
+ * suggestions once the line matches" rule). Folder items re-trigger suggestions so the user
+ * keeps drilling. The header and fence lines offer nothing, nor does a book whose header no
+ * parser reads.
  */
 export async function completeJpbook(
   rootUri: string | null,
@@ -255,6 +259,10 @@ export async function completeJpbook(
   lineText: string,
   position: { line: number; character: number },
 ): Promise<CompletionItem[]> {
+  const kind = parsed.lines[position.line]?.kind;
+  if (parsed.lines[0]?.kind !== 'header' || kind === 'header' || kind === 'fence') {
+    return []; // a book no parser read, the header, the fence: nothing sensible to offer
+  }
   const prefix = lineText.slice(0, position.character);
 
   // Path completion for the text from `pathStart` on; chapter lines pass 0, cover lines the
@@ -309,20 +317,12 @@ export async function completeJpbook(
     );
   };
 
-  const region = metaRegionOf(parsed.lines);
-  if (region !== null && position.line >= region.open) {
-    const inMeta = position.line > region.open && (region.close === null || position.line < region.close);
-    if (inMeta) {
-      const pathStart = coverPathStart(prefix);
-      if (pathStart !== null) {
-        return completePathAt(pathStart);
-      }
-      return completeMetaLine(prefix).map((c) => toCompletionItem(c, position.line));
+  if (position.line < metaEndOf(parsed)) {
+    const pathStart = coverPathStart(prefix);
+    if (pathStart !== null) {
+      return completePathAt(pathStart);
     }
-    if (position.line === region.open || position.line === region.close) {
-      return []; // on a fence line — nothing sensible to offer.
-    }
+    return completeMetaLine(prefix, writtenKeysOf(parsed, position.line)).map((c) => toCompletionItem(c, position.line));
   }
-
   return completePathAt(0);
 }

@@ -1,6 +1,6 @@
 /**
  * Unit tests for `jpbook.createFile`'s book mode (manage.ts) against the mocked `vscode`:
- * the folder resolution, the parked-`.jpbook` prompt, the written empty file, the
+ * the folder resolution, the parked-`.jpbook` prompt, the written book template, the
  * non-overwrite guard, and the post-create detail reveal on BooksViewProvider.
  *
  * Runs in CI via `npm run test:integration`; directly (see test/client/README.md):
@@ -9,6 +9,8 @@
 import { test, mock, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { bookTemplate } from '../../src/shared/book/create.ts';
+import { meta } from '../shared/book/_fixture.ts';
 import { buildVscode, createFakeWebviewView, createMockState, doc, resetMockState, tick, Uri, FileType } from './_vscodeMock.ts';
 
 const state = createMockState();
@@ -60,14 +62,14 @@ function revealedDetail(
 
 // --- createFile (book mode) ---------------------------------------------------
 
-test('a typed file name writes an empty .jpbook at the folder root', async () => {
+test('a typed file name writes the book template, titled after the file, at the folder root', async () => {
   seedFolder();
   state.inputBoxQueue.push('My Book');
 
   await createFile(undefined);
 
   assert.deepEqual(state.errorMessages, []);
-  assert.deepEqual(state.writtenFiles, [{ uri: `${ROOT}/My Book.jpbook`, content: '' }]);
+  assert.deepEqual(state.writtenFiles, [{ uri: `${ROOT}/My Book.jpbook`, content: bookTemplate('My Book') }]);
   const options = state.inputBoxCalls[0]?.options;
   assert.ok(options, 'expected one input box');
   assert.equal(options.prompt, 'File name of the new book');
@@ -84,7 +86,7 @@ test('a subfolder path creates the folder and normalizes the separator', async (
 
   assert.deepEqual(state.errorMessages, []);
   assert.deepEqual(state.createdDirs, [`${ROOT}/books`]);
-  assert.deepEqual(state.writtenFiles, [{ uri: `${ROOT}/books/vol1.jpbook`, content: '' }]);
+  assert.deepEqual(state.writtenFiles, [{ uri: `${ROOT}/books/vol1.jpbook`, content: bookTemplate('vol1') }]);
 });
 
 test('a dismissed prompt writes nothing', async () => {
@@ -116,7 +118,7 @@ test('multi-root goes through the folder pick and writes into the chosen root', 
 
   await createFile(undefined);
 
-  assert.deepEqual(state.writtenFiles, [{ uri: `${root2}/Y.jpbook`, content: '' }]);
+  assert.deepEqual(state.writtenFiles, [{ uri: `${root2}/Y.jpbook`, content: bookTemplate('Y') }]);
 });
 
 test('multi-root with the folder pick dismissed writes nothing', async () => {
@@ -153,7 +155,7 @@ test('a created book is revealed in the panel', async () => {
   await tick();
 
   assert.deepEqual(state.errorMessages, []);
-  assert.deepEqual(state.writtenFiles, [{ uri: bookUri, content: '' }]);
+  assert.deepEqual(state.writtenFiles, [{ uri: bookUri, content: bookTemplate('新刊') }]);
   assert.equal(revealedDetail(view)?.uri, bookUri);
 });
 
@@ -162,7 +164,7 @@ test('a created book is revealed in the panel', async () => {
 test('revealNewBook focuses the view and opens the detail of a non-ASCII book', async () => {
   seedFolder();
   const bookUri = `${ROOT}/本.jpbook`;
-  state.textDocuments.push(doc(bookUri, 'jpbook', '---\ntitle: 本\n---\nch1.jpnov\n'));
+  state.textDocuments.push(doc(bookUri, 'jpbook', meta({ title: '本' }) + 'ch1.jpnov\n'));
   const { provider, view } = await setupProvider([{ uri: bookUri, rootUri: ROOT, fileRel: '本.jpbook', outRel: '本' }]);
 
   await provider.revealNewBook(Uri.parse(bookUri) as never);

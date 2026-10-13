@@ -12,7 +12,7 @@ import { posix } from 'node:path';
 import * as vscode from 'vscode';
 
 import { INDENT_MAX } from '#/shared/ast/notation.ts';
-import { COVER_TEMPLATE, normalizeFileInput, type FileInputError } from '#/shared/book/create.ts';
+import { bookTemplate, COVER_TEMPLATE, normalizeFileInput, type FileInputError } from '#/shared/book/create.ts';
 import {
   appendEntries,
   entryLines,
@@ -84,27 +84,20 @@ function alignLabel(value: FurnitureAlign): string {
 }
 
 /**
- * The meta row split into its bare display VALUE and a status NOTE (default / not-set), so the
- * panel can place the note beside the LABEL rather than inside the value: a set value carries no
- * note, an absent key with a default shows that default value tagged "(default)", and an absent
- * key with no default shows an empty value tagged "(not set)". An empty value is the footer's
- * alone (no footer) and shows as "(hidden)".
+ * The meta row split into its bare display VALUE and a status NOTE, so the panel can place the
+ * note beside the LABEL rather than inside the value: a value carries no note; an empty header
+ * or footer shows "(hidden)", an empty divider "(none)", and an empty title or author, or a
+ * title or alignment the file does not write, "(not set)". (An unwritten key that may be empty
+ * parses as empty.)
  */
 export function metaValueParts(key: MetaKey, value: string | undefined): { value: string; note: string } {
-  const display = (v: string): string => (isAlignKey(key) ? alignLabel(v as FurnitureAlign) : v);
-  if (value === '') {
-    return { value: '', note: vscode.l10n.t('(hidden)') };
+  if (value !== undefined && value !== '') {
+    return { value: isAlignKey(key) ? alignLabel(value as FurnitureAlign) : value, note: '' };
   }
-  if (value !== undefined) {
-    return { value: display(value), note: '' };
-  }
-  if (key === 'title' || key === 'author' || key === 'divider') {
-    return { value: '', note: vscode.l10n.t('(not set)') }; // no default: absent = simply not set
-  }
-  const fallback = BUILD_CHROME_DEFAULT[key];
-  return fallback === ''
-    ? { value: '', note: vscode.l10n.t('(not set)') }
-    : { value: display(fallback), note: vscode.l10n.t('(default)') };
+  const note = key === 'header' || key === 'footer'
+    ? vscode.l10n.t('(hidden)')
+    : key === 'divider' ? vscode.l10n.t('(none)') : vscode.l10n.t('(not set)');
+  return { value: '', note };
 }
 
 /** Applies planned replaces and saves — the panel's watcher does the refresh. A refused edit or save is toasted. */
@@ -406,9 +399,10 @@ async function writeNewFile(rootUri: string, rel: string, content = ''): Promise
 }
 
 /**
- * `jpbook.createFile` (title bar, welcome, palette) — one input creates an empty `.jpbook` in the
- * chosen folder, the parked suffix trailing what's typed, and reveals it in the panel; entries
- * and metadata are then added right there. Chapters and covers are created from their lists.
+ * `jpbook.createFile` (title bar, welcome, palette) — one input creates a `.jpbook` holding the
+ * {@link bookTemplate} (every required key, titled after the file) in the chosen folder, the
+ * parked suffix trailing what's typed, and reveals it in the panel; entries and metadata are
+ * then edited right there. Chapters and covers are created from their lists.
  */
 export async function createFile(view: BooksViewProvider | undefined): Promise<void> {
   if ((vscode.workspace.workspaceFolders ?? []).length === 0) {
@@ -426,7 +420,7 @@ export async function createFile(view: BooksViewProvider | undefined): Promise<v
   if (rel === undefined) {
     return;
   }
-  const target = await writeNewFile(root, rel);
+  const target = await writeNewFile(root, rel, bookTemplate(splitRelPath(rel).name.replace(/\.jpbook$/i, '')));
   if (target !== null) {
     await view?.revealNewBook(target);
   }
@@ -499,7 +493,7 @@ async function pickDivider(current: string | undefined): Promise<string | undefi
     return undefined;
   }
   if (markPick.pick === 'none') {
-    return ''; // an empty value clears the key
+    return ''; // written as `divider:` = no divider
   }
   let mark = markPick.label;
   if (markPick.pick === 'custom') {
@@ -561,16 +555,11 @@ async function pickDivider(current: string | undefined): Promise<string | undefi
   return composeDividerValue(mark, indentOf(amount));
 }
 
-/** The panel's answer for a key: dismissed (`undefined`), or the value to set — `undefined` = back to unwritten. */
-type MetaAnswer = { readonly value: string | undefined } | undefined;
-
-const answered = (value: string | undefined): MetaAnswer => (value === undefined ? undefined : { value });
-
 /**
  * One dialog for the footer: the typed line rides as the first item, so Enter takes it as is;
- * the default (the key goes back to unwritten) and no footer (`footer:`) stay listed below it.
+ * the default (the product's footer, written out) and no footer (`footer:`) stay listed below it.
  */
-function pickFooter(current: string | undefined): Promise<MetaAnswer> {
+function pickFooter(current: string | undefined): Promise<string | undefined> {
   type FooterItem = vscode.QuickPickItem & { readonly pick: 'typed' | 'default' | 'none' };
   const fixed: FooterItem[] = [
     { label: vscode.l10n.t('Default'), description: BUILD_CHROME_DEFAULT.footer, alwaysShow: true, pick: 'default' },
@@ -588,11 +577,9 @@ function pickFooter(current: string | undefined): Promise<MetaAnswer> {
   refresh();
   qp.onDidChangeValue(refresh);
 
-  return runQuickPick(qp, (): MetaAnswer => {
+  return runQuickPick(qp, (): string | undefined => {
     const item = qp.selectedItems[0];
-    return item === undefined
-      ? undefined
-      : { value: item.pick === 'typed' ? item.label : item.pick === 'none' ? '' : undefined };
+    return item === undefined ? undefined : item.pick === 'typed' ? item.label : item.pick === 'none' ? '' : BUILD_CHROME_DEFAULT.footer;
   });
 }
 
@@ -602,11 +589,11 @@ async function editMeta(arg: unknown): Promise<void> {
     return;
   }
 
-  let answer: MetaAnswer;
+  let value: string | undefined;
   if (node.metaKey === 'divider') {
-    answer = answered(await pickDivider(node.value));
+    value = await pickDivider(node.value);
   } else if (node.metaKey === 'footer') {
-    answer = await pickFooter(node.value);
+    value = await pickFooter(node.value);
   } else if (isAlignKey(node.metaKey)) {
     const picked = await vscode.window.showQuickPick(
       FURNITURE_ALIGNS.map((v) => ({ label: alignLabel(v), description: v, value: v })),
@@ -616,16 +603,16 @@ async function editMeta(arg: unknown): Promise<void> {
           : vscode.l10n.t('Where the footer goes'),
       },
     );
-    answer = answered(picked?.value);
+    value = picked?.value;
   } else {
-    answer = answered(await vscode.window.showInputBox({ prompt: metaLabel(node.metaKey), value: node.value ?? '' }));
+    value = await vscode.window.showInputBox({ prompt: metaLabel(node.metaKey), value: node.value ?? '' });
   }
-  if (answer === undefined) {
+  if (value === undefined) {
     return; // dismissed
   }
 
   const { uri, text } = await bookText(node.entry);
-  const edits = setMeta(text, node.metaKey, answer.value);
+  const edits = setMeta(text, node.metaKey, value);
   if (edits.length > 0) {
     await applyBookEdits(uri, edits);
   }

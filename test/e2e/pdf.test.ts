@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { bookTemplate } from '../../src/shared/book/create.ts';
 import type { PaperFit } from '../../src/shared/compiler/geometry.ts';
 import { HEADER_BAND, fitPaper } from '../../src/shared/compiler/geometry.ts';
 import type { BuildResult, HtmlSettings } from '../../src/shared/protocol.ts';
@@ -64,7 +65,7 @@ before(async () => {
   cleanups.push(wsDir);
   const wsUri = pathToFileURL(wsDir).href.replace(/\/$/, '');
   await writeFile(join(wsDir, 'hon.jpnov'), CHAPTER_TEXT, 'utf8');
-  await writeFile(join(wsDir, 'hon.jpbook'), '---\ntitle: 用紙試験\n---\nhon.jpnov\n', 'utf8');
+  await writeFile(join(wsDir, 'hon.jpbook'), bookTemplate('用紙試験') + 'hon.jpnov\n', 'utf8');
   projectDirs = { [wsUri]: { outDir: 'dist' } };
 });
 

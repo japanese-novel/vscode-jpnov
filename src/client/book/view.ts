@@ -74,7 +74,7 @@ function openExternally(uri: string): void {
   void vscode.env.openExternal(vscode.Uri.parse(uri).toString() as unknown as vscode.Uri);
 }
 
-/** The book's display label: its front-matter title, else the last segment of the output name. */
+/** The book's display label: its `title`, else (the key missing or empty) the last segment of the output name. */
 function bookTitle(entry: BookEntry): string {
   return entry.title ?? splitRelPath(entry.outRel).name;
 }
@@ -129,7 +129,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.extensionUri = extensionUri;
 
     // A `.jpbook` appearing/disappearing changes the book SET, and a SAVE can change its
-    // front-matter title (a book label) or chapters (the open detail), so create/delete/change
+    // title (a book label) or chapters (the open detail), so create/delete/change
     // all re-list. The watcher only fires onDidChange for on-disk writes — not per keystroke.
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.jpbook');
     // Chapter existence backs the detail's missing flags, so a `.jpnov` appearing/disappearing
@@ -291,7 +291,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (this.openDetailUri !== undefined && !next.has(this.openDetailUri)) {
       this.closeOpenDetail();
     }
-    this.applyDetailChrome(); // also refreshes the title after a front-matter title edit
+    this.applyDetailChrome(); // also refreshes the title after a title edit
     this.postState();
     if (this.openDetailUri !== undefined) {
       void this.postDetail(this.openDetailUri);
