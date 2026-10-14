@@ -1373,6 +1373,7 @@ test('build: the same Shift JIS bytes under a UTF-8 reader build ok with U+FFFD,
 const READ_FAILURES: readonly [ReadTextFailure, MsgCode, readonly string[]][] = [
   ['notFound', 'book.entryFileNotFound', ['x.jpnov']],
   ['notText', 'book.entryNotText', ['x.jpnov']],
+  ['noReply', 'book.entryNoReply', ['x.jpnov']],
   ['other', 'book.entryReadFailed', ['x.jpnov', 'EACCES: permission denied']],
 ];
 

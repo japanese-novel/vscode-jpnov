@@ -88,7 +88,7 @@ async function readTextOverWire(uri: string, token?: CancellationToken): Promise
   const reply: unknown = token === undefined
     ? await connection.sendRequest(ReadTextRequest, params)
     : await connection.sendRequest(ReadTextRequest, params, token);
-  return isReadTextResult(reply) ? reply : { ok: false, reason: 'other', why: 'the client did not answer jpnov/readText' };
+  return isReadTextResult(reply) ? reply : { ok: false, reason: 'noReply', why: 'the reply to jpnov/readText has no ok flag' };
 }
 
 const context: ServerContext = {

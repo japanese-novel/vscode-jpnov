@@ -53,6 +53,7 @@ export type MsgCode =
   | 'book.entryFileNotFound' // args: [value]  (ENOENT)
   | 'book.entryReadFailed' // args: [value, why]  (why = raw OS error, untranslatable)
   | 'book.entryNotText' // args: [value]  (the client's decoder refused the bytes: binary content)
+  | 'book.entryNoReply' // args: [value]  (the reply to jpnov/readText had no usable shape)
   | 'build.outPathCollision' // args: [path, list] — two book files resolve to the same output file; neither is written
   | 'build.failed' // args: [detail]  (detail = raw build error, untranslatable)
   | 'jpbook.backslashSeparator' // args: [value]
@@ -374,8 +375,8 @@ export interface ReadTextParams {
   readonly uri: string;
 }
 
-/** Why the client produced no text: the file is missing, its bytes are not text, or any other I/O failure. */
-export type ReadTextFailure = 'notFound' | 'notText' | 'other';
+/** Why there is no text: a missing file, non-text bytes, any other I/O failure; `noReply` is the server's own verdict on a reply of no usable shape (the client never sends it). */
+export type ReadTextFailure = 'notFound' | 'notText' | 'noReply' | 'other';
 
 /**
  * The text as the editor shows it: an open document's live buffer (unsaved edits included), else

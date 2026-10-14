@@ -212,6 +212,8 @@ function textOf(reply: ReadTextResult, rel: string): string {
       throw new LocalizedError({ code: 'book.entryFileNotFound', args: [rel] });
     case 'notText':
       throw new LocalizedError({ code: 'book.entryNotText', args: [rel] });
+    case 'noReply':
+      throw new LocalizedError({ code: 'book.entryNoReply', args: [rel] });
     case 'other':
       throw new LocalizedError({ code: 'book.entryReadFailed', args: [rel, reply.why] });
     default: {
