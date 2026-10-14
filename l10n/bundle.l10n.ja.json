@@ -102,7 +102,7 @@
   "{0} needs a value": "{0} に値を書いてください",
   "a \"- \" item needs a \"cover:\", \"characters:\" or \"keywords:\" line above it; any other key ends the list: {0}": "「-」の行は「cover:」「characters:」「keywords:」のいずれかの行の下に置いてください（ほかのキーを書くと、並びはそこで終わります）: {0}",
   "an empty item (nothing to recognise); it is ignored": "項目が空です（認識する文字がありません）。この項目は無視されます",
-  "a name is text and ruby only; this item is ignored: {0}": "名前に書けるのは文字とルビだけです。この項目は無視されます: {0}",
+  "a name is text and ruby only, no annotation and no 「」『』; this item is ignored: {0}": "名前に書けるのは文字とルビだけです。注記やかぎ括弧は書けません。この項目は無視されます: {0}",
   "\"{0}\" is also listed in {1}, written differently (ruby or split); the first one found applies": "「{0}」は {1} にも、別の書き方（ルビや区切り）で書かれています。先に見つかったほうが使われます",
   "unterminated ［＃ annotation (missing ］)": "注記が閉じられていません（「］」が必要です）",
   "unterminated block annotation (missing ［＃ここで…終わり］)": "ブロック注記が閉じられていません（「［＃ここで…終わり］」が必要です）",

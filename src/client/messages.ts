@@ -67,7 +67,7 @@ export function renderMessage(msg: LocalizableMessage): string {
     case 'jpbook.nameEmpty':
       return vscode.l10n.t('an empty item (nothing to recognise); it is ignored');
     case 'jpbook.nameNotPlain':
-      return vscode.l10n.t('a name is text and ruby only; this item is ignored: {0}', s(0));
+      return vscode.l10n.t('a name is text and ruby only, no annotation and no 「」『』; this item is ignored: {0}', s(0));
     case 'jpbook.nameConflict':
       return vscode.l10n.t('"{0}" is also listed in {1}, written differently (ruby or split); the first one found applies', s(0), s(1));
     case 'syntax.unclosedAnnotation':

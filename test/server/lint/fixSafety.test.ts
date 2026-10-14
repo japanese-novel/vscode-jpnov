@@ -155,14 +155,16 @@ interface Wedge {
   readonly wraps: number;
 }
 
-/** Between two characters: a postfix (its target is never in the corpora), a comment and a
- *  外字注記. Around one: a postfix naming it, an explicit ruby, and the 縦中横 / 傍点 / 丸傍点 /
- *  block 太字 spans. */
+/** Between two characters: a postfix (its target is never in the corpora), a comment, a
+ *  外字注記, a value field and a ruby over one. Around one: a postfix naming it, an explicit ruby,
+ *  and the 縦中横 / 傍点 / 丸傍点 / block 太字 spans. */
 const WEDGES: readonly Wedge[] = [
   { open: '［＃「z」に傍点］', close: '', wraps: 0 },
   { open: '', close: (inner) => `［＃「${inner}」に傍点］`, wraps: 1 },
   { open: '［＃メモ］', close: '', wraps: 0 },
   { open: gaijiOf('⁉'), close: '', wraps: 0 },
+  { open: '［＃ここに「タイトル」の値を表示］', close: '', wraps: 0 },
+  { open: '｜［＃ここに「タイトル」の値を表示］《z》', close: '', wraps: 0 }, // a ruby over a value field alone
   { open: '｜', close: '《z》', wraps: 1 },
   { open: '｜', close: '［＃メモ］《z》', wraps: 1 }, // a ｜ base holding an annotation
   { open: '｜［＃メモ］', close: '《z》', wraps: 1 },

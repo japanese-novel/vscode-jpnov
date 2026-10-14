@@ -325,10 +325,17 @@ const PROSE_DEBOUNCE_MS = 300;
 // them so it never re-lints when the cache is current. Kept in lockstep with what is published.
 const findingsCache = new Map<string, { version: number; findings: Finding[] }>();
 
-/** Everything `doc` publishes: the syntax findings under every lint configuration, then the lint's. */
+/** Everything `doc` publishes: the syntax findings under every lint configuration, then the lint's.
+ *  A lint that throws loses only its own findings: the syntax ones still replace what was published. */
 function findingsOf(doc: TextDocument): Finding[] {
   const ast = parsed.astOf(doc);
-  return [...syntaxFindings(doc, ast), ...computeLintFindings(doc, ast, context.lintSelection)];
+  const syntax = syntaxFindings(doc, ast);
+  try {
+    return [...syntax, ...computeLintFindings(doc, ast, context.lintSelection)];
+  } catch (err) {
+    reportError(context, err);
+    return syntax;
+  }
 }
 
 /** Cache the findings and publish their diagnostics (one place keeps cache and diagnostics aligned). */

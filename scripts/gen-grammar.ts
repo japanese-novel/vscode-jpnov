@@ -37,7 +37,7 @@ import {
   hasBlockForm,
   hasLeftSide,
 } from '../src/shared/ast/notation.ts';
-import { CORNERS } from '../src/server/dialogue.ts';
+import { CORNERS } from '../src/shared/chars.ts';
 import { partHighlight } from '../src/server/semanticTokens.ts';
 
 import { runCli, writeIfChanged } from './write.ts';
@@ -175,7 +175,7 @@ const RUBY: readonly Rule[] = [
 ];
 
 const DIALOGUE: readonly Rule[] = [
-  { comment: 'The dialogue corners, one by one: the grammar keeps no state across lines.', parts: [{ role: 'corner', re: CORNERS.source }] },
+  { comment: 'The dialogue corners, one by one: the grammar keeps no state across lines.', parts: [{ role: 'corner', re: `[${CORNERS}]` }] },
 ];
 
 function pattern(rule: Rule): Pattern {

@@ -11,10 +11,12 @@
  *     inside it.
  *   - Outer extents: an opener (［＃傍点］, ［＃縦中横］, a ruby's ｜) pulls the next piece's
  *     `outerStart` before it; a postfix, a value field, a 外字注記, a ruby's 《reading》 or a span
- *     end pushes the open piece's `outerEnd` past it. Openers and span ends pair per channel (one
- *     slot each for 傍点, 傍線, 太字, 斜体, 見出し and 縦中横), as the AST pairs them; a span end
- *     whose own opener is still pending is an empty span, unless the channel was open before that
- *     opener. Extents are per line.
+ *     end pushes the open piece's `outerEnd` past it. What renders as text with no piece before it
+ *     on the line (a value field, a 外字注記, a ruby whose base is a value field alone) leads the
+ *     next piece instead. Openers and span ends pair per channel (one slot each for 傍点, 傍線,
+ *     太字, 斜体, 見出し and 縦中横), as the AST pairs them; a span end whose own opener is still
+ *     pending is an empty span, unless the channel was open before that opener. Extents are per
+ *     line.
  *   - Offsets are per UTF-16 unit (astral chars = two consecutive units), matching
  *     `TextDocument.positionAt`.
  *
@@ -134,6 +136,7 @@ class LineBuilder {
   private curText = '';
   private curStart = 0;
   private curDepth = 0;
+  /** Set before the piece opens too: a rendered node with no piece to extend leads the next one. */
   private curBefore: number | undefined = undefined;
   private curAfter: number | undefined = undefined;
   private curRubyBase = false;
@@ -147,21 +150,30 @@ class LineBuilder {
     }
   }
 
-  /** A postfix or value field ending at `end` extends the open piece, unless a pending opener
-   *  sealed it. */
-  attach(end: number): void {
-    if (this.curText !== '' && this.pending.size === 0) {
+  /** A postfix, value field or 外字注記 at [start, end) renders as text: it extends the open piece,
+   *  unless a pending opener sealed it (inside a ｜ base, the reading attaches the whole ruby).
+   *  With no piece open it leads the next one. */
+  attach(start: number, end: number): void {
+    if (this.pending.size !== 0) {
+      return;
+    }
+    if (this.curText !== '') {
       this.curAfter = end;
+    } else {
+      this.curBefore ??= start;
     }
   }
 
   /** A ruby's 《reading》 ending at `end`: the base's last piece takes it. A ｜ still pending means
-   *  no piece opened inside the base (a value field alone), so nothing takes it; whatever else is
-   *  pending was opened inside the base and belongs to the ruby, never to the piece after it. */
+   *  no piece opened inside the base, so the base is a value field or 外字注記 alone and the whole
+   *  ruby attaches like one. Whatever else is pending was opened inside the base and belongs to
+   *  the ruby, never to the piece after it. */
   reading(end: number): void {
-    const unopened = this.pending.delete(RUBY_KEY);
+    const mark = this.pending.get(RUBY_KEY);
     this.pending.clear();
-    if (!unopened && this.curText !== '') {
+    if (mark !== undefined) {
+      this.attach(mark.at, end);
+    } else if (this.curText !== '') {
       this.curAfter = end;
       this.curRubyBase = true;
     }
@@ -188,7 +200,13 @@ class LineBuilder {
     if (this.curText === '') {
       this.curStart = at;
       this.curDepth = depth;
-      this.curBefore = this.pending.size === 0 ? undefined : Math.min(...[...this.pending.values()].map((o) => o.at));
+      let before = this.curBefore;
+      for (const { at: openerAt } of this.pending.values()) {
+        if (before === undefined || openerAt < before) {
+          before = openerAt;
+        }
+      }
+      this.curBefore = before;
       this.pending.clear();
     }
     this.curText += stretch;
@@ -320,7 +338,7 @@ export function* walkLines(ast: Ast): Generator<LintLine, void, undefined> {
         builder.close(spanKey(node), node.span.end);
         live.delete(spanKey(node));
       } else if (role === 'attach') {
-        builder.attach(node.span.end);
+        builder.attach(node.span.start, node.span.end);
       } else if (role === 'reading') {
         builder.reading(node.span.end);
       }

@@ -50,8 +50,10 @@ test('a name splits at spaces and at every ruby boundary; its text is the base a
   }
 });
 
-test('an item that is no name: an annotation other than ruby, a marker left as text, a reading alone, nothing', () => {
-  for (const text of ['山田［＃「山田」に傍点］', '［＃改ページ］', '《やまだ》', '山田《》', '山田《やまだ', '｜山田', '山田》', '山田］', '｜山田［＃太字］《やまだ》', '※［＃二の字点、1-2-22］']) {
+test('an item that is no name: an annotation other than ruby, a marker left as text, a dialogue corner, a reading alone, nothing', () => {
+  // A corner is a marker to the highlighter: a keyword 」と over 「山田」と would colour the 」 twice.
+  const corners = ['」と', '「山田」', '『聖剣』', '聖剣』'];
+  for (const text of ['山田［＃「山田」に傍点］', '［＃改ページ］', '《やまだ》', '山田《》', '山田《やまだ', '｜山田', '山田》', '山田］', '｜山田［＃太字］《やまだ》', '※［＃二の字点、1-2-22］', ...corners]) {
     assert.deepEqual(readName(text), { ok: false, error: 'notPlain' }, text);
   }
   for (const text of ['', ' ', '　 　']) {

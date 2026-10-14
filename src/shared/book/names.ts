@@ -12,7 +12,7 @@
  */
 import { ANNOTATION_CLOSE, ANNOTATION_OPEN, BASE_MARK, RUBY_CLOSE, RUBY_OPEN } from '../ast/notation.ts';
 import { scan } from '../ast/scan.ts';
-import { displayText } from '../chars.ts';
+import { CORNERS, displayText } from '../chars.ts';
 
 /** One part of a name: its base text and the reading written for it, if any. */
 export interface NamePart {
@@ -36,11 +36,12 @@ export interface NameEntry {
 
 export type ReadName =
   | { readonly ok: true; readonly name: ListedName }
-  /** `empty`: nothing to read; `notPlain`: an annotation other than ruby, or a marker left as text. */
+  /** `empty`: nothing to read; `notPlain`: an annotation other than ruby, a marker left as text, or a dialogue corner. */
   | { readonly ok: false; readonly error: 'empty' | 'notPlain' };
 
-/** A ruby or annotation marker left in the text: a ｜ with no reading, an unmatched 《, a lone ［ or ］. */
-const LEFTOVER_MARKUP = new RegExp(`[${ANNOTATION_OPEN.charAt(0)}${ANNOTATION_CLOSE}${RUBY_OPEN}${RUBY_CLOSE}${BASE_MARK}]`);
+/** A marker left in the text: a ｜ with no reading, an unmatched 《, a lone ［ or ］, or a dialogue
+ *  corner ({@link CORNERS}). */
+const LEFTOVER_MARKUP = new RegExp(`[${ANNOTATION_OPEN.charAt(0)}${ANNOTATION_CLOSE}${RUBY_OPEN}${RUBY_CLOSE}${BASE_MARK}${CORNERS}]`);
 
 /** Runs of the spaces a name splits on, half- or full-width. */
 const SPACES = /[ 　]+/;

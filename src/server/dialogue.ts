@@ -11,9 +11,7 @@
  *
  * Offsets are UTF-16 units, as `TextDocument.positionAt` counts them.
  */
-
-/** The dialogue corners: the only characters of prose that change the depth. */
-export const CORNERS = /[「『」』]/;
+import { CORNERS } from '../shared/chars.ts';
 
 /** The closer each opener expects. */
 const CLOSER_OF: Record<string, '」' | '』'> = { '「': '」', '『': '』' };
@@ -37,7 +35,7 @@ export class DialogueStack {
   /** The closers still expected, innermost last. */
   private readonly stack: ('」' | '』')[] = [];
   /** The scan cursor of `feed`; the stack's own, as its state is. */
-  private readonly corners = new RegExp(CORNERS.source, 'g');
+  private readonly corners = new RegExp(`[${CORNERS}]`, 'g');
 
   /** The current nesting depth. */
   get depth(): number {

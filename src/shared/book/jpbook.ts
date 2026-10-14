@@ -91,6 +91,15 @@ export interface ParsedLine {
   readonly list?: EntryList;
   /** The entry the line lists, as the parser read it; present exactly when the line IS an entry of its list. */
   readonly item?: ItemValue;
+  /** The metadata value the line sets, as the parser read it; present exactly on a `'meta'` line. */
+  readonly meta?: MetaValue;
+}
+
+/** A metadata line's key and value, with the value's absolute column span (the slicing rule of {@link ItemValue}). */
+export interface MetaValue {
+  readonly key: MetaKey;
+  readonly value: string;
+  readonly range: JpbookRange;
 }
 
 /**
@@ -222,14 +231,18 @@ export interface ItemShape {
 }
 
 /**
- * The item portion of a list line's TRIMMED value: after a `- ` marker, else after the colon of
- * `key`; null off both shapes. Marker first, as the parser dispatches.
+ * The item portion of a line's TRIMMED value: after a `- ` marker, else after the colon of `key`
+ * (a list's first item or a metadata value alike); null off both shapes. Marker first, as the
+ * parser dispatches.
  */
 export function itemShape(value: string, key: string): ItemShape | null {
   const sep = isItemMark(value.charAt(0)) ? 1 : metaKeyOf(value) === key ? colonIndex(value) + 1 : -1;
-  if (sep < 0) {
-    return null;
-  }
+  return sep < 0 ? null : itemAfter(value, sep);
+}
+
+/** The item portion of a trimmed line from `sep` (just past its marker or colon), skipping the
+ *  whitespace there: the ONE place that slices a value past its separator. */
+function itemAfter(value: string, sep: number): ItemShape {
   let offset = sep;
   while (offset < value.length && isEdgeWhitespace(value.charAt(offset))) {
     offset += 1;
@@ -351,7 +364,7 @@ function isEdgeWhitespace(ch: string): boolean {
 }
 
 /** The `key: value` separator: the first ASCII or full-width colon (IME slips are common). */
-export function colonIndex(value: string): number {
+function colonIndex(value: string): number {
   const half = value.indexOf(':');
   const full = value.indexOf('：');
   if (half < 0) {
@@ -450,7 +463,7 @@ export function parseJpbook(text: string): ParsedJpbook {
 /** Version 1: `key: value` metadata and the lists above the `---`, chapter paths below. */
 function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbook {
   /** What a line was read as: its kind, the list it belongs to, the entry it lists. */
-  type Classified = Pick<ParsedLine, 'kind' | 'list' | 'item'>;
+  type Classified = Pick<ParsedLine, 'kind' | 'list' | 'item' | 'meta'>;
 
   // What each list has listed so far, by identity: a path's for the file lists, a base's for the names.
   const seen: Record<EntryList, Set<string>> = { chapters: new Set(), covers: new Set(), characters: new Set(), keywords: new Set() };
@@ -540,7 +553,7 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
       listKeysSeen.add(key);
       openList = { list, muted: false };
       // A value on the key line is the list's first item; a bad one still opens the list.
-      const shape = itemShape(value, key) ?? { item: '', offset: 0 };
+      const shape = itemAfter(value, colonIndex(value) + 1);
       if (shape.item === '') {
         return { kind: list === 'covers' ? 'cover' : 'names', list };
       }
@@ -554,8 +567,8 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
       return { kind: { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } } };
     }
     takenKeys.add(metaKey);
-    // metaKeyOf returned a key, so the line has a colon: colonIndex is non-negative here.
-    const val = value.slice(colonIndex(value) + 1).trim();
+    const shape = itemAfter(value, colonIndex(value) + 1);
+    const val = shape.item;
     // Blank once the characters no output can carry are dropped.
     if (!isEmptiable(metaKey) && nonBlank(displayText(val)) === null) {
       return { kind: { error: emptyValue(metaKey) } };
@@ -565,10 +578,10 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
         return { kind: { error: { code: 'jpbook.metaBadEnum', args: [key, val, FURNITURE_ALIGNS.join(', ')] } } };
       }
       meta[metaKey] = val as FurnitureAlign;
-      return { kind: 'meta' };
+    } else {
+      meta[metaKey] = val;
     }
-    meta[metaKey] = val;
-    return { kind: 'meta' };
+    return { kind: 'meta', meta: { key: metaKey, value: val, range: spanOf(pl, shape) } };
   };
 
   const lines: ParsedLine[] = [header];
@@ -805,12 +818,9 @@ export function completeMetaLine(linePrefix: string, written: ReadonlySet<string
   if (values === null) {
     return [];
   }
-  let valStart = sep + 1;
-  while (valStart < linePrefix.length && isEdgeWhitespace(linePrefix.charAt(valStart))) {
-    valStart += 1;
-  }
-  const typed = linePrefix.slice(valStart).toLowerCase();
-  const replace = { startChar: valStart, endChar: linePrefix.length };
+  const shape = itemAfter(linePrefix, sep + 1);
+  const typed = shape.item.toLowerCase();
+  const replace = { startChar: shape.offset, endChar: linePrefix.length };
   return values.filter((v) => v.toLowerCase().startsWith(typed)).map((v) => ({
     label: v,
     insertText: v,

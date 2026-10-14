@@ -71,7 +71,7 @@ export type MsgCode =
   | 'jpbook.metaEmptyValue' // args: [key] — a key that needs a value (title, headerAlign, footerAlign) written without one (range = its line) or not written (range = the closing `---`)
   | 'jpbook.itemWithoutKey' // args: [value] — a "- " list item with no list key (cover:, characters:, keywords:) open above it
   | 'jpbook.nameEmpty' // args: [] — an item of characters:/keywords: with nothing after its marker (or colon); ignored
-  | 'jpbook.nameNotPlain' // args: [value] — an item of characters:/keywords: holding an annotation other than ruby, or a marker left as text; ignored
+  | 'jpbook.nameNotPlain' // args: [value] — an item of characters:/keywords: holding an annotation other than ruby, a marker left as text, or a dialogue corner 「」『』; ignored
   | 'jpbook.nameConflict' // args: [base, file] — another .jpbook of the root lists the same base written differently (a reading, a split); range = the item
   | 'syntax.unclosedAnnotation' // args: [] — unterminated ［＃ (no ］ before the line end); the diagnostic range IS the span
   | 'syntax.unterminatedBlock' // args: [] — ［＃ここから…］ with no matching ［＃ここで…終わり］ before EOF; range = the ここから annotation

@@ -22,7 +22,6 @@ import type { CompletionItem, Diagnostic, DocumentLink, Range } from 'vscode-lan
 
 import { scan } from '#/shared/ast/scan.ts';
 import {
-  colonIndex,
   completeEntryLine,
   completeMetaLine,
   COVER_KEY,
@@ -30,7 +29,6 @@ import {
   isNameList,
   itemShape,
   metaEndOf,
-  metaKeyOf,
   NAME_LISTS,
   writtenKeysOf,
   type JpbookCompletion,
@@ -70,16 +68,14 @@ function lineRange(pl: ParsedLine): Range {
  * indented by it and the annotation prints as a comment at every seam.
  */
 function dividerWarnings(pl: ParsedLine): Diagnostic[] {
-  if (metaKeyOf(pl.value) !== 'divider') {
+  const field = pl.meta;
+  if (field?.key !== 'divider') {
     return [];
   }
-  const afterColon = pl.value.slice(colonIndex(pl.value) + 1);
-  const value = afterColon.trim();
-  // Offset of the trimmed value within the line, so each range lands on the character itself.
-  const base = pl.range.startChar + (pl.value.length - afterColon.length) +
-    (afterColon.length - afterColon.trimStart().length);
+  const { value, range } = field;
+  // Offsets within the value, so each range lands on the character itself.
   const at = (start: number, end: number): Range =>
-    charRange(pl.line, { startChar: base + start, endChar: base + end });
+    charRange(pl.line, { startChar: range.startChar + start, endChar: range.startChar + end });
   return [
     ...unencodableChars(value).map(({ cluster, offset, length }) => diagnostic(
       at(offset, offset + length),

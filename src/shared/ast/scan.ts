@@ -15,7 +15,7 @@
  *
  * Pure + vscode-free.
  */
-import { graphemes, isCjkIdeograph, isHiragana, isKatakana } from '../chars.ts';
+import { graphemes, isCjkIdeograph, isHiragana, isKatakana, isUnshown } from '../chars.ts';
 
 import { classifyAnnotation, gaijiNode } from './classify.ts';
 import { append } from './lists.ts';
@@ -114,6 +114,16 @@ function splitSource(src: string): { start: number; end: number; eol: Eol }[] {
   }
   lines.push({ start, end: src.length, eol: '' });
   return lines;
+}
+
+/** Whether [start, end) of `src` holds a character an output can carry ({@link isUnshown}). */
+function hasShown(src: string, start: number, end: number): boolean {
+  for (let k = start; k < end; k += 1) {
+    if (!isUnshown(src.charCodeAt(k))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** The explicit base a ｜ opened, until its 《reading》: where the text before the ｜ starts, the
@@ -235,7 +245,10 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
       };
 
       if (held !== null) {
-        const visible = i > runStart || held.nodes.some((n) => n.kind === 'text' || n.kind === 'valueField' || n.kind === 'gaiji');
+        // Text counts once the characters no output can carry are dropped: a base of control
+        // characters alone would print as its markup.
+        const visible = hasShown(src, runStart, i) ||
+          held.nodes.some((n) => (n.kind === 'text' ? hasShown(src, n.span.start, n.span.end) : n.kind === 'valueField' || n.kind === 'gaiji'));
         if (!visible) {
           // Nothing between the ｜ and the 《 that a reading could sit on: no base.
           issues.push({ kind: 'rubyBaseMissing', span: { start: held.at, end }, reading });
