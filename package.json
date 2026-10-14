@@ -592,6 +592,11 @@
     ],
     "commands": [
       {
+        "command": "jpbook.open",
+        "category": "%command.category%",
+        "title": "%command.books.open.title%"
+      },
+      {
         "command": "jpbook.refresh",
         "category": "%command.category%",
         "title": "%command.books.refresh.title%",

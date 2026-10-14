@@ -57,7 +57,7 @@ test('no previously caught name appears anywhere in the repository text', () => 
 });
 
 /** Docs whose `.jpbook` samples readers copy. */
-const DOC_SAMPLES = ['README.md', 'README.en.md', 'docs/SCREENSHOTS.md', 'media/walkthrough/build.md'];
+const DOC_SAMPLES = ['README.md', 'README.en.md', 'docs/SCREENSHOTS.md', 'media/walkthrough/build.md', 'media/walkthrough/highlight.md'];
 /** A sample title / author / header: a placeholder word, optionally with a volume suffix (第一巻 / 一 / その一). */
 const PLACEHOLDER_VALUE = /^(作品名|ペンネーム|作品集|My 作品集|みんな)(　.+)?$/u;
 /** A sample character or keyword (a `- ` item that is no `.jpnov` path, or the value of `characters:`/`keywords:`):

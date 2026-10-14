@@ -298,6 +298,11 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
+  /** Shows the view and focuses it; the built-in `<viewId>.focus` command exists once the view is contributed. */
+  async focus(): Promise<void> {
+    await vscode.commands.executeCommand(`${BooksViewProvider.viewId}.focus`).then(undefined, () => undefined);
+  }
+
   /**
    * Post-create hand-off from `jpbook.createFile`: focus the view and open the new book's
    * detail. The detail key is the file's `Uri` string, which the server's enumeration composes
@@ -305,9 +310,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
    * that store names as NFD.
    */
   async revealNewBook(file: vscode.Uri): Promise<void> {
-    // `<viewId>.focus` resolves a never-shown webview; the ready handshake then re-pulls
-    // state + detail, so this must precede the refresh.
-    await vscode.commands.executeCommand(`${BooksViewProvider.viewId}.focus`).then(undefined, () => undefined);
+    // Focusing resolves a never-shown webview; the ready handshake then re-pulls state +
+    // detail, so this must precede the refresh.
+    await this.focus();
     // Set BEFORE refreshing: whichever refresh lands first (this one, the watcher's
     // onDidCreate, or the post-start fill) re-pushes the open detail once enumerated.
     this.openDetailUri = file.toString();
@@ -330,7 +335,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
    * no refresh runs here, so the chrome is applied explicitly.
    */
   private async revealDetail(uri: string): Promise<void> {
-    await vscode.commands.executeCommand(`${BooksViewProvider.viewId}.focus`).then(undefined, () => undefined);
+    await this.focus();
     this.openDetailUri = uri;
     this.applyDetailChrome();
     await this.postDetail(uri, true);
