@@ -28,6 +28,8 @@ import {
   tick,
   Uri,
   ViewColumn,
+  type FakeTextDocument,
+  type FakeTextEditor,
   type FakeWebviewPanel,
 } from './_vscodeMock.ts';
 
@@ -89,25 +91,59 @@ function countingClient(html: string): { readonly renders: number; sendRequest: 
   };
 }
 
+/**
+ * A fake client whose first `immediate` requests resolve at once and every later one waits for
+ * `release()`; `params` keeps every request's params, in order.
+ */
+function gatedClient(html: string, immediate = 1): {
+  params: RenderFileParams[];
+  sendRequest: (type: unknown, params: unknown) => Promise<{ html: string }>;
+  release: (result?: { html: string }) => void;
+} {
+  let resolvePending: (r: { html: string }) => void = () => undefined;
+  const client = {
+    params: [] as RenderFileParams[],
+    sendRequest: (_type: unknown, params: unknown): Promise<{ html: string }> => {
+      client.params.push(params as RenderFileParams);
+      if (client.params.length <= immediate) {
+        return Promise.resolve({ html });
+      }
+      return new Promise((resolve) => {
+        resolvePending = resolve;
+      });
+    },
+    release: (result: { html: string } = { html }): void => {
+      resolvePending(result);
+    },
+  };
+  return client;
+}
+
+/** A fake editor showing `document` with one cursor, for the active/visible editors and the editor events. */
+function editorAt(document: FakeTextDocument, line = 0, character = 0, viewColumn = 1): FakeTextEditor {
+  return { document, selections: [{ active: { line, character } }], viewColumn };
+}
+
 async function openPreviewWith(html: string) {
   return openWith(fakeClient(html));
 }
 
 /** Opens the preview beside an active `a.jpnov` editor through `client` and waits for the render. */
 async function openWith(client: { sendRequest: (...args: unknown[]) => Promise<{ html: string }> }) {
+  const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'これは本文です。');
+  state.textDocuments.push(d);
+  // Active before the preview exists, as in production: the constructor seeds the followed editor.
+  const editor = editorAt(d);
+  state.activeEditor = editor;
   // The constructor type is LanguageClient; the runtime only needs sendRequest.
   const preview = new Preview(client as never);
   // The widget's save button goes through the command (extension.ts registers it in production).
   state.registeredCommands.set('jpnov.preview.saveLayout', () => preview.saveLayout());
 
-  const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'これは本文です。');
-  state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
-
   preview.open(true);
   // open() renders asynchronously (awaits sendRequest); let microtasks drain.
   await tick();
-  return { preview, panel: firstPanel(), document: d };
+  return { preview, panel: firstPanel(), document: d, editor };
 }
 
 /** The first `reveal` message posted to `panel`'s webview, if any. */
@@ -179,7 +215,7 @@ test('a server render error is surfaced inside a hardened shell, not thrown', as
 
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
   state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
+  state.activeEditor = editorAt(d);
 
   preview.open(true);
   await tick();
@@ -225,16 +261,15 @@ test('a nonce-matched cursor-follow script is injected before </body>', async ()
   assert.doesNotMatch(html, /scrollIntoView/);
 });
 
-test('render bakes the top-most cursor into the __INIT bootstrap', async () => {
-  const preview = new Preview(fakeClient(SERVER_HTML) as never);
+test('render bakes the followed editor\'s earliest cursor into the __INIT bootstrap', async () => {
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
   state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
   // Three cursors; the earliest (line 4, character 2) wins, not selections[0] (line 9).
-  state.visibleEditors.push({
-    document: d,
-    selections: [{ active: { line: 9, character: 0 } }, { active: { line: 4, character: 6 } }, { active: { line: 4, character: 2 } }],
-  });
+  const ed = editorAt(d, 9, 0);
+  ed.selections = [...ed.selections, { active: { line: 4, character: 6 } }, { active: { line: 4, character: 2 } }];
+  state.activeEditor = ed;
+  state.visibleEditors.push(ed);
+  const preview = new Preview(fakeClient(SERVER_HTML) as never);
 
   preview.open(true);
   await tick();
@@ -243,52 +278,105 @@ test('render bakes the top-most cursor into the __INIT bootstrap', async () => {
 });
 
 test('a cursor move posts a reveal for the earliest cursor, by line then character', async () => {
-  const { panel } = await openPreviewWith(SERVER_HTML);
-  const ed = {
-    document: doc('file:///proj/src/a.jpnov', 'jpnov', 'x'),
-    selections: [{ active: { line: 7, character: 0 } }, { active: { line: 3, character: 9 } }, { active: { line: 3, character: 4 } }],
-  };
-  state.onDidChangeSelection.fire({ textEditor: ed, selections: ed.selections });
+  const { panel, editor } = await openPreviewWith(SERVER_HTML);
+  editor.selections = [{ active: { line: 7, character: 0 } }, { active: { line: 3, character: 9 } }, { active: { line: 3, character: 4 } }];
+  state.onDidChangeSelection.fire({ textEditor: editor, selections: editor.selections });
 
-  assert.deepEqual(findReveal(panel), { type: 'reveal', line: 3, character: 4 }, 'follows the earliest cursor, not selections[0]');
+  assert.deepEqual(
+    findReveal(panel),
+    { type: 'reveal', uri: 'file:///proj/src/a.jpnov', line: 3, character: 4 },
+    'follows the earliest cursor, not selections[0]',
+  );
 });
 
 test('an edit re-render while the editor is momentarily invisible keeps the last line', async () => {
-  const preview = new Preview(fakeClient(SERVER_HTML) as never);
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
   state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
-  state.visibleEditors.push({ document: d, selections: [{ active: { line: 6, character: 0 } }] });
+  const ed = editorAt(d, 6, 0);
+  state.activeEditor = ed;
+  state.visibleEditors.push(ed);
+  const preview = new Preview(fakeClient(SERVER_HTML) as never);
 
   preview.open(true);
   await tick();
   assert.deepEqual(bakedCursor(firstPanel()), [6, 0]);
 
-  // Save-with-mutation transient: the editor blinks out of visibleTextEditors, an edit lands.
+  // Save-with-mutation transient: the editor blinks out of activeTextEditor and
+  // visibleTextEditors together, and an edit lands; the followed editor still has its cursor.
+  state.activeEditor = undefined;
   state.visibleEditors.length = 0;
   state.onDidChangeDoc.fire({ document: d });
-  await new Promise((r) => setTimeout(r, 150));
+  await settle();
   assert.deepEqual(bakedCursor(firstPanel()), [6, 0]);
 });
 
-test('a cursor-move reveal updates the cursor a later render falls back to', async () => {
-  const { panel } = await openPreviewWith(SERVER_HTML); // no visibleTextEditors entry
-  const ed = {
-    document: doc('file:///proj/src/a.jpnov', 'jpnov', 'x'),
-    selections: [{ active: { line: 9, character: 5 } }],
-  };
-  state.onDidChangeSelection.fire({ textEditor: ed, selections: ed.selections });
+test('a re-render while the panel has focus bakes the followed editor\'s cursor', async () => {
+  const { panel, editor } = await openPreviewWith(SERVER_HTML);
+  editor.selections = [{ active: { line: 9, character: 5 } }];
+  state.onDidChangeSelection.fire({ textEditor: editor, selections: editor.selections });
 
-  state.onDidChangeDoc.fire({ document: ed.document });
-  await new Promise((r) => setTimeout(r, 150));
+  state.activeEditor = undefined; // the panel took focus; the edit comes from elsewhere
+  state.onDidChangeDoc.fire({ document: editor.document });
+  await settle();
   assert.deepEqual(bakedCursor(panel), [9, 5]);
+});
+
+// --- #157: two editors on the same document, and a switch to another document ---
+
+test('a render follows the editor being typed in, not the first visible one, on the same document (#157)', async () => {
+  const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
+  state.textDocuments.push(d);
+  const first = editorAt(d, 2, 0, 1);
+  const second = editorAt(d, 30, 4, 2);
+  state.visibleEditors.push(first, second);
+  state.activeEditor = second;
+  const preview = new Preview(fakeClient(SERVER_HTML) as never);
+
+  preview.open(true);
+  await tick();
+  assert.deepEqual(bakedCursor(firstPanel()), [30, 4], 'the active editor, listed second');
+
+  // Typing in the second group: its cursor moves, then the edit re-renders.
+  second.selections = [{ active: { line: 30, character: 5 } }];
+  state.onDidChangeSelection.fire({ textEditor: second, selections: second.selections });
+  assert.deepEqual(findReveal(firstPanel()), { type: 'reveal', uri: 'file:///proj/src/a.jpnov', line: 30, character: 5 });
+  state.onDidChangeDoc.fire({ document: d });
+  await settle();
+  assert.deepEqual(bakedCursor(firstPanel()), [30, 5], 'the re-render stays with the editor being typed in');
+});
+
+test('a cursor move in an editor that is not followed posts no reveal (#157)', async () => {
+  const { panel, document } = await openPreviewWith(SERVER_HTML);
+  // An edit in the followed group shifted the other group's cursor: VS Code reports it as a move.
+  const other = editorAt(document, 41, 0, 2);
+  state.onDidChangeSelection.fire({ textEditor: other, selections: other.selections });
+  assert.equal(findReveal(panel), undefined);
+});
+
+test('a reveal posted while another document\'s render is in flight names that document (#157)', async () => {
+  const client = gatedClient(SERVER_HTML);
+  const { panel } = await openWith(client); // shows a.jpnov
+  const b = doc('file:///proj/src/b.jpnov', 'jpnov', '二');
+  state.textDocuments.push(b);
+  const edB = editorAt(b, 12, 3);
+  state.onDidChangeActiveEditor.fire(edB); // b's render is now in flight
+  // The tab switch restores b's cursor: a selection event for b arrives before b's html.
+  state.onDidChangeSelection.fire({ textEditor: edB, selections: edB.selections });
+  assert.match(panel.webview.html, /本文/, 'a.jpnov is still shown');
+  // The scroller in a.jpnov's page ignores a reveal for b.jpnov (scroll.ts checks the uri).
+  assert.deepEqual(findReveal(panel), { type: 'reveal', uri: 'file:///proj/src/b.jpnov', line: 12, character: 3 });
+
+  client.release({ html: SERVER_HTML.replace('本文', '二') });
+  await tick();
+  assert.match(panel.webview.html, /<p>二<\/p>/);
+  assert.deepEqual(bakedCursor(panel), [12, 3]);
 });
 
 // --- #88: the preview command without a previewable active editor -----------
 
 test('open() with no active editor keeps the shown document and only reveals (#88)', async () => {
   const client = countingClient(SERVER_HTML);
-  const { preview, panel, document } = await openWith(client);
+  const { preview, panel, editor } = await openWith(client);
   panel.viewColumn = 2;
   state.activeEditor = undefined; // the walkthrough page (or the panel itself) took focus
 
@@ -300,8 +388,8 @@ test('open() with no active editor keeps the shown document and only reveals (#8
   // Revealed in its own column with focus kept on the caller.
   assert.deepEqual(panel.revealed, [{ column: 2, preserveFocus: true }]);
   // Cursor tracking is intact: a later cursor move still reaches the live webview.
-  const ed = { document, selections: [{ active: { line: 3, character: 0 } }] };
-  state.onDidChangeSelection.fire({ textEditor: ed, selections: ed.selections });
+  editor.selections = [{ active: { line: 3, character: 0 } }];
+  state.onDidChangeSelection.fire({ textEditor: editor, selections: editor.selections });
   assert.equal(findReveal(panel)?.line, 3);
 });
 
@@ -309,7 +397,7 @@ test('open() with a non-.jpnov active editor keeps the shown document and reveal
   const client = countingClient(SERVER_HTML);
   const { preview, panel } = await openWith(client);
   panel.viewColumn = 2;
-  state.activeEditor = { document: doc('file:///proj/notes.md', 'markdown', 'x'), viewColumn: 1 };
+  state.activeEditor = editorAt(doc('file:///proj/notes.md', 'markdown', 'x'));
 
   preview.open(false);
   await tick();
@@ -323,7 +411,7 @@ test('open() with a non-.jpnov active editor keeps the shown document and reveal
 test('open() with the .jpnov editor active reveals in its column or beside it', async () => {
   const { preview, panel, document } = await openWith(fakeClient(SERVER_HTML));
   panel.viewColumn = 2;
-  state.activeEditor = { document, viewColumn: 3 };
+  state.activeEditor = editorAt(document, 0, 0, 3);
 
   preview.open(false);
   preview.open(true);
@@ -338,7 +426,7 @@ test('open() with the .jpnov editor active reveals in its column or beside it', 
 test('a fresh open() with no active editor falls back to the last active .jpnov editor', async () => {
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', '本文');
   state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
+  state.activeEditor = editorAt(d);
   const preview = new Preview(fakeClient(SERVER_HTML) as never); // seeded from the active editor
   state.activeEditor = undefined; // the walkthrough page took over before the link was clicked
 
@@ -354,8 +442,8 @@ test('the fallback tracks editor switches while no panel is open and ignores non
   const preview = new Preview(fakeClient(SERVER_HTML) as never);
   const b = doc('file:///proj/src/b.jpnov', 'jpnov', '本文');
   state.textDocuments.push(b);
-  state.onDidChangeActiveEditor.fire({ document: b });
-  state.onDidChangeActiveEditor.fire({ document: doc('file:///proj/notes.txt', 'plaintext', 'x') });
+  state.onDidChangeActiveEditor.fire(editorAt(b));
+  state.onDidChangeActiveEditor.fire(editorAt(doc('file:///proj/notes.txt', 'plaintext', 'x')));
   state.onDidChangeActiveEditor.fire(undefined);
   assert.equal(state.panels.length, 0, 'tracking never opens a panel');
 
@@ -369,7 +457,7 @@ test('the fallback skips a remembered document that was closed or changed langua
   const uri = 'file:///proj/src/a.jpnov';
   for (const reopened of [undefined, doc(uri, 'plaintext', 'x')]) {
     resetMockState(state);
-    state.activeEditor = { document: doc(uri, 'jpnov', 'x'), viewColumn: 1 };
+    state.activeEditor = editorAt(doc(uri, 'jpnov', 'x'));
     const preview = new Preview(fakeClient(SERVER_HTML) as never);
     state.activeEditor = undefined;
     if (reopened !== undefined) {
@@ -434,7 +522,7 @@ test('adopt() parks an older session\'s state, or an unusable character, at the 
 test('adopt() prefers the active previewable editor over stale persisted state', async () => {
   const active = doc('file:///proj/src/b.jpnov', 'jpnov', 'アクティブ');
   state.textDocuments.push(active);
-  state.activeEditor = { document: active, viewColumn: 1 };
+  state.activeEditor = editorAt(active);
 
   const { panel } = adoptWith(fakeClient(SERVER_HTML), {
     uri: 'file:///proj/src/a.jpnov',
@@ -448,11 +536,10 @@ test('adopt() prefers the active previewable editor over stale persisted state',
   assert.deepEqual(bakedCursor(panel), [0, 0]);
 });
 
-test('adopt() with the active editor matching the persisted uri restores its line', async () => {
+test('adopt() with the active editor matching the persisted uri bakes its live cursor', async () => {
   const active = doc('file:///proj/src/a.jpnov', 'jpnov', '本文');
   state.textDocuments.push(active);
-  state.activeEditor = { document: active, viewColumn: 1 };
-  // No visibleTextEditors entry: startup editor restoration hasn't resolved yet.
+  state.activeEditor = editorAt(active, 5, 2);
 
   const { panel } = adoptWith(fakeClient(SERVER_HTML), {
     uri: 'file:///proj/src/a.jpnov',
@@ -460,7 +547,7 @@ test('adopt() with the active editor matching the persisted uri restores its lin
   });
   await tick();
 
-  assert.deepEqual(bakedCursor(panel), [7, 0]);
+  assert.deepEqual(bakedCursor(panel), [5, 2], 'the editor\'s cursor, not the persisted line');
 });
 
 test('adopt() with no state and no editor shows the empty-state shell (pre-fix sessions)', async () => {
@@ -498,7 +585,7 @@ test('adopt() paints the loading shell synchronously before the restored render 
 test('adopt() paints the loading shell synchronously in the active-editor branch too', () => {
   const active = doc('file:///proj/src/b.jpnov', 'jpnov', 'x');
   state.textDocuments.push(active);
-  state.activeEditor = { document: active, viewColumn: 1 };
+  state.activeEditor = editorAt(active);
 
   const { panel } = adoptWith(fakeClient(SERVER_HTML), undefined);
 
@@ -520,9 +607,7 @@ test('adopt() falls back to the empty-state shell when the persisted file is gon
   assert.equal(panel.disposed, false, 'the panel stays; only its content degrades');
 
   // The adopted panel is fully live: focusing a previewable editor re-renders it.
-  state.onDidChangeActiveEditor.fire({
-    document: doc('file:///proj/src/c.jpnov', 'jpnov', 'x'),
-  });
+  state.onDidChangeActiveEditor.fire(editorAt(doc('file:///proj/src/c.jpnov', 'jpnov', 'x')));
   await tick();
   assert.match(panel.webview.html, /本文/);
 });
@@ -565,7 +650,7 @@ test('a document restored by adopt() is what a later fresh open() falls back to'
 test('open() after adoption reveals the adopted panel instead of creating a second one', async () => {
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
   state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
+  state.activeEditor = editorAt(d);
 
   const { preview } = adoptWith(fakeClient(SERVER_HTML), undefined);
   await tick();
@@ -587,13 +672,19 @@ test('adoption wires the live-update listeners (edit re-render + cursor reveal)'
 
   // An edit to the shown document re-renders — after the 120ms typing debounce settles.
   state.onDidChangeDoc.fire({ document: d });
-  await new Promise((r) => setTimeout(r, 150));
+  await settle();
   assert.equal(client.renders, 2);
 
-  // ...and a cursor move posts a reveal for the shown document.
-  const ed = { document: d, selections: [{ active: { line: 8, character: 1 } }] };
+  // ...and a cursor move in an editor that then becomes active posts a reveal for the shown document.
+  const ed = editorAt(d, 8, 1);
+  state.onDidChangeActiveEditor.fire(ed);
+  await tick();
   state.onDidChangeSelection.fire({ textEditor: ed, selections: ed.selections });
-  assert.deepEqual(findReveal(panel), { type: 'reveal', line: 8, character: 1 }, 'a reveal message was posted');
+  assert.deepEqual(
+    findReveal(panel),
+    { type: 'reveal', uri: 'file:///proj/src/a.jpnov', line: 8, character: 1 },
+    'a reveal message was posted',
+  );
 });
 
 test('adopt() re-enables scripts on the revived webview', () => {
@@ -602,18 +693,11 @@ test('adopt() re-enables scripts on the revived webview', () => {
 });
 
 test('a render resolving after the panel closed writes nothing and does not throw', async () => {
-  // Definitely assigned: the tick after open() below lets the render reach sendRequest.
-  let resolveRender!: (r: { html: string }) => void;
-  const deferred = {
-    sendRequest: () =>
-      new Promise<{ html: string }>((res) => {
-        resolveRender = res;
-      }),
-  };
-  const preview = new Preview(deferred as never);
+  const client = gatedClient(SERVER_HTML, 0); // every render waits
+  const preview = new Preview(client as never);
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
   state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
+  state.activeEditor = editorAt(d);
 
   preview.open(true);
   await tick();
@@ -621,7 +705,7 @@ test('a render resolving after the panel closed writes nothing and does not thro
   assert.equal(panel.webview.html, '', 'render still in flight');
 
   panel.dispose(); // the user closes the tab mid-render
-  resolveRender({ html: SERVER_HTML });
+  client.release();
   await tick();
 
   assert.equal(panel.webview.html, '', 'no write to a disposed panel');
@@ -640,7 +724,7 @@ test('renderDocument ships the settings snapshot on the renderFile request', asy
   const preview = new Preview(capturing as never);
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', '一');
   state.textDocuments.push(d);
-  state.activeEditor = { document: d, viewColumn: 1 };
+  state.activeEditor = editorAt(d);
 
   preview.open(true);
   await tick();
@@ -785,7 +869,7 @@ test('a widget change while the shown document is closed renders nothing and lea
 
   const other = doc('file:///proj/src/b.jpnov', 'jpnov', '二');
   state.textDocuments.push(other);
-  state.onDidChangeActiveEditor.fire({ document: other });
+  state.onDidChangeActiveEditor.fire(editorAt(other));
   await tick();
   assert.equal(client.params.length, 2);
   const { layout } = readInit(panel);
@@ -794,32 +878,20 @@ test('a widget change while the shown document is closed renders nothing and lea
 });
 
 test('a render that was in flight keeps showing what it laid out, not a change made meanwhile', async () => {
-  let resolveRender: (r: { html: string }) => void = () => undefined;
-  const params: RenderFileParams[] = [];
-  const client = {
-    sendRequest: (_type: unknown, p: unknown): Promise<{ html: string }> => {
-      params.push(p as RenderFileParams);
-      if (params.length === 1) {
-        return Promise.resolve({ html: SERVER_HTML });
-      }
-      return new Promise((resolve) => {
-        resolveRender = resolve;
-      });
-    },
-  };
+  const client = gatedClient(SERVER_HTML);
   const { panel } = await openWith(client);
   panel.webview.receive(layoutMessage('charsPerLine', 41));
   await settle(); // render A (41) is now in flight
   panel.webview.receive(layoutMessage('charsPerLine', 42)); // render B scheduled
-  resolveRender({ html: SERVER_HTML });
+  client.release();
   await tick();
-  assert.equal(params[1]?.settings.charsPerLine, 41);
+  assert.equal(client.params[1]?.settings.charsPerLine, 41);
   assert.equal(readInit(panel).layout.charsPerLine, 41, 'A shows the value A rendered');
 
   await settle();
-  resolveRender({ html: SERVER_HTML });
+  client.release();
   await tick();
-  assert.equal(params[2]?.settings.charsPerLine, 42);
+  assert.equal(client.params[2]?.settings.charsPerLine, 42);
   assert.equal(readInit(panel).layout.charsPerLine, 42);
 });
 

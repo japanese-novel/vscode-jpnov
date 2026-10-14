@@ -79,9 +79,9 @@ function page(init: PreviewInit): string {
 /**
  * The parse-time probe: after the bootstrap park and after each `reveal` it posts, the column whose
  * centre is nearest the reveal position (the golden section from the left, scroll.ts), and how far
- * off it is; last, what the scroller persisted.
+ * off it is; last, what the scroller persisted. A step's `uri` defaults to the page's own document.
  */
-function probe(steps: readonly (readonly [name: string, line: number, character: number])[]): string {
+function probe(steps: readonly (readonly [name: string, line: number, character: number, uri?: string])[]): string {
   return `<script>
 (() => {
   const x = () => window.innerWidth * (3 - Math.sqrt(5)) / 2;
@@ -99,8 +99,8 @@ function probe(steps: readonly (readonly [name: string, line: number, character:
     return { name, line: best.getAttribute('data-line'), ch: best.getAttribute('data-ch'), head: best.textContent[0], off: Math.round(off * 100) / 100 };
   };
   const report = [parked('init')];
-  for (const [name, line, character] of ${JSON.stringify(steps)}) {
-    window.dispatchEvent(new MessageEvent('message', { data: { type: 'reveal', line, character } }));
+  for (const [name, line, character, uri] of ${JSON.stringify(steps)}) {
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'reveal', uri: uri ?? window.__INIT.uri, line, character } }));
     report.push(parked(name));
   }
   document.documentElement.setAttribute('${MARKER}', JSON.stringify({ report, state: window.__state }));
@@ -148,6 +148,8 @@ test('the preview parks the column holding the cursor, at the reveal position', 
     ['reading', 0, reading],
     ['directive', 1, 3],
     ['column head', 3, chunk(B, 10).at],
+    // A reveal for another document (its render still in flight, #157): no park, no persist.
+    ['other document', 0, chunk(A, 12).at, 'file:///ws/b.jpnov'],
   ] as const;
   const out = await measurePage(browser, page(init), probe(steps), 'follow', cleanups);
   const { report, state } = JSON.parse(out) as { report: Parked[]; state: unknown };
@@ -161,6 +163,7 @@ test('the preview parks the column holding the cursor, at the reveal position', 
     expected('reading', 0, chunk(A, 16)), // the ruby's column
     expected('directive', 0, chunk(A, 23)), // a line with no column: the previous line's last
     expected('column head', 3, chunk(B, 10)),
+    expected('other document', 3, chunk(B, 10)),
   ]);
   assert.deepEqual(state, { uri: 'file:///ws/a.jpnov', line: 3, character: chunk(B, 10).at });
 });
