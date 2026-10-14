@@ -12,6 +12,7 @@ import { CancellationTokenSource } from 'vscode-languageserver/node';
 
 import { META_KEYS } from '../../src/shared/book/jpbook.ts';
 import { PROJECT_DEFAULT } from '../../src/shared/config/types.ts';
+import { encodeTxt, type TxtEncoding } from '../../src/shared/encoding.ts';
 import { HEAD, meta } from '../shared/book/_fixture.ts';
 import { encodePathSegment } from '../../src/shared/uri.ts';
 import {
@@ -357,6 +358,33 @@ test('a successful build opens the configured output dir, once — never a neste
   await tick();
   assert.deepEqual(state.openedExternal, [`${root}/out`]);
 });
+
+/** The `jpnov.layout.txt.encoding` setting as written and the encoding the text is written with: an off-list value is the default. */
+const TXT_ENCODING_SETTINGS: readonly [unknown, TxtEncoding][] = [
+  [undefined, 'shiftJis'],
+  ['utf8', 'utf8'],
+  ['utf16', 'shiftJis'],
+];
+
+for (const [setting, encoding] of TXT_ENCODING_SETTINGS) {
+  test(`a txt build writes the text in the encoding the setting ${JSON.stringify(setting)} names, else the default`, async () => {
+    const root = 'file:///ws';
+    const { view } = await setup([entry(root, 'a')], {
+      ok: true,
+      outDirs: [`${root}/out`],
+      artifacts: [{ kind: 'txt', path: `${root}/out/a.txt`, content: 'あ' }],
+      errors: [],
+    });
+    if (setting !== undefined) {
+      state.config['jpnov.layout.txt.encoding'] = setting; // absent = not set, as VS Code reports it
+    }
+    view.webview.receive({ type: 'build', format: 'txt' });
+    await tick();
+    // The mock keeps writes as UTF-8-decoded text, which still tells the two encodings apart.
+    const expected = Buffer.from(encodeTxt('あ', encoding).bytes).toString('utf8');
+    assert.deepEqual(state.writtenFiles.map((w) => [w.uri, w.content]), [[`${root}/out/a.txt`, expected]]);
+  });
+}
 
 test('print asks the wire for html, writes it, and opens the FILES in the browser — not the folder', async () => {
   const root = 'file:///ws';

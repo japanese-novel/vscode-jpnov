@@ -85,6 +85,7 @@
   "cannot read \"{0}\": file not found": "「{0}」を読み込めません: ファイルが見つかりません",
   "cannot read \"{0}\": {1}": "「{0}」を読み込めません: {1}",
   "cannot read \"{0}\": not a text file": "「{0}」を読み込めません: テキストファイルではありません",
+  "cannot read \"{0}\": the editor did not answer": "「{0}」を読み込めません: エディターから応答がありません",
   "output path \"{0}\" is claimed by multiple book files: {1}": "出力先「{0}」が複数の本のファイルで使われています: {1}",
   "build failed: {0}": "出力に失敗しました: {0}",
   "use \"/\" as the path separator, not \"\\\": {0}": "パス区切りには「/」を使ってください: {0}",

@@ -28,7 +28,7 @@ import {
 
 import { entryKeyOf, entryLines, metaRows, moveEntryTo, resolveEntry, type EntryRef } from '#/shared/book/edits.ts';
 import { parseJpbook, type EntryList, isEntryList, isNameList, jpbookStem, META_KEYS, type MetaKey, type ParsedLine } from '#/shared/book/jpbook.ts';
-import { encodeTxt, TXT_ENCODING_DEFAULT, type TxtEncoding } from '#/shared/encoding.ts';
+import { encodeTxt, TXT_ENCODING_DEFAULT, TXT_ENCODINGS } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/errors.ts';
 import { ocfZip } from '#/shared/compiler/ocf.ts';
 
@@ -768,10 +768,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           return []; // cancelled while the reply was landing: write nothing
         }
 
-        // The CLIENT owns every filesystem write and encoding decision (reads: book/readText.ts).
-        const txtEncoding = vscode.workspace
-          .getConfiguration()
-          .get<TxtEncoding>('jpnov.layout.txt.encoding', TXT_ENCODING_DEFAULT);
+        // The CLIENT owns every filesystem write and encoding decision (reads: book/readText.ts); a setting value off the list is the default.
+        const encodingSetting = vscode.workspace.getConfiguration().get<string>('jpnov.layout.txt.encoding');
+        const txtEncoding = TXT_ENCODINGS.find((e) => e === encodingSetting) ?? TXT_ENCODING_DEFAULT;
         const written: string[] = [];
         let substitutions = 0;
         // One write shape for every artifact kind: success lands in `written`, failure
