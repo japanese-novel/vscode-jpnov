@@ -27,6 +27,19 @@ export function parentUri(uri: string): string {
   return uri.slice(0, uri.lastIndexOf('/'));
 }
 
+/**
+ * A URI as a key for "the same file": no trailing slash, percent-decoded, NFC — the disk may hold
+ * a name decomposed where the editor holds it composed (as `dirKey` in build.ts keys fs paths).
+ */
+export function uriKey(uri: string): string {
+  const bare = normalizeRootUri(uri);
+  try {
+    return decodeURIComponent(bare).normalize('NFC');
+  } catch {
+    return bare;
+  }
+}
+
 /** The last segment of a URI, percent-decoded: the raw file name. */
 export function baseName(uri: string): string {
   return decodeURIComponent(uri.slice(uri.lastIndexOf('/') + 1));

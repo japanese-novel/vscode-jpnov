@@ -4,8 +4,10 @@
  * them as one `WorkspaceEdit`, and SAVES immediately (settings-UI semantics: a panel
  * action persists on the spot; the saved file then re-enters through the panel's own
  * watcher, so no manual refresh plumbing exists here). Every META_KEYS key is always shown;
- * editing one rewrites or removes the lines of that key alone. Chapters and covers are the
- * two entry lists; a list action takes an `EntryList` and never touches the other list.
+ * editing one rewrites or removes the lines of that key alone. Chapters, covers, characters and
+ * keywords are the entry lists; a list action takes an `EntryList` and never touches another.
+ * A file list is added to from a picker of the files on disk; a name list from an input box, the
+ * one way a name gets its ruby typed.
  */
 import { homedir } from 'node:os';
 import { posix } from 'node:path';
@@ -20,6 +22,7 @@ import {
   listedEntries,
   moveEntryTo,
   removeEntry,
+  replaceEntry,
   resolveEntry,
   setMeta,
 } from '#/shared/book/edits.ts';
@@ -28,14 +31,18 @@ import {
   composeDividerValue,
   DIVIDER_PRESETS,
   entryIdentity,
+  identityOf,
   isAlignKey,
+  isNameList,
+  type FileList,
+  type NameList,
   parseDividerValue,
   parseJpbook,
-  type EntryList,
   type MetaKey,
   type ParsedLine,
   jpbookStem,
 } from '#/shared/book/jpbook.ts';
+import { nameIdentity, readName } from '#/shared/book/names.ts';
 import { FURNITURE_ALIGNS, type FurnitureAlign } from '#/shared/compiler/chrome.ts';
 import { BUILD_CHROME_DEFAULT } from '#/shared/config/settings.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
@@ -147,17 +154,18 @@ async function fileExists(uri: vscode.Uri): Promise<boolean> {
 }
 
 /** The list-specific wording of the add-files picker; everything else is shared. */
-function listText(list: EntryList): { placeholder: string; create: string } {
-  if (list === 'chapters') {
-    return {
+function listText(list: FileList): { placeholder: string; create: string } {
+  const text: Record<FileList, { placeholder: string; create: string }> = {
+    chapters: {
       placeholder: vscode.l10n.t('Pick chapter files to add, or type a name to create a new one'),
       create: vscode.l10n.t('Create a new chapter'),
-    };
-  }
-  return {
-    placeholder: vscode.l10n.t('Pick cover page files to add, or type a name to create a new one'),
-    create: vscode.l10n.t('Create a new cover page'),
+    },
+    covers: {
+      placeholder: vscode.l10n.t('Pick cover page files to add, or type a name to create a new one'),
+      create: vscode.l10n.t('Create a new cover page'),
+    },
   };
+  return text[list];
 }
 
 /**
@@ -297,14 +305,70 @@ function pickFiles(
   });
 }
 
+/** The prompt of a name list's input box; the placeholder shows the notation a name may use. */
+function nameText(list: NameList): { prompt: string; placeholder: string; empty: string } {
+  const text: Record<NameList, { prompt: string; placeholder: string; empty: string }> = {
+    characters: {
+      prompt: vscode.l10n.t('Character name (ruby allowed; a space or a ruby boundary separates surname and given name)'),
+      placeholder: '山田《やまだ》太郎《たろう》',
+      empty: vscode.l10n.t('Enter a name'),
+    },
+    keywords: {
+      prompt: vscode.l10n.t('Keyword (ruby allowed)'),
+      placeholder: '王都《おうと》',
+      empty: vscode.l10n.t('Enter a keyword'),
+    },
+  };
+  return text[list];
+}
+
 /**
- * `jpbook.addFiles` — the list's one way in: tick files already on disk, type a name to create,
- * or both. The ticked files are appended first and the new ones after them, as one edit; the
- * last new file opens in the editor.
+ * One input box for a name: refused while empty, while it holds an annotation other than ruby
+ * (the diagnostic's own words), or while `listed` already has its base (`except` = the row being
+ * edited, whose own base is fine). Undefined when dismissed.
  */
-async function addFiles(arg: unknown): Promise<void> {
+async function askName(list: NameList, listed: ReadonlySet<string>, current: string | undefined): Promise<string | undefined> {
+  const text = nameText(list);
+  const except = current === undefined ? null : identityOf(list, current);
+  const typed = await vscode.window.showInputBox({
+    prompt: text.prompt,
+    placeHolder: text.placeholder,
+    value: current ?? '',
+    validateInput: (v) => {
+      const value = v.trim();
+      const read = readName(value);
+      if (!read.ok) {
+        return read.error === 'empty' ? text.empty : renderMessage({ code: 'jpbook.nameNotPlain', args: [value] });
+      }
+      const id = nameIdentity(read.name);
+      return id !== except && listed.has(id) ? vscode.l10n.t('Already in this book') : null;
+    },
+  });
+  return typed?.trim();
+}
+
+/**
+ * `jpbook.addEntries` — a list's one way in. A name list asks for one name in an input box and
+ * appends it. A file list opens the picker: tick files already on disk, type a name to create, or
+ * both. The ticked files are appended first and the new ones after them, as one edit; the last
+ * new file opens in the editor.
+ */
+async function addEntries(arg: unknown): Promise<void> {
   const node = nodeOf(arg);
   if (node?.kind !== 'list') {
+    return;
+  }
+  if (isNameList(node.list)) {
+    const listed = listedEntries(parseJpbook((await bookText(node.entry)).text).lines, node.list);
+    const name = await askName(node.list, listed, undefined);
+    if (name === undefined) {
+      return;
+    }
+    const { uri, text } = await bookText(node.entry);
+    const edit = appendEntries(text, node.list, [name]);
+    if (edit !== null) {
+      await applyBookEdits(uri, [edit]);
+    }
     return;
   }
   const dir = bookDir(node.entry.uri);
@@ -459,6 +523,28 @@ export async function createFile(view: BooksViewProvider | undefined): Promise<v
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target), { preview: false, preserveFocus: true });
   }
   await view?.revealNewBook(target);
+}
+
+/** `jpbook.editEntry` — a name row's input box, prefilled with the item as written; the value is rewritten in place. */
+async function editEntry(arg: unknown): Promise<void> {
+  const node = nodeOf(arg);
+  if (node?.kind !== 'entry' || !isNameList(node.list)) {
+    return;
+  }
+  const listed = listedEntries(parseJpbook((await bookText(node.entry)).text).lines, node.list);
+  const name = await askName(node.list, listed, node.path);
+  if (name === undefined) {
+    return;
+  }
+  const { uri, text, version } = await bookText(node.entry);
+  const line = rowLine(node, parseJpbook(text).lines, version);
+  if (line === null) {
+    return;
+  }
+  const edit = replaceEntry(text, node.list, line, name);
+  if (edit !== null) {
+    await applyBookEdits(uri, [edit]);
+  }
 }
 
 async function removeEntryCmd(arg: unknown): Promise<void> {
@@ -653,10 +739,11 @@ async function editMeta(arg: unknown): Promise<void> {
   }
 }
 
-/** Registers the five panel commands (plain — they only fire from the Books panel). */
+/** Registers the six panel commands (plain — they only fire from the Books panel). */
 export function registerBookCommands(): vscode.Disposable[] {
   return [
-    command('jpbook.addFiles', addFiles),
+    command('jpbook.addEntries', addEntries),
+    command('jpbook.editEntry', editEntry),
     command('jpbook.removeEntry', removeEntryCmd),
     command('jpbook.moveEntryUp', (arg?: unknown) => moveEntry(arg, -1)),
     command('jpbook.moveEntryDown', (arg?: unknown) => moveEntry(arg, 1)),

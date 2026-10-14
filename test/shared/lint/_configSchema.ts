@@ -217,9 +217,7 @@ const UPDATE_REFS_MODES = ['prompt', 'always', 'never'] as const;
  * The Editor section: typing behavior and in-editor aids, all client-only (never sent to the
  * resolver), so defaults are bare literals here — `autoIndent` mirrored in
  * `client/editor/autoIndent.ts`, the `updateRefsOnFileMove` triad in `client/book/tracking.ts`.
- * The highlight vocabulary is per-folder (`scope: resource`), plain string arrays with NO
- * `uniqueItems` — dedup/empty-drop is the server normalizer's single job, and the descriptions
- * say so ("empty and duplicate items are ignored").
+ * The narration vocabulary is no setting: it is the `characters:`/`keywords:` of the `.jpbook` files.
  */
 function editorSection(): unknown {
   return {
@@ -232,22 +230,6 @@ function editorSection(): unknown {
         order: 1,
         markdownDescription: '%jpnov.editor.autoIndent.description%',
       },
-      'jpnov.editor.highlight.characters': {
-        type: 'array',
-        items: { type: 'string' },
-        default: [],
-        scope: 'resource',
-        order: 2,
-        markdownDescription: '%jpnov.editor.highlight.characters.description%',
-      },
-      'jpnov.editor.highlight.keywords': {
-        type: 'array',
-        items: { type: 'string' },
-        default: [],
-        scope: 'resource',
-        order: 3,
-        markdownDescription: '%jpnov.editor.highlight.keywords.description%',
-      },
       'jpnov.editor.updateRefsOnFileMove': {
         type: 'string',
         enum: [...UPDATE_REFS_MODES],
@@ -258,7 +240,7 @@ function editorSection(): unknown {
         enumDescriptions: UPDATE_REFS_MODES.map(
           (v) => `%jpnov.editor.updateRefsOnFileMove.${v}.description%`,
         ),
-        order: 4,
+        order: 2,
         markdownDescription: '%jpnov.editor.updateRefsOnFileMove.description%',
       },
     },
@@ -296,8 +278,6 @@ function staticNlsKeys(): string[] {
     'jpnov.layout.outDir.description',
     'jpnov.editor.title',
     'jpnov.editor.autoIndent.description',
-    'jpnov.editor.highlight.characters.description',
-    'jpnov.editor.highlight.keywords.description',
     'jpnov.editor.updateRefsOnFileMove.description',
     ...UPDATE_REFS_MODES.flatMap((v) => enumChoiceKeys(`jpnov.editor.updateRefsOnFileMove.${v}`)),
   ];

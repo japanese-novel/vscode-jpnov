@@ -25,20 +25,25 @@ import {
   colonIndex,
   completeEntryLine,
   completeMetaLine,
-  coverShape,
+  COVER_KEY,
   entryPathOf,
+  isNameList,
+  itemShape,
   metaEndOf,
   metaKeyOf,
+  NAME_LISTS,
   writtenKeysOf,
   type JpbookCompletion,
   type JpbookRange,
   type ParsedJpbook,
   type ParsedLine,
 } from '#/shared/book/jpbook.ts';
+import { nameConflicts } from '#/shared/book/names.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
 
 import { diagnostic } from './diagnostics.ts';
 import { isFileScheme, resolveUri } from './fsUri.ts';
+import type { BookNames } from './highlight/vocabulary.ts';
 import { INDENT_TOO_LARGE } from './syntax.ts';
 
 /** A column span on `line` as an LSP {@link Range}. */
@@ -109,10 +114,11 @@ async function readDirEntries(dirUri: string): Promise<{ name: string; isDir: bo
 /**
  * Per-line diagnostics for one parsed `.jpbook`: syntax/metadata errors and warnings (from
  * {@link parseJpbook}'s line kinds), then, on a `file:` book, existence (a missing path or one
- * resolving to a directory is an Error). Used by both the live editor handler and the build,
- * so the two never disagree.
+ * resolving to a directory is an Error), then the names `others` (the other books of the root)
+ * write differently. Used by both the live editor handler and the build, so the two never
+ * disagree.
  */
-export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook): Promise<Diagnostic[]> {
+export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook, others: readonly BookNames[]): Promise<Diagnostic[]> {
   const canCheckFs = isFileScheme(dirUri);
   const diagnostics: Diagnostic[] = [];
 
@@ -134,20 +140,21 @@ export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook): Prom
       }
       continue;
     }
-    // A cover item's span is its PATH, so squiggles skip the marker.
-    const entry = entryPathOf(pl);
-    if (entry === null) {
+    // An item's span is its VALUE, so squiggles skip the marker.
+    const item = pl.item;
+    if (item === undefined) {
       continue;
     }
-    const range = charRange(pl.line, entry.range);
-    if (pl.kind === 'duplicate' || pl.kind === 'coverDuplicate') {
+    const range = charRange(pl.line, item.range);
+    if (pl.kind === 'duplicate' || pl.kind === 'coverDuplicate' || pl.kind === 'nameDuplicate') {
       diagnostics.push(
-        diagnostic(range, { code: 'jpbook.duplicateEntry', args: [entry.value] }, DiagnosticSeverity.Warning),
+        diagnostic(range, { code: 'jpbook.duplicateEntry', args: [item.value] }, DiagnosticSeverity.Warning),
       );
       continue;
     }
-    if (!canCheckFs) {
-      continue; // existence unverifiable off `file:` — leave the path un-flagged.
+    const entry = entryPathOf(pl);
+    if (entry === null || !canCheckFs) {
+      continue; // a name is no path; existence unverifiable off `file:` — leave the path un-flagged.
     }
     const uri = resolveUri(dirUri, entry.value);
     const verdict = uri === null ? 'missing' : await statEntry(uri);
@@ -159,6 +166,20 @@ export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook): Prom
       diagnostics.push(
         diagnostic(range, { code: 'jpbook.entryIsDirectory', args: [entry.value] }, DiagnosticSeverity.Error),
       );
+    }
+  }
+
+  for (const list of NAME_LISTS) {
+    const neighbours = others.map((book) => ({ label: book.fileRel, names: book.names[list] }));
+    for (const conflict of nameConflicts(parsed.names[list], neighbours)) {
+      const item = parsed.lines[conflict.line]?.item;
+      if (item !== undefined) {
+        diagnostics.push(diagnostic(
+          charRange(conflict.line, item.range),
+          { code: 'jpbook.nameConflict', args: [conflict.base, conflict.label] },
+          DiagnosticSeverity.Warning,
+        ));
+      }
     }
   }
   return diagnostics;
@@ -212,20 +233,21 @@ function toCompletionItem(c: JpbookCompletion, line: number): CompletionItem {
 /** Path start column on a cover line (a `- ` item or `cover: `), from the cursor prefix; null off-shape. */
 function coverPathStart(prefix: string): number | null {
   const indent = prefix.length - prefix.trimStart().length;
-  const shape = coverShape(prefix.slice(indent));
+  const shape = itemShape(prefix.slice(indent), COVER_KEY);
   return shape === null ? null : indent + shape.offset;
 }
 
 /**
  * Completions for the cursor on `lineText` at `position`. In the metadata (above the closing
  * `---`, or the whole file while none closes it) it offers the keys not yet written / enum
- * values — pure, fs-free — and, on cover-shaped lines (`- ` items, `cover: `), file paths. On
- * chapter lines it lists the directory the current path prefix points into (from the book's
- * directory, `..` included) and hands it to the pure {@link completeEntryLine}; the path branch
- * returns nothing off `file:`, or when the line's path already names an existing file with the
- * cursor at its end (per the "no more suggestions once the line matches" rule). Folder items
- * re-trigger suggestions so the user keeps drilling. The header and fence lines offer nothing,
- * nor does a book whose header no parser reads.
+ * values — pure, fs-free — and, on cover-shaped lines (`- ` items, `cover: `), file paths; a
+ * line of a name list (`characters:`, `keywords:`, their items) gets nothing, a name being no
+ * path. On chapter lines it lists the directory the current path prefix points into (from the
+ * book's directory, `..` included) and hands it to the pure {@link completeEntryLine}; the path
+ * branch returns nothing off `file:`, or when the line's path already names an existing file
+ * with the cursor at its end (per the "no more suggestions once the line matches" rule). Folder
+ * items re-trigger suggestions so the user keeps drilling. The header and fence lines offer
+ * nothing, nor does a book whose header no parser reads.
  */
 export async function completeJpbook(
   dirUri: string,
@@ -233,9 +255,13 @@ export async function completeJpbook(
   lineText: string,
   position: { line: number; character: number },
 ): Promise<CompletionItem[]> {
-  const kind = parsed.lines[position.line]?.kind;
+  const current = parsed.lines[position.line];
+  const kind = current?.kind;
   if (parsed.lines[0]?.kind !== 'header' || kind === 'header' || kind === 'fence') {
     return []; // a book no parser read, the header, the fence: nothing sensible to offer
+  }
+  if (current?.list !== undefined && isNameList(current.list)) {
+    return []; // a name list's key or item: free text, nothing to propose
   }
   const prefix = lineText.slice(0, position.character);
 

@@ -661,7 +661,7 @@ export function buildVscode(state: MockState): Record<string, unknown> {
     onDidCloseTextDocument: state.onDidCloseDoc.event,
     onDidSaveTextDocument: state.onDidSaveDoc.event,
     // Settings reads. Bare getConfiguration() + full keys (renderConfig.ts) resolves from
-    // `state.config` as before; the section/scope form (highlightConfig.ts, probe.ts)
+    // `state.config` as before; the section/scope form (probe.ts)
     // consults `state.scopedConfig` first — keyed `${scopeUri}|${section ? section + '.' : ''}${key}`
     // — and falls back to `state.config` under the same composite key. `inspect()` reads
     // `state.inspectResults` under the same key shape (probe's section-level inspect included).

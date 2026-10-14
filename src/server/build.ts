@@ -23,8 +23,8 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken, WorkDoneProgressReporter } from 'vscode-languageserver/node';
 
-import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
-import type { JpbookMeta, ParsedLine } from '#/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, NO_NAMES, parseJpbook } from '#/shared/book/jpbook.ts';
+import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
 import { concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { TitledBook } from '#/shared/compiler/document.ts';
 import { epubMembers } from '#/shared/compiler/epub.ts';
@@ -50,6 +50,7 @@ import { fileLevelError } from './diagnostics.ts';
 import { diagnoseJpbook } from './jpbook.ts';
 import { baseName, childUri, isFileScheme, normalizeRootUri, parentUri, resolveUri } from './fsUri.ts';
 import type { ServerContext } from './context.ts';
+import type { BookNames, RootNames } from './highlight/vocabulary.ts';
 
 /** One targeted root, always `file:`: its normalized URI and the validated `outDir`. */
 interface ProjectRoot {
@@ -159,16 +160,17 @@ function targetRoots(projectDirs: ProjectDirsMap): ProjectRoot[] {
   return resolved.map((r) => ({ ...r, rootDirs }));
 }
 
-/** Every book a request names: those discovered under its roots (root by root), then its open books. */
-async function bookTargets(params: ListBooksParams): Promise<BookTarget[]> {
-  const discovered = await Promise.all(targetRoots(params.projectDirs).map(discoverJpbooks));
+/** Every book a request names: those discovered under its roots (root by root), then its open books; with the roots themselves. */
+async function bookTargets(params: ListBooksParams): Promise<{ roots: ProjectRoot[]; books: BookTarget[] }> {
+  const roots = targetRoots(params.projectDirs);
+  const discovered = await Promise.all(roots.map(discoverJpbooks));
   const open = (params.openBooks ?? []).map((book): BookTarget => ({
     uri: book.uri,
     rootUri: null,
     fileRel: baseName(book.uri),
     outDirUri: outDirUriOf(book.uri, null, outDirOf(book.outDir)),
   }));
-  return [...discovered.flat(), ...open];
+  return { roots, books: [...discovered.flat(), ...open] };
 }
 
 /** The output stem of a book: its file name without `.jpbook`. */
@@ -346,7 +348,7 @@ async function buildBook(
     const dirUri = parentUri(book.uri);
     // Per-line diagnostics (same path the live editor uses); published on the .jpbook URI.
     // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.
-    const lineDiags = await diagnoseJpbook(dirUri, parsed);
+    const lineDiags = await diagnoseJpbook(dirUri, parsed, ctx.highlight.othersOf(book.uri));
     void ctx.connection.sendDiagnostics({ uri: book.uri, diagnostics: collision ? [...lineDiags, fileLevelError(collision)] : lineDiags });
     if (collision) {
       return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...collision } };
@@ -390,7 +392,7 @@ export async function handleBuild(
   progress?: WorkDoneProgressReporter,
   token?: CancellationToken,
 ): Promise<BuildResult> {
-  const books = await bookTargets(params);
+  const { books } = await bookTargets(params);
   const collisions = collisionsOf(books);
   const artifacts: BuildArtifact[] = [];
   const outDirs = new Set<string>();
@@ -438,18 +440,38 @@ export async function handleBuild(
  * Handles `jpnov/listBooks`: every book the request names as a {@link BookEntry} for the
  * client's Books panel. Each file is read ONCE, through the client like a build, for its
  * `title` (display metadata; an unreadable file simply lists untitled) — but no diagnostics
- * (those belong to an actual build).
+ * (those belong to an actual build). Listing is also when the server learns the books'
+ * `characters:` and `keywords:`: the lists of every book under a root, root by root, become the
+ * narration vocabulary ({@link ServerContext.highlight}); an unreadable book contributes none,
+ * and a book under no root (sent open) contributes to no root. The client lists on every
+ * `.jpbook` change and each time the server comes up, so the store follows the files.
  */
 export async function handleListBooks(ctx: ServerContext, params: ListBooksParams): Promise<ListBooksResult> {
-  const books = await Promise.all((await bookTargets(params)).map(async (book): Promise<BookEntry> => {
+  const ticket = ctx.highlight.ticket();
+  const targets = await bookTargets(params);
+  const read = await Promise.all(targets.books.map(async (book): Promise<{ book: BookTarget; parsed: ParsedJpbook | null }> => {
     const reply = await ctx.readText(book.uri);
-    const title = reply.ok ? parseJpbook(reply.text).meta.title : undefined;
-    return {
-      uri: book.uri,
-      rootUri: book.rootUri,
-      fileRel: book.fileRel,
-      ...(title !== undefined ? { title } : {}),
-    };
+    return { book, parsed: reply.ok ? parseJpbook(reply.text) : null };
   }));
-  return { books };
+
+  // Every targeted root gets an entry, books or none: a nested root's empty vocabulary shadows its parent's.
+  const roots = new Map<string, BookNames[]>(targets.roots.map((root) => [root.rootUri, []]));
+  for (const { book, parsed } of read) {
+    if (book.rootUri !== null) {
+      roots.get(book.rootUri)?.push({ uri: book.uri, fileRel: book.fileRel, names: parsed?.names ?? NO_NAMES });
+    }
+  }
+  ctx.highlight.apply(ticket, [...roots].map(([rootUri, books]): RootNames => ({ rootUri, books })));
+
+  return {
+    books: read.map(({ book, parsed }): BookEntry => {
+      const title = parsed?.meta.title;
+      return {
+        uri: book.uri,
+        rootUri: book.rootUri,
+        fileRel: book.fileRel,
+        ...(title !== undefined ? { title } : {}),
+      };
+    }),
+  };
 }

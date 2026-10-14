@@ -534,6 +534,37 @@ test('build targets only the roots in projectDirs', async () => {
   assert.equal(result.artifacts[0]?.path, `${wsA.uri}/va/dist/va.txt`);
 });
 
+test('listBooks gives the server the books\' names, root by root, as the union of every book under the root', async () => {
+  await using ws = await makeTmpWorkspace();
+  await writeUnder(ws.dir, 'vol1/vol1.jpbook', metaWith('characters:\n  - 山田　太郎\nkeywords:\n  - 王都') + 'a.jpnov');
+  await writeUnder(ws.dir, 'vol2/vol2.jpbook', metaWith('characters:\n  - 山田《やまだ》花子《はなこ》') + 'b.jpnov');
+  await writeUnder(ws.dir, 'sub/root/inner.jpbook', metaWith('characters:\n  - John Smith') + 'c.jpnov');
+  const { ctx } = boot();
+  const outer = ws.uri;
+  const inner = `${ws.uri}/sub/root`;
+  await handleListBooks(ctx, { projectDirs: { ...projectsFor(outer), ...projectsFor(inner) } });
+
+  const subject = (doc: string, who: string): boolean =>
+    ctx.highlight.recognizerFor(doc)?.recognize(`${who}は`).some((s) => s.kind === 'character') ?? false;
+  // A chapter anywhere under the outer root, in a book or not, sees both volumes' casts…
+  for (const who of ['太郎', '山田', '花子', '山田花子']) {
+    assert.ok(subject(`${outer}/drafts/new.jpnov`, who), who);
+  }
+  assert.ok(ctx.highlight.recognizerFor(`${outer}/vol1/a.jpnov`)?.recognize('王都へ').some((s) => s.kind === 'keyword'));
+  // …and the nested root keeps its own book to itself, in both directions.
+  assert.ok(subject(`${inner}/c.jpnov`, 'John Smith'));
+  assert.ok(!subject(`${inner}/c.jpnov`, '太郎'));
+  assert.ok(!subject(`${outer}/drafts/new.jpnov`, 'John Smith'));
+  // The neighbours of a book: the other books of its root, labelled as the panel lists them.
+  assert.deepEqual(ctx.highlight.othersOf(`${outer}/vol1/vol1.jpbook`).map((b) => b.fileRel), ['vol2/vol2.jpbook']);
+  assert.deepEqual(ctx.highlight.othersOf(`${inner}/inner.jpbook`), []);
+
+  // The next listing replaces the snapshot: a root gone from the request takes its names with it.
+  await handleListBooks(ctx, { projectDirs: projectsFor(inner) });
+  assert.equal(ctx.highlight.recognizerFor(`${outer}/drafts/new.jpnov`), undefined);
+  assert.ok(subject(`${inner}/c.jpnov`, 'John Smith'));
+});
+
 test('listBooks enumerates every jpbook, carrying its title when one is written', async () => {
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'vol1/vol1.jpbook', meta({}, ['title']) + 'a.jpnov');

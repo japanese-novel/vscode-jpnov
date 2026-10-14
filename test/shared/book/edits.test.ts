@@ -504,11 +504,74 @@ test('entryLines and listedEntries project each list on its own', () => {
   const expected: Record<EntryList, { lines: number[]; listed: string[] }> = {
     covers: { lines: [1, 2], listed: ['a.jpnov'] },
     chapters: { lines: [6], listed: ['x.jpnov'] },
+    characters: { lines: [], listed: [] },
+    keywords: { lines: [], listed: [] },
   };
-  for (const list of ['covers', 'chapters'] as const) {
+  for (const list of ['covers', 'chapters', 'characters', 'keywords'] as const) {
     assert.deepEqual(entryLines(lines, list), expected[list].lines, list);
     assert.deepEqual([...listedEntries(lines, list)], expected[list].listed, list);
   }
   // A cover path is listed without its marker, whatever the marker style.
   assert.deepEqual([...listedEntries(parseJpbook('cover:\n－a.jpnov\n---\n').lines, 'covers')], ['a.jpnov']);
+});
+
+// --- name list planners -------------------------------------------------------------
+
+const replaceEntry = (text: string, list: EntryList, line: number, value: string): TextReplace | null => {
+  const r = edits.replaceEntry(HEAD + text, list, line + 1, value);
+  return r === null ? null : shift(r);
+};
+
+test('appendEntries(characters/keywords) opens the list at the end of the metadata, then extends it like covers', () => {
+  const text = 'title: t\ncover:\n  - c.jpnov\n---\na.jpnov\n';
+  const opened = appendEntries(text, 'characters', ['山田　太郎', 'John Smith']);
+  assert.ok(opened);
+  const out = apply(text, [opened]);
+  assert.equal(out, 'title: t\ncover:\n  - c.jpnov\ncharacters:\n  - 山田　太郎\n  - John Smith\n---\na.jpnov\n');
+  assert.deepEqual(kindsOf(out), ['meta', 'cover', 'coverEntry', 'names', 'name', 'name', 'fence', 'ok', 'blank']);
+  // The new key closed the cover list where it stood; the covers are intact.
+  assert.deepEqual(entryLines(parseJpbook(out).lines, 'covers'), [2]);
+
+  const extended = appendEntries(out, 'characters', ['山田　花子']);
+  assert.ok(extended);
+  assert.equal(apply(out, [extended]), 'title: t\ncover:\n  - c.jpnov\ncharacters:\n  - 山田　太郎\n  - John Smith\n  - 山田　花子\n---\na.jpnov\n');
+  const keyed = appendEntries(out, 'keywords', ['王都《おうと》']);
+  assert.ok(keyed);
+  assert.equal(apply(out, [keyed]), 'title: t\ncover:\n  - c.jpnov\ncharacters:\n  - 山田　太郎\n  - John Smith\nkeywords:\n  - 王都《おうと》\n---\na.jpnov\n');
+});
+
+test('appendEntries(characters) dedupes by the base: another writing of a listed name is nothing new', () => {
+  const text = 'characters:\n  - 山田　太郎\n---\n';
+  assert.equal(appendEntries(text, 'characters', ['山田《やまだ》太郎《たろう》', '山田太郎']), null);
+  // The lists dedupe on their own: a character may be a keyword too.
+  const edit = appendEntries(text, 'keywords', ['山田太郎']);
+  assert.ok(edit);
+  assert.equal(apply(text, [edit]), 'characters:\n  - 山田　太郎\nkeywords:\n  - 山田太郎\n---\n');
+  assert.deepEqual([...listedEntries(parseJpbook(text).lines, 'characters')], ['山田太郎']);
+});
+
+test('removeEntry / moveEntryTo / replaceEntry work on a name list, an inline `characters: name` included', () => {
+  const text = 'characters: 山田　太郎\n  - 山田　花子\n---\n';
+  const removed = removeEntry(text, 'characters', 0);
+  assert.ok(removed);
+  assert.equal(apply(text, [removed]), 'characters:\n  - 山田　花子\n---\n');
+  const toEnd = moveEntryTo(text, 'characters', 0, null);
+  assert.ok(toEnd);
+  assert.equal(apply(text, toEnd), 'characters:\n  - 山田　花子\n  - 山田　太郎\n---\n');
+  const edited = replaceEntry(text, 'characters', 1, ' 山田《やまだ》花子《はなこ》 ');
+  assert.ok(edited);
+  assert.equal(apply(text, [edited]), 'characters: 山田　太郎\n  - 山田《やまだ》花子《はなこ》\n---\n');
+  const inline = replaceEntry(text, 'characters', 0, 'John Smith');
+  assert.ok(inline);
+  assert.equal(apply(text, [inline]), 'characters: John Smith\n  - 山田　花子\n---\n');
+  // Not an entry of the list, or nothing to write: no edit.
+  assert.equal(replaceEntry(text, 'keywords', 1, 'x'), null);
+  assert.equal(replaceEntry(text, 'characters', 1, ' '), null);
+  assert.equal(resolveEntry(parseJpbook(text).lines, 'characters', { line: 1, path: '山田　花子' }), 1);
+});
+
+test('setMeta never lands a key under a name list key, where it would close the list', () => {
+  const text = ['title: 作品名', 'characters:', '  - 山田　太郎', 'keywords:', '  - 王都', '---', 'a.jpnov'].join('\n');
+  const out = apply(text, setMeta(text, 'divider', '＊'));
+  assert.deepEqual(kindsOf(out), ['meta', 'meta', 'names', 'name', 'names', 'name', 'fence', 'ok']);
 });

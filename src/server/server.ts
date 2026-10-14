@@ -4,10 +4,11 @@
  * every import of it in src/server/**, `import type` included.
  *
  * Responsibilities wired here:
- * - `initialize`: seed the lint selection + per-root vocabulary from
- *   `initializationOptions`, reply the negotiated capabilities.
+ * - `initialize`: seed the lint selection from `initializationOptions`, reply the negotiated
+ *   capabilities.
  * - `jpnov/build`, `jpnov/listBooks`, `jpnov/renderFile` request handlers (per-root state
- *   rides each request's `projectDirs`; the vocabulary rides `jpnov/highlightChanged`).
+ *   rides each request's `projectDirs`; the narration vocabulary is read from the books a
+ *   listing finds, root by root).
  * - `jpnov/readText` (server -> client): the only custom request this side sends; manuscript
  *   and manifest text comes back decoded by the client.
  */
@@ -36,7 +37,6 @@ import { selectRules } from '#/shared/lint/select.ts';
 import type { InitializationOptions } from '#/shared/protocol.ts';
 import {
   BuildRequest,
-  HighlightChangedNotification,
   HoverRequest,
   LintConfigChangedNotification,
   ListBooksRequest,
@@ -46,7 +46,6 @@ import {
 import type {
   BuildParams,
   BuildResult,
-  HighlightChangedParams,
   HoverParams,
   HoverResult,
   LintConfigChangedParams,
@@ -67,7 +66,7 @@ import { computeLintFindings } from './lint/engine.ts';
 import { createParseCache } from './parsed.ts';
 import { reportError } from './report.ts';
 import type { ServerContext } from './context.ts';
-import { createHighlightStore, handleHighlightChanged } from './highlight/vocabulary.ts';
+import { createHighlightStore } from './highlight/vocabulary.ts';
 import { buildSemanticTokens, SEMANTIC_LEGEND } from './semanticTokens.ts';
 import { syntaxFindings } from './syntax.ts';
 import { completeJpbook, diagnoseJpbook, documentLinksForJpbook } from './jpbook.ts';
@@ -96,7 +95,7 @@ const context: ServerContext = {
   connection,
   readText: readTextOverWire,
   lintSelection: selectRules({}), // all rules off until the client's snapshot arrives at initialize
-  highlight: createHighlightStore(), // empty until the client's snapshot arrives at initialize
+  highlight: createHighlightStore(), // empty until the client's first jpnov/listBooks
 };
 
 // Open-document tracker (so semantic-tokens requests have document text to highlight).
@@ -109,9 +108,6 @@ const parsed = createParseCache();
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const options = params.initializationOptions as InitializationOptions | undefined;
   context.lintSelection = selectRules(options?.lintConfig ?? {});
-  // Vocabulary seed: no refresh here — the client is not `initialized` yet, and the first
-  // semanticTokens request naturally lands after this.
-  context.highlight.apply(options?.highlight);
 
   return {
     capabilities: {
@@ -159,15 +155,6 @@ connection.onNotification(
   },
 );
 
-// Narration vocabulary changed (jpnov.editor.highlight.*): swap the per-root snapshot and refresh
-// semantic tokens so open editors recolour immediately.
-connection.onNotification(
-  HighlightChangedNotification,
-  (params: HighlightChangedParams) => {
-    handleHighlightChanged(connection, context.highlight, params);
-  },
-);
-
 // Build: every root in the request's projectDirs. Progress flows over $/progress via the
 // request's work-done reporter (3rd handler arg), tied to the client's workDoneToken.
 connection.onRequest(
@@ -181,11 +168,21 @@ connection.onRequest(
 
 // List books: enumerate every `.jpbook` of every root in the request's projectDirs map, then the
 // open books it names, and read each one through the client for its title (no diagnostics); the
-// wire may omit params, so accept the nullable form.
+// wire may omit params, so accept the nullable form. The books' `characters:`/`keywords:` are the
+// narration vocabulary: when a listing changes it, the open chapters recolour and the open books
+// are re-checked, their conflicts with their neighbours having moved too.
 connection.onRequest(
   ListBooksRequest,
-  (params: ListBooksParams | undefined): Promise<ListBooksResult> =>
-    handleListBooks(context, params ?? { projectDirs: {} }),
+  async (params: ListBooksParams | undefined): Promise<ListBooksResult> => {
+    const before = context.highlight.generation();
+    const result = await handleListBooks(context, params ?? { projectDirs: {} });
+    if (context.highlight.generation() !== before) {
+      // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.
+      void connection.languages.semanticTokens.refresh();
+      revalidateOpenBooks();
+    }
+    return result;
+  },
 );
 
 // Preview: render the editor's parse of one open .jpnov (its live buffer, synced ahead of this
@@ -303,7 +300,7 @@ function scheduleJpbookDiagnostics(doc: TextDocument): void {
       }
       void (async () => {
         try {
-          const diagnostics = await diagnoseJpbook(parentUri(uri), parseJpbook(current.getText()));
+          const diagnostics = await diagnoseJpbook(parentUri(uri), parseJpbook(current.getText()), context.highlight.othersOf(uri));
           // Re-check after the async fs work: a newer edit (with its own schedule) wins.
           if (documents.get(uri)?.version === scheduledVersion) {
             // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.
@@ -385,6 +382,15 @@ function revalidateOpenNovels(): void {
   for (const doc of documents.all()) {
     if (doc.languageId === 'jpnov') {
       scheduleProseDiagnostics(doc);
+    }
+  }
+}
+
+/** Re-check every open .jpbook — used when the names of its neighbours change (no text edit drives it). */
+function revalidateOpenBooks(): void {
+  for (const doc of documents.all()) {
+    if (doc.languageId === 'jpbook') {
+      scheduleJpbookDiagnostics(doc);
     }
   }
 }

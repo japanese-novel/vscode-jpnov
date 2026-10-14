@@ -7,14 +7,14 @@ import assert from 'node:assert/strict';
 
 import { createRecognizer } from '../../../src/server/highlight/recognizer.ts';
 import { tokenTypeIndex } from '../../../src/server/semanticTokens.ts';
-import { at, buildSemanticTokens, covers, decode, doc } from './tokens.ts';
+import { at, buildSemanticTokens, covers, decode, doc, cast } from './tokens.ts';
 
 const MARKER = tokenTypeIndex('marker');
 const CHARACTER = tokenTypeIndex('character');
 const KEYWORD = tokenTypeIndex('keyword');
 
 // 太郎 / 王都 are cast; 王都 is also a keyword.
-const rec = createRecognizer(['山田　太郎', '王都'], ['王都']);
+const rec = createRecognizer(cast('山田　太郎', '王都'), ['王都']);
 
 test('nested 「…『…』…」: the whole outer span is dialogue; only narration after the close is scanned', () => {
   const text = '「しかも『それをいう？』と、王都さんは話しました」太郎は言った';

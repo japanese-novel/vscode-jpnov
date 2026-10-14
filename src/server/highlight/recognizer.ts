@@ -1,10 +1,10 @@
 /**
  * Narration recognizer: highlights the author's cast and coined keywords in plain body-text runs.
  *
- * Built from a root's `jpnov.editor.highlight.*` settings (characters + keywords) — pure and synchronous,
- * with no dictionary and no async load. A character is highlighted ONLY where it reads as a SUBJECT:
- * a name (a surname/given alone is fine, optionally followed by ONE honorific) immediately followed
- * by は or が. The particle marks the subject and is coloured together with the name. Built-in
+ * Built from a root's cast surfaces (every form a listed name is recognised by: `nameSurfaces` in
+ * `src/shared/book/names.ts`) and keywords — pure and synchronous, with no dictionary and no async
+ * load. A character is highlighted ONLY where it reads as a SUBJECT: a name (a surname/given alone
+ * is fine, optionally followed by ONE honorific) immediately followed by は or が. The particle marks the subject and is coloured together with the name. Built-in
  * pronouns (僕 私 彼 彼女 俺 あたし) follow the same subject rule. Keywords match exactly and only where
  * no character matched, so a surface in BOTH lists reads as the character when it is a
  * subject (followed by は or が) and as a plain keyword otherwise.
@@ -32,27 +32,6 @@ export interface Recognizer {
   recognize(runText: string): readonly RecognizerSpan[];
 }
 
-/**
- * Expands a cast list into the set of surfaces to match. Each entry is split on runs of half- or
- * full-width spaces, yielding the surname, the given name, the no-separator join (how a full name is
- * typeset in Japanese body text), and the verbatim spaced form (how Western names keep their space).
- */
-export function splitCharacterSurfaces(characters: readonly string[]): string[] {
-  const surfaces = new Set<string>();
-  for (const entry of characters) {
-    const parts = entry.split(/[ 　]+/).filter((p) => p !== '');
-    if (parts.length === 0) {
-      continue;
-    }
-    surfaces.add(entry); // verbatim spaced full (e.g. "John Smith")
-    surfaces.add(parts.join('')); // no-separator join (e.g. 山田太郎)
-    for (const part of parts) {
-      surfaces.add(part); // surname / given alone
-    }
-  }
-  return [...surfaces];
-}
-
 /** Longest-first, so a greedy match prefers 山田太郎 over 山田 and 彼女 over 彼. */
 const byLengthDesc = (xs: readonly string[]): string[] => [...xs].sort((a, b) => b.length - a.length);
 
@@ -67,10 +46,10 @@ function matchAt(sorted: readonly string[], text: string, pos: number): string {
 }
 
 export function createRecognizer(
-  characters: readonly string[],
+  surfaces: readonly string[],
   keywords: readonly string[],
 ): Recognizer {
-  const subjects = byLengthDesc([...splitCharacterSurfaces(characters), ...PRONOUNS]);
+  const subjects = byLengthDesc([...new Set(surfaces), ...PRONOUNS]);
   const honorifics = byLengthDesc(HONORIFICS);
   const keys = byLengthDesc([...new Set(keywords)]);
 

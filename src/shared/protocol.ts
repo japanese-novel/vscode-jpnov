@@ -30,14 +30,13 @@ export type RawLintConfigWire = Readonly<Record<string, boolean | number | strin
 
 /**
  * Carried on the standard LSP `initialize` request as `initializationOptions`.
- * `lintConfig` seeds the prose-lint selection at startup (omitted = no rules enabled);
- * `highlight` seeds the per-root narration vocabulary the same way (omitted = no
- * vocabulary anywhere). The client builds the value once and sends each field again by its own
- * notification whenever the server comes up: a field added here needs that push too.
+ * `lintConfig` seeds the prose-lint selection at startup (omitted = no rules enabled). The
+ * client builds the value once and sends each field again by its own notification whenever the
+ * server comes up: a field added here needs that push too. The narration vocabulary is not a
+ * field: the server reads it from the books it lists (`jpnov/listBooks`).
  */
 export interface InitializationOptions {
   readonly lintConfig?: RawLintConfigWire;
-  readonly highlight?: HighlightVocabularyMap;
 }
 
 // Localizable server messages (S->C)
@@ -70,7 +69,10 @@ export type MsgCode =
   | 'jpbook.headerMissing' // args: [header] — the first line is not `jpbook/…`; range = that line (nothing below it is read)
   | 'jpbook.versionUnsupported' // args: [version, supported] — a `jpbook/<version>` header this extension has no parser for; range = that line
   | 'jpbook.metaEmptyValue' // args: [key] — a key that needs a value (title, headerAlign, footerAlign) written without one (range = its line) or not written (range = the closing `---`)
-  | 'jpbook.coverItemWithoutKey' // args: [value] — a "- path" list item with no "cover:" line open above it
+  | 'jpbook.itemWithoutKey' // args: [value] — a "- " list item with no list key (cover:, characters:, keywords:) open above it
+  | 'jpbook.nameEmpty' // args: [] — an item of characters:/keywords: with nothing after its marker (or colon); ignored
+  | 'jpbook.nameNotPlain' // args: [value] — an item of characters:/keywords: holding an annotation other than ruby, or a marker left as text; ignored
+  | 'jpbook.nameConflict' // args: [base, file] — another .jpbook of the root lists the same base written differently (a reading, a split); range = the item
   | 'syntax.unclosedAnnotation' // args: [] — unterminated ［＃ (no ］ before the line end); the diagnostic range IS the span
   | 'syntax.unterminatedBlock' // args: [] — ［＃ここから…］ with no matching ［＃ここで…終わり］ before EOF; range = the ここから annotation
   | 'syntax.danglingBlockEnd' // args: [] — ［＃ここで…終わり］ with no open block; range = the 終わり annotation
@@ -180,37 +182,6 @@ export const LintConfigChangedNotification = 'jpnov/lintConfigChanged';
  */
 export interface LintConfigChangedParams {
   readonly lintConfig: RawLintConfigWire;
-}
-
-// jpnov/highlightChanged (C->S notification)
-
-export const HighlightChangedNotification = 'jpnov/highlightChanged';
-
-/**
- * One workspace folder's narration vocabulary, read from the `jpnov.editor.highlight.*` settings.
- * Both fields are always present — the client sends the folder's effective values verbatim
- * (empty arrays included); the server normalizes (drops non-strings/empties, dedups) on apply.
- */
-export interface HighlightVocabulary {
-  readonly characters: readonly string[];
-  readonly keywords: readonly string[];
-}
-
-/**
- * The full per-root vocabulary snapshot, keyed by folder URI (as sent by the client, verbatim).
- * REPLACEMENT semantics: each push carries every workspace folder — a root absent from the map
- * has no vocabulary (mirrors ProjectDirsMap, where the map itself defines the target roots).
- * Empty-listed roots still get an entry so a nested folder's (empty) vocabulary shadows its
- * parent's under longest-prefix routing.
- */
-export type HighlightVocabularyMap = Readonly<Record<string, HighlightVocabulary>>;
-
-/**
- * Pushed when the user edits any `jpnov.editor.highlight.*` setting, when workspace folders
- * change while the client is running, and each time the server comes up.
- */
-export interface HighlightChangedParams {
-  readonly highlight: HighlightVocabularyMap;
 }
 
 // Render settings (C->S, carried on jpnov/renderFile and jpnov/build)

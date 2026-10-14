@@ -695,7 +695,7 @@ test('entry actions dispatch the matching jpbook command naming the row, and re-
   assert.ok(cmds.includes('jpbook.moveEntryUp'));
   assert.ok(cmds.includes('jpbook.moveEntryDown'));
   assert.ok(cmds.includes('jpbook.removeEntry'));
-  assert.ok(cmds.includes('jpbook.addFiles'));
+  assert.ok(cmds.includes('jpbook.addEntries'));
   const rm = state.executedCommands.find((c) => c.command === 'jpbook.removeEntry');
   assert.ok(rm);
   const node = rm.args[0] as {
@@ -709,7 +709,7 @@ test('entry actions dispatch the matching jpbook command naming the row, and re-
   assert.equal(node.entry.uri, bookUri);
   // The three row verbs — not the list verbs — were each answered with a detail re-push.
   assert.equal(detailCount(view), before + 3);
-  const add = state.executedCommands.find((c) => c.command === 'jpbook.addFiles');
+  const add = state.executedCommands.find((c) => c.command === 'jpbook.addEntries');
   assert.ok(add);
   const listArg = add.args[0] as { kind: string; list: string; entry: { uri: string } };
   assert.equal(listArg.kind, 'list');
@@ -1044,4 +1044,35 @@ test('the open detail follows its buffer: a change to the book re-pushes it, ano
   t.mock.timers.reset();
   await tick();
   assert.equal(detailCount(view), base + 1);
+});
+
+test('openDetail posts the characters and keywords as rows with no file; editEntry dispatches its command and re-pushes', async () => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}title: A\ncharacters: 山田　太郎\n  - 山田《やまだ》花子《はなこ》\n  - 山田太郎\nkeywords:\n  - 王都\n---\nch1.jpnov\n`));
+  const { view } = await setup([entry(root, 'a', 'A')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  const detail = firstDetail(view) as {
+    characters: { name: string; folder: string; missing: boolean; line: number; path: string; fileUri: string | null }[];
+    keywords: { name: string; folder: string; missing: boolean; line: number; path: string; fileUri: string | null }[];
+  };
+  // A repeated base is a row too (the panel can remove it); nothing is stat-ed.
+  assert.deepEqual(
+    detail.characters.map((c) => [c.line, c.path, c.name, c.folder, c.fileUri, c.missing]),
+    [[2, '山田　太郎', '山田　太郎', '', null, false], [3, '山田《やまだ》花子《はなこ》', '山田《やまだ》花子《はなこ》', '', null, false], [4, '山田太郎', '山田太郎', '', null, false]],
+  );
+  assert.deepEqual(detail.keywords.map((k) => [k.line, k.path, k.fileUri]), [[6, '王都', null]]);
+
+  const before = detailCount(view);
+  view.webview.receive({ type: 'editEntry', uri: bookUri, list: 'characters', line: 3, path: '山田《やまだ》花子《はなこ》', version: 1 });
+  view.webview.receive({ type: 'addEntries', uri: bookUri, list: 'keywords' });
+  await tick();
+  const edit = state.executedCommands.find((c) => c.command === 'jpbook.editEntry');
+  assert.ok(edit);
+  const node = edit.args[0] as { kind: string; list: string; line: number; path: string; version: number };
+  assert.deepEqual([node.kind, node.list, node.line, node.path, node.version], ['entry', 'characters', 3, '山田《やまだ》花子《はなこ》', 1]);
+  const add = state.executedCommands.find((c) => c.command === 'jpbook.addEntries');
+  assert.equal((add?.args[0] as { list: string }).list, 'keywords');
+  assert.equal(detailCount(view), before + 1, 'the row verb re-pushes the detail; the list verb does not');
 });

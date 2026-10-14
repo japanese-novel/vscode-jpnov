@@ -20,7 +20,8 @@ import type { Finding } from '../../src/server/diagnostics.ts';
 import { computeLintFindings } from '../../src/server/lint/engine.ts';
 import { mergedEdits } from '../../src/server/targets.ts';
 import type { RawLintConfigWire } from '../../src/shared/protocol.ts';
-import { createHighlightStore } from '../../src/server/highlight/vocabulary.ts';
+import { createHighlightStore, type BookNames } from '../../src/server/highlight/vocabulary.ts';
+import { parseJpbook } from '../../src/shared/book/jpbook.ts';
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { errorText } from '../../src/shared/errors.ts';
 
@@ -99,6 +100,11 @@ export function nodeReader(label = 'utf-8'): ReadText {
       return { ok: false, reason: code === 'ENOENT' ? 'notFound' : 'other', why: errorText(err) };
     }
   };
+}
+
+/** A book of the vocabulary store, as the listing hands it over: its lists as parsed from `text`. */
+export function bookNames(rootUri: string, fileRel: string, text: string): BookNames {
+  return { uri: `${rootUri}/${fileRel}`, fileRel, names: parseJpbook(text).names };
 }
 
 export function makeContext(conn: FakeConnection, readText: ReadText = nodeReader()): ServerContext {

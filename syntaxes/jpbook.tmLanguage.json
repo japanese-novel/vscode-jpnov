@@ -1,7 +1,7 @@
 {
   "name": "Japanese Novel Book",
   "scopeName": "text.jpbook",
-  "comment": "The header line `jpbook/1` (first line only), then the metadata (key: value lines and the cover list) down to a `---` line, then one relative .jpnov source path per line. The region begins at the document start (\\A) and ends at the first fence, as the parser reads it (the whole file is metadata while no fence closes it). Deliberately error-agnostic: backslashes, non-.jpnov paths, missing files, missing/unknown/duplicate metadata keys and bad values are the language server's diagnostics to report — the grammar must not second-guess them (any key: value line in the region is painted as metadata). There is no semantic-token layer for book files, so nothing can repaint over this.",
+  "comment": "The header line `jpbook/1` (first line only), then the metadata (key: value lines and the cover, characters and keywords lists) down to a `---` line, then one relative .jpnov source path per line. The region begins at the document start (\\A) and ends at the first fence, as the parser reads it (the whole file is metadata while no fence closes it). Deliberately error-agnostic: backslashes, non-.jpnov paths, missing files, missing/unknown/duplicate metadata keys and bad values are the language server's diagnostics to report — the grammar must not second-guess them (any key: value line in the region is painted as metadata). There is no semantic-token layer for book files, so nothing can repaint over this.",
   "patterns": [
     {
       "name": "meta.metadata.jpbook",
@@ -40,6 +40,14 @@
             "1": { "name": "punctuation.definition.list.begin.jpbook" },
             "2": { "name": "string.unquoted.path.jpbook" },
             "3": { "name": "keyword.other.extension.jpbook" }
+          }
+        },
+        {
+          "comment": "Any other list item: a name of the characters: or keywords: lists (text with ruby). Error-agnostic like the rule above. Must precede the key-value rule (a name may contain a colon) and follow the path rule (a .jpnov item is a path).",
+          "match": "^[ \\t　]*([-－])[ \\t　]*(\\S.*?)[ \\t　]*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.list.begin.jpbook" },
+            "2": { "name": "string.unquoted.value.jpbook" }
           }
         },
         {

@@ -33,8 +33,9 @@ const FIX = {
 const u = (name: string): string => `${FIX.root}/${name}`;
 const book = (name: string): string => `book:${u(name)}`;
 const cb = (name: string): string => `cb:${u(name)}`;
+/** An entry row's key: the list, the part, and the path as listed (a row's identity, file or name). */
 const entry = (list: EntryList, part: 'open' | 'up' | 'down' | 'rm', name: string): string =>
-  `${list}:${part}:${u(name)}`;
+  `${list}:${part}:${name}`;
 
 /**
  * The stub host, installed before the bundle loads: `acquireVsCodeApi().postMessage` lands in
@@ -105,7 +106,7 @@ const host = {
     const vms = (list) => list.map((n, i) => ({ line: i + 3, path: n, name: n, folder: '', fileUri: U(n), missing: false }));
     send({
       type: 'detail', uri: this.open, title: d.title, version: d.version,
-      chapters: vms(d.chapters), covers: vms(d.covers), meta: d.meta.map((m) => ({ ...m })),
+      chapters: vms(d.chapters), covers: vms(d.covers), characters: [], keywords: [], meta: d.meta.map((m) => ({ ...m })),
     });
   },
   // A row verb's outcome: the prompt re-push always; the save → watcher round trip only after an edit.
@@ -269,7 +270,7 @@ const SCENARIO_SCRIPT = `<script>
       tab0: tabStops(), grid: gridOf(), drop,
     });
   }
-  const K = (list, part, n) => list + ':' + part + ':' + U(n);
+  const K = (list, part, n) => list + ':' + part + ':' + n;
   const open = (n) => byKey('book:' + U(n)).click();
   const { A, B, C } = FIX.books;
   // A key pressed on the focused control (the bundle handles keydown by \`key\`).
@@ -338,7 +339,7 @@ const SCENARIO_SCRIPT = `<script>
   step('D5b', K('chapters', 'rm', '01.jpnov'));
   host.reset();
   open(B);
-  step('D6a', 'coverhead');
+  step('D6a', 'covers:head');
   step('D6b', K('covers', 'rm', FIX.cover));
   host.reset();
   open(B);
@@ -480,7 +481,7 @@ const EXPECT: Readonly<Record<string, Expected>> = {
   D4: { landed: entry('chapters', 'open', C2), chapters: [C1, C2], posted: ['removeEntry'] },
   D5a: { landed: entry('chapters', 'open', C1), chapters: [C1] },
   D5b: { landed: 'chapters:add', chapters: [], posted: ['removeEntry'] },
-  D6a: { landed: 'coverhead', posted: [] },
+  D6a: { landed: 'covers:head', posted: [] },
   D6b: { landed: 'covers:add', posted: ['removeEntry'] },
   D7: { landed: entry('chapters', 'open', C3), chapters: [C1, C3] },
   D8: { landed: entry('chapters', 'open', C3), chapters: [C3] },

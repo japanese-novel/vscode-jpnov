@@ -53,8 +53,14 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return `unsupported .jpbook version "${a(0)}" (this extension reads ${a(1)})`;
     case 'jpbook.metaEmptyValue':
       return `${a(0)} needs a value`;
-    case 'jpbook.coverItemWithoutKey':
-      return `a "- " item needs a "cover:" line above it; any other key ends the list: ${a(0)}`;
+    case 'jpbook.itemWithoutKey':
+      return `a "- " item needs a "cover:", "characters:" or "keywords:" line above it; any other key ends the list: ${a(0)}`;
+    case 'jpbook.nameEmpty':
+      return 'an empty item (nothing to recognise); it is ignored';
+    case 'jpbook.nameNotPlain':
+      return `a name is text and ruby only; this item is ignored: ${a(0)}`;
+    case 'jpbook.nameConflict':
+      return `"${a(0)}" is also listed in ${a(1)}, written differently (ruby or split); the first one found applies`;
     case 'syntax.unclosedAnnotation':
       return 'unterminated ［＃ annotation (missing ］)';
     case 'syntax.unterminatedBlock':

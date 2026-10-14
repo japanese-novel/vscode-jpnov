@@ -63,11 +63,16 @@ function poster(m: BooksOutbound): () => void {
 
 const L = (window.__INIT as BooksInit).labels;
 
-/** Per-list strings: the two entry sections render identically, only the words differ. */
+/** Per-list strings: the entry sections render identically, only the words differ. */
 const LIST_TEXT: Record<EntryList, { title: string; add: string; empty: string }> = {
   chapters: { title: L.chapters, add: L.addChapters, empty: L.noChapters },
   covers: { title: L.covers, add: L.addCovers, empty: L.noCovers },
+  characters: { title: L.characters, add: L.addCharacters, empty: L.noCharacters },
+  keywords: { title: L.keywords, add: L.addKeywords, empty: L.noKeywords },
 };
+
+/** The sections that fold (every list but the chapters), in the order the detail shows them. */
+const FOLDING: readonly EntryList[] = ['characters', 'keywords', 'covers'];
 
 /** The root element, guaranteed present (the shell always emits `<div id="app">`). Returning a
  * non-null type keeps it narrowed inside the render closures below. */
@@ -85,7 +90,8 @@ let detail: DetailMessage | null = null;
 let screen: 'list' | 'detail' = 'list';
 let lastDetailUri: string | null = null;
 let infoOpen = false;
-let coverOpen = false; // folds like Book Info, except on entry to a book whose cover list shows an error
+/** The folding sections now open; they fold like Book Info, except the cover list on entry to a book whose covers show an error. */
+const openLists = new Set<EntryList>();
 /** The row being dragged: its identity for the drop message, and its element to mark pending. */
 let drag: { readonly list: EntryList; readonly line: number; readonly path: string; readonly row: HTMLElement } | null = null;
 let detailWanted = false; // true while the detail screen is intended (user click, or an adopted host reveal)
@@ -294,7 +300,7 @@ function applyControls(): void {
 // sit inside a grid); rows are addressed by `data-grid`.
 
 type GridId = 'books' | EntryList | 'meta';
-const GRIDS: readonly GridId[] = ['books', 'meta', 'covers', 'chapters'];
+const GRIDS: readonly GridId[] = ['books', 'meta', 'characters', 'keywords', 'covers', 'chapters'];
 /** Per grid, the focus-key chain of the cell that last had focus; initRoving() replays it after a
  * rebuild so the Tab stop follows the row, as focus restore does. */
 const cursor = new Map<GridId, readonly string[]>();
@@ -620,9 +626,12 @@ function renderDetail(): void {
     }))),
     infoOpen && h('div', { class: 'grid', role: 'grid', 'data-grid': 'meta', 'aria-label': L.bookInfo },
       ...d.meta.map((mi) => metaRow(d, mi))));
-  // Covers precede chapters, as in the printed book. The cover list folds like Book Info; the
-  // chapter list is always open.
-  app.replaceChildren(scrollPane(hdr, info, listSection(d, 'covers'), listSection(d, 'chapters')), footer(d.uri));
+  // The names sit with the book's information; covers precede chapters, as in the printed book.
+  // Every folding list folds like Book Info; the chapter list is always open.
+  app.replaceChildren(
+    scrollPane(hdr, info, ...FOLDING.map((list) => listSection(d, list)), listSection(d, 'chapters')),
+    footer(d.uri),
+  );
 }
 
 /** The disclosure button of a collapsible section (caret + title); `flip` toggles the state it reflects. */
@@ -643,25 +652,29 @@ function disclosure(open: boolean, title: string, fkKey: string, flip: () => voi
 }
 
 type EntryPart = 'open' | 'up' | 'down' | 'rm';
-/** Focus keys carry the list: a file may be both a cover and a chapter, so its URI alone is not unique. */
-function fk(list: EntryList, part: EntryPart, fileUri: string): string {
-  return list + ':' + part + ':' + fileUri;
+/** Focus keys carry the list and the row's path (its identity): a file may be both a cover and a chapter. */
+function fk(list: EntryList, part: EntryPart, e: EntryVM): string {
+  return list + ':' + part + ':' + e.path;
 }
 
 /**
- * One entry list: a header with the pick action, the rows (or the empty text), and the create-file
- * tail row. The cover list is collapsible — folded, only its disclosure shows. The whole section is
- * the drop zone of its own rows (sectionDnD).
+ * One entry list: a header with the add action, the rows (or the empty text), and the add tail
+ * row. Every list but the chapters is collapsible — folded, only its disclosure shows. The whole
+ * section is the drop zone of its own rows (sectionDnD).
  */
 function listSection(d: DetailMessage, list: EntryList): HTMLElement {
   const text = LIST_TEXT[list];
   const entries = d[list];
-  const collapsible = list === 'covers';
-  const open = !collapsible || coverOpen;
+  const collapsible = FOLDING.includes(list);
+  const open = !collapsible || openLists.has(list);
   let title: Child = text.title;
   if (collapsible) {
-    title = disclosure(coverOpen, text.title, 'coverhead', () => {
-      coverOpen = !coverOpen;
+    title = disclosure(open, text.title, list + ':head', () => {
+      if (open) {
+        openLists.delete(list);
+      } else {
+        openLists.add(list);
+      }
     });
   }
   const body: Child[] = [];
@@ -746,10 +759,10 @@ function sectionDnD(section: HTMLElement, d: DetailMessage, list: EntryList, row
 }
 
 function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, entries: readonly EntryVM[]): HTMLElement {
-  const key = (part: EntryPart): string => fk(list, part, e.fileUri);
+  const key = (part: EntryPart): string => fk(list, part, e);
   // Once this row is gone (removed, or dropped by an edit) focus goes to the next row, which slides
   // into its place, else the previous, else the list header's add button.
-  const openOf = (n: EntryVM | undefined): string | undefined => (n === undefined ? undefined : fk(list, 'open', n.fileUri));
+  const openOf = (n: EntryVM | undefined): string | undefined => (n === undefined ? undefined : fk(list, 'open', n));
   const vanished = [openOf(entries[idx + 1]), openOf(entries[idx - 1]), list + ':add'];
   const row = h('div', { class: 'row entry' + (e.missing ? ' missing' : ''), role: 'row' });
   // A row verb names the row as rendered (line, path, the detail's version) and dims the row until
@@ -760,9 +773,10 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
     post(m);
   };
   // The name as written (folder and file), in full, as the accessible name and the tooltip; a
-  // missing file says so in both.
+  // missing file says so in both. A name row's primary action edits it, so its name says so.
   const full = e.folder === '' ? e.name : e.folder + '/' + e.name;
-  const name = e.missing ? L.missing + ': ' + full : full;
+  const name = e.missing ? L.missing + ': ' + full : e.fileUri === null ? L.editEntry + ': ' + full : full;
+  const fileUri = e.fileUri;
   row.append(
     cell(h('button', {
       class: 'emain',
@@ -770,14 +784,15 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
       'aria-label': name,
       'data-fk': key('open'),
       fallback: vanished,
-      onClick: poster({ type: 'openFile', uri: e.fileUri }),
+      onClick: fileUri === null ? verb({ type: 'editEntry', uri: d.uri, list, ...ref }) : poster({ type: 'openFile', uri: fileUri }),
     },
     e.missing && icon('err', 'err'),
     h('div', { class: 'maincol' },
       h('div', { class: 'title' },
         e.folder !== '' && h('span', { class: 'dir' }, e.folder + '/'),
-        e.name))), 'lead'),
-    // Focus keys use the entry's fileUri (stable across a move) so keyboard focus follows the row.
+        e.name)),
+    fileUri === null && icon('edit', 'pen')), 'lead'),
+    // Focus keys use the entry's path (stable across a move) so keyboard focus follows the row.
     // An arrow disabled at the list's edge hands focus to the other arrow, then the row — never to Remove.
     h('div', { class: 'acts', role: 'presentation' },
       cell(iconBtn('up', L.moveUp, verb({ type: 'moveEntry', uri: d.uri, list, ...ref, dir: -1 }), {
@@ -873,15 +888,18 @@ window.addEventListener('message', (e: MessageEvent) => {
       screen = 'detail';
       lastDetailUri = msg.uri;
       if (reentry) {
-        if (msg.reveal === true) {
-          coverOpen = coverOpen || troubled; // a failed build of the open book re-applies the entry rule
+        if (msg.reveal === true && troubled) {
+          openLists.add('covers'); // a failed build of the open book re-applies the entry rule
         }
         const c2 = capture();
         render();
         restore(c2);
       } else {
-        infoOpen = false; // a freshly opened book folds Book Info; the cover list opens only to show an error
-        coverOpen = troubled;
+        infoOpen = false; // a freshly opened book folds Book Info and the lists; the cover list opens only to show an error
+        openLists.clear();
+        if (troubled) {
+          openLists.add('covers');
+        }
         cursor.clear(); // another book's rows: the Tab stops start afresh
         render();
         focusKeys(['back']);

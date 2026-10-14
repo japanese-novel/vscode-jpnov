@@ -34,8 +34,10 @@ The boundaries:
 - **The client pushes settings; the server never pulls them.** Layout settings
   ride each render and build request as raw values, and the server resolves them
   (`src/shared/config/settings.ts`), because a payload is untrusted at runtime.
-  The lint selection and the highlight vocabulary arrive at start and again on
-  every change.
+  The lint selection arrives at start and again on every change. The narration
+  vocabulary is no setting: the server reads the `characters:` and `keywords:` of
+  every `.jpbook` while it lists the books, root by root, and the client lists
+  them at start and on every `.jpbook` change.
 - **The server emits message codes, the client renders text.** Localization needs
   `vscode.l10n`, which the server does not have.
 - **A webview is a program of its own.** Its TypeScript compiles against the DOM
@@ -193,8 +195,10 @@ own. A root decides three things only: which `.jpbook` files discovery finds
 book is listed under, and the `outDir` value of the books found under it. A
 `.jpbook` open in the editor that no root contains is listed too, with the
 `outDir` the client reads for its uri (`rootUri: null`, the 「開いているファイル」
-group). The folder a chapter sits in decides only the settings of that file:
-the narration vocabulary it is highlighted with, the encoding it is read in.
+group). The folder a chapter sits in decides the settings of that file (the
+encoding it is read in) and the narration vocabulary it is highlighted with: the
+union of the lists of every `.jpbook` under that root, whichever book the
+chapter is in.
 
 Each reader takes the book's directory from one place:
 

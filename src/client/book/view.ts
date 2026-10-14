@@ -27,7 +27,7 @@ import {
 } from '#/shared/protocol.ts';
 
 import { entryKeyOf, entryLines, metaRows, moveEntryTo, resolveEntry, type EntryRef } from '#/shared/book/edits.ts';
-import { parseJpbook, type EntryList, isEntryList, jpbookStem, META_KEYS, type MetaKey, type ParsedLine } from '#/shared/book/jpbook.ts';
+import { parseJpbook, type EntryList, isEntryList, isNameList, jpbookStem, META_KEYS, type MetaKey, type ParsedLine } from '#/shared/book/jpbook.ts';
 import { encodeTxt, TXT_ENCODING_DEFAULT, type TxtEncoding } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/errors.ts';
 import { ocfZip } from '#/shared/compiler/ocf.ts';
@@ -421,7 +421,10 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.dispatchEditMeta(msg.uri, msg.metaKey);
         break;
       case 'addEntries':
-        await this.dispatchList('jpbook.addFiles', msg.uri, msg.list);
+        await this.dispatchList('jpbook.addEntries', msg.uri, msg.list);
+        break;
+      case 'editEntry':
+        await this.runEntryVerb(msg.uri, () => this.dispatchEntry('jpbook.editEntry', msg.uri, msg.list, rowRefOf(msg)));
         break;
       case 'removeEntry':
         await this.runEntryVerb(msg.uri, () => this.dispatchEntry('jpbook.removeEntry', msg.uri, msg.list, rowRefOf(msg)));
@@ -602,9 +605,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /**
-   * Parse one book and push its covers and chapters (with missing-file flags) + metadata rows
-   * to the webview. `reveal` marks a host-initiated open — without it the webview drops the push
-   * unless its detail screen is already the user's intent.
+   * Parse one book and push its lists (covers and chapters with missing-file flags, characters
+   * and keywords) + metadata rows to the webview. `reveal` marks a host-initiated open — without
+   * it the webview drops the push unless its detail screen is already the user's intent.
    */
   private async postDetail(uri: string, reveal = false): Promise<void> {
     const view = this.view;
@@ -628,9 +631,11 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return; // the user navigated away while the document loaded
     }
     const parsed = parseJpbook(text);
-    const [chapters, covers] = await Promise.all([
+    const [chapters, covers, characters, keywords] = await Promise.all([
       this.entryVMs(entry, parsed.lines, 'chapters'),
       this.entryVMs(entry, parsed.lines, 'covers'),
+      this.entryVMs(entry, parsed.lines, 'characters'),
+      this.entryVMs(entry, parsed.lines, 'keywords'),
     ]);
     const meta: MetaVM[] = metaRows(parsed.meta).map((row) => {
       const parts = metaValueParts(row.key, row.value);
@@ -646,6 +651,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       version,
       chapters,
       covers,
+      characters,
+      keywords,
       meta,
       ...(reveal ? { reveal } : {}),
     };
@@ -653,12 +660,15 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /** One list's rows: the listed path (the row's identity, split into name/folder for display), file
-   *  URI, fs.stat-backed missing flag. */
+   *  URI, fs.stat-backed missing flag; a name row is its text alone, nothing to stat. */
   private async entryVMs(entry: BookEntry, lines: readonly ParsedLine[], list: EntryList): Promise<EntryVM[]> {
     return Promise.all(
       entryLines(lines, list).map(async (line): Promise<EntryVM> => {
         const pl = lines[line];
         const path = pl === undefined ? '' : entryKeyOf(pl);
+        if (isNameList(list)) {
+          return { line, path, name: path, folder: '', fileUri: null, missing: false };
+        }
         const { name, dir } = splitRelPath(path);
         const target = resolveUri(bookDir(entry.uri), path);
         let missing = false;

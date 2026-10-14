@@ -2,8 +2,8 @@
  * The Books panel's command-argument vocabulary, shared by the WebviewView provider (`view.ts`)
  * and the management commands (`manage.ts`) so neither has to import the other for types. The
  * provider synthesizes one of these from a webview message and dispatches it to the matching
- * `jpbook.*` command; `manage.ts` narrows on `kind`. `list` names one of the book's two entry
- * lists (chapters / covers); `meta` carries one of the fixed metadata keys (META_KEYS) and
+ * `jpbook.*` command; `manage.ts` narrows on `kind`. `list` names one of the book's entry
+ * lists (chapters / covers / characters / keywords); `meta` carries one of the fixed metadata keys (META_KEYS) and
  * its current value; `entry` carries the row as the panel rendered it (`line`, `path`, document
  * `version`), which the command checks against the live text.
  */
@@ -24,7 +24,7 @@ export type BookNode =
     readonly entry: BookEntry;
     /** 0-based document line of this entry (the edit planners key on it). */
     readonly line: number;
-    /** The path on that line and the `TextDocument.version` the panel rendered it from. */
+    /** The value on that line (a path, a name) and the `TextDocument.version` the panel rendered it from. */
     readonly path: string;
     readonly version: number;
   };

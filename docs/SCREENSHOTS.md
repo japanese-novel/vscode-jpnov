@@ -15,7 +15,7 @@ Inventory:
 | `notation.png` | generated (A) | annotation specimen |
 | `kinsoku-off.png` / `kinsoku-on.png` | generated (A) | kinsoku comparison |
 | `vscode-workspace.png` | capture 1, whole window (B) | the writing screen: Books view + editor + preview |
-| `vscode-highlight.png` | capture 4, whole window (B) | highlight settings beside coloured narration |
+| `vscode-highlight.png` | capture 4, whole window (B) | the book's cast and keywords beside coloured narration |
 | `vscode-books-panel.png` | crop of capture 2 (B) | open book: Book Info + 表紙 + 目次 |
 | `vscode-lint-quickfix.png` | crop of capture 2 (B) | lint squiggle + quick-fix menu |
 | `vscode-settings.png` | crop of capture 3 (B) | settings search `jpnov` |
@@ -101,8 +101,6 @@ novel-sample/
 ```json
 {
   "chat.disableAIFeatures": true,
-  "jpnov.editor.highlight.characters": ["山田 太郎", "John Smith"],
-  "jpnov.editor.highlight.keywords": ["王都"],
   "jpnov.lint.narration.indent": false
 }
 ```
@@ -118,6 +116,11 @@ headerAlign: center
 footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
 footerAlign: right
 divider: ＊　＊　＊
+characters:
+  - 山田　太郎
+  - John Smith
+keywords:
+  - 王都
 cover:
   - 表紙.jpnov
 ---
@@ -193,18 +196,18 @@ nothing). Whole window, cropped to the settings editor. Must show: the three
 小説 groups in the tree on the left, and the 「小説 — 組版と出力」 items with
 the 40 × 34 defaults visible.
 
-### Capture 4 — highlight settings beside the text
+### Capture 4 — the book's lists beside the text
 
-Back on the Books view **list** screen (the `<` arrow), open Settings
-(<kbd>⌘,</kbd>) in the preview's editor group, search `jpnov`, and scroll
-until **Highlight: Characters** (山田 太郎 / John Smith) and
-**Highlight: Keywords** (王都) sit beside the chapter text. Whole window,
-saved as `vscode-highlight.png` — no crop.
+Back on the Books view **list** screen (the `<` arrow), open `作品集.jpbook` in
+the preview's editor group so its `characters:` (山田　太郎 / John Smith) and
+`keywords:` (王都) sit beside the chapter text. Whole window, saved as
+`vscode-highlight.png` — no crop.
 
-- Must show: both populated highlight lists in the settings pane, and
-  `山田太郎は` coloured / `王都` bold in the narration at 1:1 — config and
-  effect side by side are the point of this image. If nothing is coloured,
-  the workspace highlight settings didn't load; fix that before capturing.
+- Must show: both lists in the book file, and `山田太郎は` coloured / `王都`
+  bold in the narration at 1:1 — the lists and their effect side by side are
+  the point of this image. If nothing is coloured, the Books view has not
+  listed the books yet (the listing is what hands the server the names); press
+  Refresh Books before capturing.
 
 ### Crop commands
 

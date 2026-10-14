@@ -5,7 +5,7 @@
  * create.test.ts.
  */
 import { templateValues } from '../../../src/shared/book/create.ts';
-import { FENCE, HEADER, META_KEYS, metaLine, type MetaKey, type ParsedJpbook } from '../../../src/shared/book/jpbook.ts';
+import { FENCE, HEADER, META_KEYS, metaLine, namesOf, type MetaKey, type ParsedJpbook } from '../../../src/shared/book/jpbook.ts';
 
 /** The header line with its newline: what a hand-written book text opens with. */
 export const HEAD = `${HEADER}\n`;
@@ -41,10 +41,12 @@ export function metaWith(
 /** A parse with its first `n` lines dropped and the rest numbered from 0 — so a fixture written below
  *  the header (or below an empty metadata block) keeps its own line numbers in the assertions. */
 export function below(parsed: ParsedJpbook, n: number): ParsedJpbook {
+  const lines = parsed.lines.slice(n).map((l) => ({ ...l, line: l.line - n }));
   return {
     ...parsed,
-    lines: parsed.lines.slice(n).map((l) => ({ ...l, line: l.line - n })),
+    lines,
     fence: parsed.fence === null ? null : parsed.fence - n,
     metaErrors: parsed.metaErrors.map((e) => ({ ...e, line: e.line - n })),
+    names: namesOf(lines),
   };
 }
