@@ -310,7 +310,9 @@ export type Issue =
   // earlier start).
   | { readonly kind: 'spanAlreadyOpen'; readonly span: Span; readonly mark: string; readonly redundant: boolean }
   | { readonly kind: 'unterminatedTcy' | 'danglingTcyEnd'; readonly span: Span }
-  | { readonly kind: 'postfixTargetMissing'; readonly span: Span; readonly target: string };
+  | { readonly kind: 'postfixTargetMissing'; readonly span: Span; readonly target: string }
+  /** A ruby a 縦中横 swallowed: its reading is dropped, the base text alone makes the cell. */
+  | { readonly kind: 'rubyInTcy'; readonly span: Span; readonly reading: string };
 
 // Documents
 

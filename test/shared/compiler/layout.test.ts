@@ -808,10 +808,10 @@ test('a dangling ［＃縦中横終わり］ is a render no-op', () => {
   );
 });
 
-test('縦中横 content is plain text: an inner ruby stays literal (no nesting)', () => {
+test('縦中横 content is plain text: an inner ruby keeps its base and loses its reading (no nesting)', () => {
   assert.match(
     html('［＃縦中横］漢《かん》［＃縦中横終わり］'),
-    /<span class="tcy">漢《かん》<\/span>/,
+    /<span class="tcy">漢<\/span>/,
   );
 });
 

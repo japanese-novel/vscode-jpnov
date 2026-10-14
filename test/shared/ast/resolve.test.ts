@@ -30,6 +30,8 @@ test('a ruby is one inline over its base, implicit or explicit', () => {
   assert.deepEqual(content('彼は｜走《はし》った'), ['chars 彼は', 'ruby 走《はし》', 'chars った']);
   // A comment inside the base splits the text, not the ruby; it follows the ruby.
   assert.deepEqual(content('｜山田［＃x］太郎《やまだたろう》'), ['ruby 山田太郎《やまだたろう》', 'comment x']);
+  // A dangling ［＃縦中横終わり］ does nothing, inside a base too (#147).
+  assert.deepEqual(content('｜山田［＃縦中横終わり］太郎《やまだたろう》'), ['ruby 山田太郎《やまだたろう》']);
 });
 
 test('a span marks what it covers, across lines, one slot per channel', () => {
@@ -117,9 +119,13 @@ test('縦中横: the span and the postfix both make one cell', () => {
   assert.deepEqual(content('米機Ｂ29［＃「29」は縦中横］'), ['chars 米機Ｂ', 'tcy 29']);
   assert.deepEqual(content('［＃縦中横］12'), ['tcy 12']); // the line end closes it
   assert.deepEqual(content('［＃縦中横］［＃縦中横終わり］'), []); // nothing inside, nothing painted
-  // No nesting: ruby markup and a broken ［＃ join the cell as typed.
-  assert.deepEqual(content('［＃縦中横］漢《かん》［＃縦中横終わり］'), ['tcy 漢《かん》']);
+  // No nesting: a broken ［＃ joins the cell as typed; a ruby loses its markup and keeps its base.
   assert.deepEqual(content('［＃縦中横］1［＃こわれ'), ['tcy 1［＃こわれ']);
+  assert.deepEqual(content('［＃縦中横］漢《かん》［＃縦中横終わり］'), ['tcy 漢']);
+  assert.deepEqual(content('［＃縦中横］｜山田《やまだ》［＃縦中横終わり］'), ['tcy 山田']);
+  assert.deepEqual(content('［＃縦中横］｜山田［＃x］太郎《やまだたろう》［＃縦中横終わり］'), ['comment x', 'tcy 山田太郎']);
+  // A ｜ the span edge cut off is text and stays in the cell; the reading after it has no base.
+  assert.deepEqual(content('［＃縦中横］｜山田［＃縦中横終わり］《やまだ》'), ['tcy ｜山田', 'chars 《やまだ》']);
   // A comment inside the span comes before the cell; one inside a postfix target after it.
   assert.deepEqual(content('［＃縦中横］1［＃x］2［＃縦中横終わり］'), ['comment x', 'tcy 12']);
   assert.deepEqual(content('1［＃x］2［＃「12」は縦中横］'), ['tcy 12', 'comment x']);

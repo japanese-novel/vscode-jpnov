@@ -87,6 +87,8 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return `ruby reading 《${a(0)}》 has no base text before it (it prints as typed)`;
     case 'syntax.rubyReadingEmpty':
       return 'empty ruby reading 《》 (it prints as typed)';
+    case 'syntax.rubyInTcy':
+      return `ruby reading ${a(0)} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)`;
     case 'syntax.indentTooLarge':
       return `字下げ is too large (keep it to ${a(0)} or less for it to take effect)`;
     // hover (the lines of a jpnov/hover reply; see protocol.ts).

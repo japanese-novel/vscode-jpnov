@@ -117,6 +117,7 @@
   "縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)": "縦中横が長すぎます（3 文字以内にすると字形が崩れません）",
   "ruby reading 《{0}》 has no base text before it (it prints as typed)": "《{0}》の前にルビのかかる文字がありません（ルビにならず、文字のまま出力されます）",
   "empty ruby reading 《》 (it prints as typed)": "ルビの読みが空です（《》は文字のまま出力されます）",
+  "ruby reading {0} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)": "ルビ「{0}」は縦中横にかけられません（読みは出力されず、ルビのかかる文字だけが出力されます）",
   "字下げ is too large (keep it to {0} or less for it to take effect)": "字下げが大きすぎます（{0}までにすると字下げされます）",
   "{0} (forward reference)": "{0}（前方参照型）",
   "Left ruby: {0} (forward reference)": "左ルビ：{0}（前方参照型）",

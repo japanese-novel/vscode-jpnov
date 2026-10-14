@@ -61,6 +61,7 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'syntax.tcyTooLong': [],
   'syntax.rubyBaseMissing': ['よみ'],
   'syntax.rubyReadingEmpty': [],
+  'syntax.rubyInTcy': ['よみ'],
   'syntax.indentTooLarge': [fullWidthDigits(INDENT_MAX)],
   'hover.postfix': ['傍点'],
   'hover.rubyLeft': ['たろう'],
