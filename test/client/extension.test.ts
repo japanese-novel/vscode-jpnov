@@ -153,16 +153,21 @@ afterEach(async () => {
   await stopping;
 });
 
-/** Activates with two folders and a novel document already open, which starts the server at once. */
-function start(): FakeLanguageClient {
+/** Activates against whatever folders and documents the state holds. */
+function activateHost(): void {
   state.config['jpnov.editor.autoIndent'] = false; // off: the mock has no `languages` namespace for its editor hooks
-  state.workspaceFolders = [folder(A, 0), folder(B, 1)];
-  state.textDocuments.push(doc(`${A}/one.jpnov`, 'jpnov'));
   activate({
     subscriptions,
     asAbsolutePath: (rel: string) => `/ext/${rel}`,
     extensionUri: Uri.parse('file:///ext'),
   } as never);
+}
+
+/** Activates with two folders and a novel document already open, which starts the server at once. */
+function start(): FakeLanguageClient {
+  state.workspaceFolders = [folder(A, 0), folder(B, 1)];
+  state.textDocuments.push(doc(`${A}/one.jpnov`, 'jpnov'));
+  activateHost();
   const client = FakeLanguageClient.last;
   assert.ok(client);
   return client;
@@ -299,4 +304,17 @@ test('nothing is sent once the server is down for good', () => {
     change.apply();
   }
   assert.deepEqual(client.sent.slice(before), []);
+});
+
+test('jpbook.open starts the server, then focuses the Books view (the walkthrough link, from a cold window)', async () => {
+  state.workspaceFolders = [folder(A, 0)]; // no novel document, no project files: nothing started us
+  activateHost();
+  assert.equal(FakeLanguageClient.last, undefined);
+
+  await state.registeredCommands.get('jpbook.open')?.();
+  assert.ok(FakeLanguageClient.last, 'the command is a start trigger');
+  const order = state.executedCommands
+    .filter((c) => (c.command === 'setContext' && c.args[0] === 'jpnov.active') || c.command === 'jpnov.books.focus')
+    .map((c) => c.command);
+  assert.deepEqual(order, ['setContext', 'jpnov.books.focus'], 'the view is revealed before it is focused');
 });
