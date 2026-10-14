@@ -325,6 +325,10 @@ test('a value field is rendered text: it extends the piece before it, like a pos
   const field = '［＃ここに「タイトル」の値を表示］';
   assert.deepEqual(outer(`本文${field}次`), [['本文', `本文${field}`], ['次', '次']]);
   assert.deepEqual(outer(`［＃傍点］${field}本文［＃傍点終わり］`), [['本文', `［＃傍点］${field}本文［＃傍点終わり］`]]);
+  // With no piece before it on the line, it leads the next one (a 字下げ goes before it).
+  assert.deepEqual(outer(`${field}本文`), [['本文', `${field}本文`]]);
+  assert.deepEqual(outer(`${field}${field}本文`), [['本文', `${field}${field}本文`]]);
+  assert.deepEqual(outer(`［＃メモ］${field}本文`), [['本文', `${field}本文`]]);
 });
 
 test('a 外字注記 is an annotation to the lint: no prose, and it extends the piece before it', () => {
@@ -333,6 +337,7 @@ test('a 外字注記 is an annotation to the lint: no prose, and it extends the 
   assert.ok(l);
   assert.equal(l.prose().text, 'なに次');
   assert.deepEqual(outer(`なに${mark}次`), [['なに', `なに${mark}`], ['次', '次']]);
+  assert.deepEqual(outer(`${mark}次`), [['次', `${mark}次`]]);
   assert.equal(lines(mark)[0]?.directiveOnly, true);
 });
 
@@ -367,12 +372,20 @@ test('a ｜ base holding annotations: its pieces sit inside ｜…《》, the la
   assert.ok(l);
   assert.deepEqual(l.pieces.map((p) => p.rubyBase), [false, false, true, false]);
   assert.deepEqual(l.rubies, [{ text: 'やまだたろう', srcStart: split.indexOf('やまだたろう') }]);
-  // A base of no prose (a value field alone) drops its ｜: the next piece does not inherit it.
-  assert.deepEqual(outer('｜［＃ここに「タイトル」の値を表示］《たいとる》は'), [['は', 'は']]);
 });
 
-test('a ｜ base of no prose passes nothing on; an opener inside the base belongs to the ruby', () => {
-  assert.deepEqual(outer('あ｜［＃ここに「タイトル」の値を表示］《た》は'), [['あ', 'あ'], ['は', 'は']]);
+test('a ｜ base of a value field alone renders as text: the ruby attaches like the field would', () => {
+  const ruby = '｜［＃ここに「タイトル」の値を表示］《た》';
+  assert.deepEqual(outer(`あ${ruby}は`), [['あ', `あ${ruby}`], ['は', 'は']]);
+  assert.deepEqual(outer(`${ruby}は`), [['は', `${ruby}は`]]);
+  const [l] = lines(`あ${ruby}は`);
+  assert.ok(l);
+  assert.deepEqual(l.pieces.map((p) => p.rubyBase), [false, false]); // あ is not the base
+  // A base of a comment alone is no ruby to the Scanner (rubyBaseMissing): the ｜ and 《た》 are prose.
+  assert.deepEqual(outer('あ｜［＃メモ］《た》は'), [['あ｜', 'あ｜'], ['《た》は', '《た》は']]);
+});
+
+test('an opener inside a ｜ base belongs to the ruby, never to the piece after it', () => {
   assert.deepEqual(outer('｜山田［＃傍点］《やまだ》太郎［＃傍点終わり］'), [
     ['山田', '｜山田［＃傍点］《やまだ》'],
     ['太郎', '太郎［＃傍点終わり］'],

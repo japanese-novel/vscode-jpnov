@@ -22,6 +22,11 @@ export function isKatakana(cp: number): boolean {
   return (cp >= 0x30a1 && cp <= 0x30fa) || cp === 0x30fc;
 }
 
+/** The dialogue corners 「『」』, as the body of a character class: the characters of prose that
+ *  open and close an utterance. One rule for the dialogue stack, the grammar and the name lists (a
+ *  name holds none: a corner is the structure of dialogue, never part of a name). */
+export const CORNERS = '「『」』';
+
 /** Combining 濁点 (U+3099) and 半濁点 (U+309A): what a decomposed (NFD) kana carries after its base. */
 const COMBINING_KANA_MARK = /[\u3099\u309A]/;
 

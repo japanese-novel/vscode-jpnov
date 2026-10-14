@@ -283,6 +283,10 @@ const RUBY_CASES: readonly [string, Issue[]][] = [
   ['｜［＃メモ］《よみ》', [missing(0, 10, 'よみ')]],
   ['｜［＃傍点］《よみ》', [missing(0, 10, 'よみ')]],
   ['｜［＃縦中横］12［＃縦中横終わり］《じゅうに》', [missing(18, 24, 'じゅうに')]],
+  // A base of characters no output can carry shows nothing: the markup would print as typed.
+  ['｜\u0007\u0008《よみ》', [missing(0, 7, 'よみ')]],
+  ['あ｜\u0007［＃メモ］《よみ》', [missing(1, 12, 'よみ')]],
+  ['｜［＃メモ］\u0007《よみ》', [missing(0, 11, 'よみ')]],
   ['｜語\n《ルビ》', [missing(3, 7, 'ルビ')]],
   ['｜語\r《ルビ》', [missing(3, 7, 'ルビ')]],
   // Document order; a terminator is never inside; inside 縦中横 the run is literal as well.
@@ -306,6 +310,8 @@ const RUBY_CASES: readonly [string, Issue[]][] = [
   ['立《た》ち', []],
   ['｜山田［＃「山田」に傍点］《やまだ》', []],
   ['｜［＃ここに「タイトル」の値を表示］《たいとる》', []],
+  ['｜\u0007あ《よみ》', []],
+  ['｜\u200B《よみ》', []], // a zero-width space is carried by every output: a base
   ['《ひらき', []],
 ];
 

@@ -237,7 +237,7 @@ test('unshown: a character no output can carry leaves the content, wherever it i
       [`か${c}${D}`, ['chars が']], // dropped first, so the pair composes
       [`漢字《か${c}んじ》`, ['ruby 漢字《かんじ》']],
       [`｜王${c}都《おうと》`, ['ruby 王都《おうと》']],
-      [`｜${c}《よみ》`, ['markup ｜', 'markup 《よみ》']], // nothing visible: the markup prints as typed
+      [`｜${c}《よみ》`, ['chars ｜《よみ》']], // nothing visible: no ruby to the Scanner (rubyBaseMissing), prose as typed
       [`序［＃縦中横］1${c}2［＃縦中横終わり］`, ['chars 序', 'tcy 12']],
       [`［＃縦中横］${c}［＃縦中横終わり］`, []],
       [`聖剣［＃「聖剣」の左に「つる${c}ぎ」のルビ］`, ['ruby 聖剣〈つるぎ〉']],

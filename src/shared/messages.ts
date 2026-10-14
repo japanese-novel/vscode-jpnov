@@ -58,7 +58,7 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
     case 'jpbook.nameEmpty':
       return 'an empty item (nothing to recognise); it is ignored';
     case 'jpbook.nameNotPlain':
-      return `a name is text and ruby only; this item is ignored: ${a(0)}`;
+      return `a name is text and ruby only, no annotation and no 「」『』; this item is ignored: ${a(0)}`;
     case 'jpbook.nameConflict':
       return `"${a(0)}" is also listed in ${a(1)}, written differently (ruby or split); the first one found applies`;
     case 'syntax.unclosedAnnotation':

@@ -420,10 +420,14 @@ test('endPeriod appends 。 after a ruby reading, a closing annotation, and a po
     applied('［＃丸傍点］青空文庫で読書しよう［＃丸傍点終わり］', PERIOD),
     '［＃丸傍点］青空文庫で読書しよう［＃丸傍点終わり］。',
   );
-  // a value field renders as text, so the 。 follows the rendered value
+  // a value field renders as text, so the 。 follows the rendered value — a ruby over it included
   assert.equal(
     applied('　本文［＃ここに「タイトル」の値を表示］', PERIOD),
     '　本文［＃ここに「タイトル」の値を表示］。',
+  );
+  assert.equal(
+    applied('　彼は｜［＃ここに「タイトル」の値を表示］《たいとる》', PERIOD),
+    '　彼は｜［＃ここに「タイトル」の値を表示］《たいとる》。',
   );
   assert.equal(applied('　彼は山田《やまだ》\r\n次。', PERIOD), '　彼は山田《やまだ》。\r\n次。');
 });
@@ -455,14 +459,19 @@ test('indent inserts the 字下げ before a ｜ or an opening annotation, never 
   assert.equal(applied('［＃縦中横］12［＃縦中横終わり］年が過ぎた。', INDENT), '　［＃縦中横］12［＃縦中横終わり］年が過ぎた。');
   assert.equal(applied('［＃傍点］本文だ。［＃傍点終わり］', INDENT), '　［＃傍点］本文だ。［＃傍点終わり］');
   assert.equal(applied('［＃傍点］青空文庫［＃傍点終わり］で読書しよう。', INDENT), '　［＃傍点］青空文庫［＃傍点終わり］で読書しよう。');
-  // a postfix between the opener and its prose does not end the span; a value field is not an opener
+  // a postfix between the opener and its prose does not end the span
   assert.equal(
     applied('［＃太字］［＃「z」に傍点］本文だ。［＃太字終わり］', INDENT),
     '　［＃太字］［＃「z」に傍点］本文だ。［＃太字終わり］',
   );
+  // a line-head value field renders as text: the 　 goes before it, as before a ruby holding one
   assert.equal(
     applied('［＃ここに「タイトル」の値を表示］本文だ。', INDENT),
-    '［＃ここに「タイトル」の値を表示］　本文だ。',
+    '　［＃ここに「タイトル」の値を表示］本文だ。',
+  );
+  assert.equal(
+    applied('｜［＃ここに「タイトル」の値を表示］《たいとる》本文だ。', INDENT),
+    '　｜［＃ここに「タイトル」の値を表示］《たいとる》本文だ。',
   );
   // a dangling span end of another channel does not end the pending opener either
   assert.equal(applied('［＃傍点］［＃太字終わり］本文だ。', INDENT), '　［＃傍点］［＃太字終わり］本文だ。');
@@ -856,11 +865,15 @@ test('noControlChar reports every character the outputs drop, wherever it sits, 
       assert.equal(applied(src, CTRL), place(''), JSON.stringify(src));
     }
   }
-  // A tab is no finding; a whole ruby base is reported without a fix (｜《…》 would print as typed).
+  // A tab is no finding. A ｜ base of control characters alone is no ruby to the Scanner
+  // (rubyBaseMissing, the markup prints as typed): deleting them changes nothing shown.
   assert.deepEqual(lint('あ\tい《\t》［＃\t］', CTRL), []);
-  assert.deepEqual(lintAll('｜\u0007《よみ》', CTRL), [{ code, text: '\u0007' }]);
+  assert.deepEqual(lintAll('｜\u0007\u0007《よみ》', CTRL), [
+    { code, text: '\u0007', fix: { text: '\u0007', newText: '' } },
+    { code, text: '\u0007', fix: { text: '\u0007', newText: '' } },
+  ]);
   // A base or a reading the deletes would empty keeps every character: none of them has a fix.
-  assert.deepEqual(lintAll('｜\u0007\u0007《よみ》', CTRL), [{ code, text: '\u0007' }, { code, text: '\u0007' }]);
+  assert.deepEqual(lintAll('｜\u200B\u0007《よみ》', CTRL), [{ code, text: '\u0007' }]);
   assert.deepEqual(lintAll('山田《\u0007》', CTRL), [{ code, text: '\u0007' }]);
   // An annotation whose KEYWORD holds a control character is unrecognized; deleting it brings it back.
   assert.equal(applied('［＃\u0007改ページ］', CTRL), '［＃改ページ］');

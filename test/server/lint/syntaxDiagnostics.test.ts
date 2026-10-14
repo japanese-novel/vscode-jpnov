@@ -486,6 +486,11 @@ test('a ｜ base holding annotations is a ruby; a ｜ with nothing visible befor
     start: { line: 0, character: 0 },
     end: { line: 0, character: 10 }, // ｜［＃メモ］《よみ》
   });
+  // Control characters alone show nothing (#140): the same warning, beside noControlChar's.
+  const controls = annotationDiagnostics(doc('　｜\u0007\u0008《よみ》だ。'));
+  assert.deepEqual(controls.map((c) => [c.data as unknown, c.range.start.character, c.range.end.character]), [
+    [{ code: 'syntax.rubyBaseMissing', args: ['よみ'] }, 1, 8],
+  ]);
 });
 
 test('a 字下げ above INDENT_MAX yields one Warning over the annotation, naming the largest count that is read', () => {

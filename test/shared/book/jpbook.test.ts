@@ -154,6 +154,18 @@ test('parseJpbook collects the metadata above the fence and parses the chapters 
   assert.equal(got.fence, 2);
 });
 
+test('parseJpbook: a metadata line carries its value with the column span of the value; a line in Error does not', () => {
+  const got = parse('title: 作品名\ndivider:  　＊\nheaderAlign: nope\nheader:\n');
+  assert.deepEqual(got.lines.map((l) => l.meta), [
+    { key: 'title', value: '作品名', range: { startChar: 7, endChar: 10 } },
+    { key: 'divider', value: '＊', range: { startChar: 11, endChar: 12 } }, // past the spaces, half- or full-width
+    undefined,
+    { key: 'header', value: '', range: { startChar: 7, endChar: 7 } },
+    undefined,
+  ]);
+  assert.ok(got.lines.every((l) => l.item === undefined)); // never an entry
+});
+
 test('parseJpbook: a complete book; blank lines around the fence are skipped', () => {
   const got = parseJpbook(`${meta()}\n\na.jpnov\n`);
   assert.equal(got.fence, 8);
@@ -548,6 +560,10 @@ test('characters/keywords: an item that is no name warns and is ignored; a repea
   // A rejected or repeated item still belongs to its list (the editor knows what it was meant to be).
   assert.deepEqual(got.lines.map((l) => l.list), [...Array<string>(6).fill('characters'), 'keywords', 'keywords', undefined]);
   assert.deepEqual(parse('characters:\n- 山田［＃太字］\n').lines[1]?.list, 'characters');
+  // A dialogue corner in an item: a marker to the highlighter, so never a name (#140).
+  const corners = parse('keywords:\n- 」と\n- 『聖剣』\n- 聖剣\n');
+  assert.deepEqual(corners.lines.map((l) => l.kind), ['names', NOT_PLAIN('」と'), NOT_PLAIN('『聖剣』'), 'name', 'blank']);
+  assert.deepEqual(corners.names.keywords.map((n) => n.text), ['聖剣']);
 });
 
 test('characters/keywords: an item with no open list is the same Error as an orphan cover item; keys close lists', () => {

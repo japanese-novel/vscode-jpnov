@@ -621,8 +621,8 @@ test('the name input refuses an empty value, a non-ruby annotation, and a base a
   const validate = lastValidator();
   assert.equal(await validate(''), 'Enter a name');
   assert.equal(await validate('  '), 'Enter a name');
-  assert.equal(await validate('山田［＃太字］'), 'a name is text and ruby only; this item is ignored: 山田［＃太字］');
-  assert.equal(await validate('《やまだ》'), 'a name is text and ruby only; this item is ignored: 《やまだ》');
+  assert.equal(await validate('山田［＃太字］'), 'a name is text and ruby only, no annotation and no 「」『』; this item is ignored: 山田［＃太字］');
+  assert.equal(await validate('《やまだ》'), 'a name is text and ruby only, no annotation and no 「」『』; this item is ignored: 《やまだ》');
   assert.equal(await validate('山田《やまだ》太郎《たろう》'), 'Already in this book'); // the same base, another writing
   assert.equal(await validate('山田太郎'), 'Already in this book');
   assert.equal(await validate('山田　花子'), null);
