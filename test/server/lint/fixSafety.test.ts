@@ -41,7 +41,7 @@ const FIX_CORPUS: Record<CatalogId, readonly string[] | null> = {
   sentenceLength: null,
   maxTen: null,
   maxKanjiRun: null,
-  dash: ['あ―――い', 'あ—い'],
+  dash: ['あ―――い', 'あ—い', 'あ－－い'],
   ellipsis: ['　沈黙…だ。', '　沈黙。。。だ。', '　えっ、、だ。', '　中黒・・・だ。', '　二点‥だ。'],
   exclamationSpace: ['　驚いた！そのまま。', '「なに？と続く」'],
   exclamationRun: ['　なに！？だ。', '「うそ！！」', '　だめだ!と。'],

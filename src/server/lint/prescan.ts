@@ -63,8 +63,19 @@ export const minusPositionScan: PreScan = (text) => {
   return out;
 };
 
-/** Flags a maximal run of dash characters (mixed spellings included) unless it is an even-length
- *  run of the chosen glyph; the fix rewrites the run in that glyph, rounding an odd length up. */
+/** What an author types for a dash when the real one is out of reach: the full-width hyphen-minus
+ *  (U+FF0D) and the en dash (U+2013, JLREQ cl-03 ハイフン類). A lone one is a sign or a hyphen
+ *  (－５度, １–２), so it counts only inside a run of two or more. The prolonged sound mark ー
+ *  (U+30FC, JLREQ cl-10 長音記号) is never a dash: 「あーーーー！」 is dialogue. */
+const DASH_LOOKALIKES = new Set(['－', '–']);
+
+/** What a dash run is made of, as UTF-16 units: every dash glyph and look-alike is one unit, and a
+ *  numeric lookup spares the per-character string a `charAt` on kana or kanji would allocate. */
+const DASH_RUN = new Set([...DASH_CHARS, ...DASH_LOOKALIKES].map((ch) => ch.charCodeAt(0)));
+
+/** Flags a maximal run of dash characters (mixed spellings and look-alikes included) unless it is
+ *  an even-length run of the chosen glyph; the fix rewrites the run in that glyph, rounding an odd
+ *  length up. A single look-alike on its own is not a run. */
 export const dashScan: PreScan = (text, options) => {
   const mode = modeOf(options);
   const want = mode !== undefined && isDashMode(mode) ? DASH_BY_MODE[mode] : undefined;
@@ -74,17 +85,20 @@ export const dashScan: PreScan = (text, options) => {
   const out: { start: number; end: number; fix: string; message: LocalizableMessage }[] = [];
   let i = 0;
   while (i < text.length) {
-    if (!DASH_CHARS.has(text.charAt(i))) {
+    if (!DASH_RUN.has(text.charCodeAt(i))) {
       i += 1;
       continue;
     }
     const start = i;
     let pure = true;
-    while (i < text.length && DASH_CHARS.has(text.charAt(i))) {
+    while (i < text.length && DASH_RUN.has(text.charCodeAt(i))) {
       pure &&= text.charAt(i) === want;
       i += 1;
     }
     const len = i - start;
+    if (len === 1 && DASH_LOOKALIKES.has(text.charAt(start))) {
+      continue;
+    }
     if (pure && len % 2 === 0) {
       continue;
     }

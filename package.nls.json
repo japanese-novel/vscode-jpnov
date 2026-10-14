@@ -32,7 +32,7 @@
   "jpnov.lint.common.sentenceLength.description": "Warn when a sentence is longer than this many characters. Recommended: 100. Leave empty to disable.",
   "jpnov.lint.common.maxTen.description": "Warn when a sentence has more than this many commas (、). Recommended: 3. Leave empty to disable.",
   "jpnov.lint.common.maxKanjiRun.description": "Warn when more than this many kanji appear in a row. Recommended: 6. Leave empty to disable.",
-  "jpnov.lint.common.dash.description": "The dash character to use in body text. Any other dash character, or a run of an odd number of dashes, is flagged. Auto-fixable. Whichever you pick, typeset output uses the em dash (—).",
+  "jpnov.lint.common.dash.description": "The dash character to use in body text. Any other dash character, a －－ or –– run standing in for one, or a run of an odd number of dashes, is flagged. Auto-fixable. Whichever you pick, typeset output uses the em dash (—).",
   "jpnov.lint.common.dash.emDash.label": "Em dash (—)",
   "jpnov.lint.common.dash.emDash.description": "Every dash must be — (U+2014).",
   "jpnov.lint.common.dash.horizontalBar.label": "Horizontal bar (―)",

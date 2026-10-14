@@ -126,7 +126,9 @@ but not Japanese typesetting:
   (`――`), and it is typeset as one unbroken dash. Pick the
   character you write in `jpnov.lint.common.dash` (default `―`); any other
   dash character, or a run of an odd number of dashes, is flagged with an
-  auto-fix. In HTML and EPUB output, the chosen character is typeset as
+  auto-fix; so is a `－－` (full-width hyphen-minus) or `––` (en dash) run
+  standing in for one. The prolonged sound mark `ー` is never treated as a
+  dash. In HTML and EPUB output, the chosen character is typeset as
   the em dash (`—`), and Japanese fonts join the pair into one unbroken line.
 
 - **Genkō-yōshi (原稿用紙)** — the manuscript grid Japanese prose is drafted
