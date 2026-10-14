@@ -64,6 +64,8 @@ interface Rule {
   readonly parts: readonly Segment[];
   /** An anchor before the parts: `^` for the line-head 字下げ. */
   readonly head?: string;
+  /** A lookahead after the parts, outside every capture. */
+  readonly tail?: string;
 }
 
 interface Pattern {
@@ -78,6 +80,8 @@ const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const alt = (vs: readonly string[]): string => [...vs].sort((a, b) => b.length - a.length).map(esc).join('|');
 
 const lit = (role: PartRole, text: string): Segment => ({ role, re: esc(text) });
+/** The regex of `parts` in a row, without their groups. */
+const seq = (parts: readonly Segment[]): string => parts.map((p) => p.re).join('');
 const kw = (re: string): Segment => ({ role: 'keyword', re });
 /** Anything but the characters of `stop`, non-empty. */
 const upTo = (role: PartRole, stop: string): Segment => ({ role, re: `[^${esc(stop)}]+` });
@@ -90,6 +94,13 @@ const INNER: Segment = { role: 'inner', re: `[^${esc(ANNOTATION_CLOSE)}]*` };
 const LEFT: Segment = { ...lit('direction', LEFT_SHORT), optional: true };
 /** 「対象」: the target keeps the default colour; it never holds a 」. */
 const TARGET: readonly Segment[] = [lit('corner', CORNER_OPEN), upTo('target', CORNER_CLOSE), lit('corner', CORNER_CLOSE)];
+
+/** 値の表示 ［＃ここに「名前」の値を表示］: any non-empty name; an unknown one shows as itself. */
+const VALUE_PARTS: readonly Segment[] = [OPEN, lit('scaffold', VALUE_HERE), lit('corner', CORNER_OPEN), upTo('name', ANNOTATION_CLOSE), lit('corner', CORNER_CLOSE), lit('scaffold', VALUE_SHOW), CLOSE];
+/** A 《reading》 with its brackets, non-empty. */
+const READING_PARTS: readonly Segment[] = [lit('bracket', RUBY_OPEN), upTo('reading', RUBY_CLOSE), lit('bracket', RUBY_CLOSE)];
+/** Any other closed ［＃…］: a comment. */
+const COMMENT_PARTS: readonly Segment[] = [OPEN, INNER, CLOSE];
 
 const VARIANTS = Object.keys(EMPHASIS_VARIANTS);
 /** 傍点／傍線: the variants with a left side. */
@@ -108,10 +119,7 @@ const INDENT_COUNT = `０*[０-９]{1,${String(WIDTH)}}${esc(INDENT)}`;
 /** The annotation forms the scanner reads, in order: a form whose spelling ends another's precedes it. */
 const ANNOTATION: readonly Rule[] = [
   { comment: '改ページ.', parts: [OPEN, lit('keyword', PAGE_BREAK), CLOSE] },
-  {
-    comment: '値の表示 ［＃ここに「名前」の値を表示］: any non-empty name; an unknown one shows as itself.',
-    parts: [OPEN, lit('scaffold', VALUE_HERE), lit('corner', CORNER_OPEN), upTo('name', ANNOTATION_CLOSE), lit('corner', CORNER_CLOSE), lit('scaffold', VALUE_SHOW), CLOSE],
-  },
+  { comment: '値の表示 ［＃ここに「名前」の値を表示］: any non-empty name; an unknown one shows as itself.', parts: VALUE_PARTS },
   {
     comment: 'Block END ［＃ここで…終わり］, before the block START its 終わり would hide. 傍点／傍線 have no block form.',
     parts: [OPEN, lit('scaffold', BLOCK_TO), kw(`${esc(INDENT)}|${BLOCK}`), END, CLOSE],
@@ -136,13 +144,34 @@ const ANNOTATION: readonly Rule[] = [
     comment: '外字注記 ※［＃…］, the ones the scanner reads: it starts a character before the comment rule, so it wins wherever it sits.',
     parts: [lit('bracket', GAIJI_MARK + ANNOTATION_OPEN), kw(alt(Object.keys(GAIJI))), CLOSE],
   },
-  { comment: 'Any other closed ［＃…］ is a comment.', parts: [OPEN, INNER, CLOSE] },
+  { comment: 'Any other closed ［＃…］ is a comment.', parts: COMMENT_PARTS },
   { comment: 'An unclosed ［＃ up to the line end; last, so every closed form wins first.', parts: [OPEN, INNER] },
 ];
 
+/** A closed annotation, any form. */
+const ANY_ANNOTATION = seq(COMMENT_PARTS);
+/**
+ * The 縦中横 span annotations. The scanner ends a ｜ base only at a real edge (a start with no
+ * span open, an end with one open); the grammar, stateless, cannot tell and treats either as one.
+ */
+const TCY_EDGE = `${OPEN.re}${esc(TCY)}(?:${END.re})?${CLOSE.re}`;
+/** A value field: visible inside a base, as the scanner reads it. */
+const VALUE_FIELD = seq(VALUE_PARTS);
+/** One character of base text: anything but a 《, a ｜ or the ［ of an annotation. */
+const BASE_CHAR = `(?!${OPEN.re})[^${esc(RUBY_OPEN + BASE_MARK)}]`;
+/** An annotation that shows nothing inside a base; a 縦中横 edge is not one (it ends the base). */
+const HIDDEN = `(?!${TCY_EDGE}|${VALUE_FIELD})${ANY_ANNOTATION}`;
+const VISIBLE = `${VALUE_FIELD}|${BASE_CHAR}`;
+/**
+ * The ｜ that opens a base, as the scanner decides it: up to the first 《 of its line come no other
+ * ｜, no 縦中横 edge and no unclosed ［＃, at least one visible character or value field, and the
+ * 《 closes with a non-empty reading. Any other ｜ is text.
+ */
+const BASE_LOOKAHEAD = `(?=(?:${HIDDEN})*(?:${VISIBLE})(?:${HIDDEN}|${VISIBLE})*${seq(READING_PARTS)})`;
+
 const RUBY: readonly Rule[] = [
-  { comment: 'A 《reading》 with its brackets; the base before it keeps the default colour.', parts: [lit('bracket', RUBY_OPEN), upTo('reading', RUBY_CLOSE), lit('bracket', RUBY_CLOSE)] },
-  { comment: 'The ｜ of an explicit base.', parts: [lit('bracket', BASE_MARK)] },
+  { comment: 'A 《reading》 with its brackets; the base before it keeps the default colour.', parts: READING_PARTS },
+  { comment: 'The ｜ of an explicit base: one that meets its 《reading》 on the line, the scanner\'s way; any other ｜ is text.', parts: [lit('bracket', BASE_MARK)], tail: BASE_LOOKAHEAD },
 ];
 
 const DIALOGUE: readonly Rule[] = [
@@ -159,7 +188,7 @@ function pattern(rule: Rule): Pattern {
       captures[String(i + 1)] = { name: `${highlight.lsp}.${highlight.kind}.jpnov` };
     }
   });
-  return { comment: rule.comment, match, captures };
+  return { comment: rule.comment, match: match + (rule.tail ?? ''), captures };
 }
 
 /** The grammar as an object (pure). */

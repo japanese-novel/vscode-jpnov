@@ -4,7 +4,8 @@
  * with which end, what each corner-target postfix bound to, and every structural finding.
  *
  * Recovery is lenient and total: a span open at the end of input runs to the end, a dangling end
- * does nothing, a postfix whose target is absent or cuts into an atomic cell takes no effect.
+ * does nothing, a postfix whose target is absent or cuts into an atomic cell takes no effect. A
+ * 縦中横 takes no ruby: a ruby it swallows keeps its base text and loses its reading, reported.
  * Content strings are display strings — kana composed, values substituted, a 外字注記 as its
  * character, the characters no output can carry dropped — while the syntax nodes stay verbatim.
  *
@@ -152,8 +153,9 @@ class LineResolver {
   }
 
   /**
-   * Nothing nests inside an open 縦中横: text, ruby markup and a broken ［＃ join the cell as
-   * typed, a value field and a 外字注記 as what they show. False when `node` does not join.
+   * Nothing nests inside an open 縦中横: text and a broken ［＃ join the cell as typed, a value
+   * field and a 外字注記 as what they show; a ruby's ｜ and 《reading》 are dropped and the
+   * reading reported, its base text joining as text. False when `node` does not join.
    */
   private intoTcy(node: SyntaxNode): boolean {
     const tcy = this.tcy;
@@ -162,10 +164,13 @@ class LineResolver {
     }
     switch (node.kind) {
       case 'text':
-      case 'rubyMark':
-      case 'rubyReading':
       case 'brokenAnnotation':
         tcy.text += node.text;
+        break;
+      case 'rubyMark':
+        break;
+      case 'rubyReading':
+        this.ledger.issues.push({ kind: 'rubyInTcy', span: node.span, reading: displayText(node.reading.text) });
         break;
       case 'valueField':
         tcy.text += this.value(node);
@@ -341,7 +346,15 @@ class LineResolver {
         }
         break;
       case 'tcyPostfix':
-        // Whole coverage of a ruby REPLACES it (手動縦中横 > ルビ).
+        // Whole coverage of a ruby REPLACES it (手動縦中横 > ルビ): each reading is lost, reported
+        // when the match is certain (see `judged`).
+        for (const cell of judged ? range : []) {
+          if (cell.kind === 'ruby') {
+            for (const reading of [cell.right, cell.left].filter((r) => r !== undefined)) {
+              this.ledger.issues.push({ kind: 'rubyInTcy', span: cell.span, reading });
+            }
+          }
+        }
         cells.replace(m.first, range.length, [{ kind: 'tcy', text: target, span, marks }, ...kept]);
         break;
       case 'rubyLeftPostfix': {

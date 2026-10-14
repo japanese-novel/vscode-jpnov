@@ -199,15 +199,39 @@ test('縦中横: a span with no 終わり before its line end is reported over i
 
 test('縦中横: a dangling 終わり is reported; a balanced pair is clean', () => {
   assert.deepEqual(tcy('AB［＃縦中横終わり］'), [{ kind: 'danglingTcyEnd', span: { start: 2, end: 11 } }]);
+  assert.deepEqual(tcy('｜山田［＃縦中横終わり］太郎《やまだたろう》'), [{ kind: 'danglingTcyEnd', span: { start: 3, end: 12 } }]);
   assert.deepEqual(tcy('令和［＃縦中横］12［＃縦中横終わり］年'), []);
+});
+
+test('縦中横: a ruby it swallows is reported over its reading, or over the whole ruby under a postfix', () => {
+  const swallowed = (src: string, values?: ReadonlyMap<string, string>): Issue[] => parse(src, values).issues.filter((issue) => issue.kind === 'rubyInTcy');
+  assert.deepEqual(swallowed('［＃縦中横］漢《かん》［＃縦中横終わり］'), [{ kind: 'rubyInTcy', span: { start: 7, end: 11 }, reading: 'かん' }]);
+  assert.deepEqual(swallowed('［＃縦中横］｜山田《やまだ》［＃縦中横終わり］'), [{ kind: 'rubyInTcy', span: { start: 9, end: 14 }, reading: 'やまだ' }]);
+  assert.deepEqual(swallowed('12《じゅうに》［＃「12」は縦中横］'), [{ kind: 'rubyInTcy', span: { start: 0, end: 8 }, reading: 'じゅうに' }]);
+  assert.deepEqual(swallowed('12［＃「12」の左に「じゅうに」のルビ］［＃「12」は縦中横］'), [{ kind: 'rubyInTcy', span: { start: 0, end: 2 }, reading: 'じゅうに' }]);
+  // Both sides of a 両側ルビ are lost: one report each. A reading is a display string (kana composed).
+  assert.deepEqual(swallowed('12《じゅうに》［＃「12」の左に「ひだり」のルビ］［＃「12」は縦中横］'), [
+    { kind: 'rubyInTcy', span: { start: 0, end: 8 }, reading: 'じゅうに' },
+    { kind: 'rubyInTcy', span: { start: 0, end: 8 }, reading: 'ひだり' },
+  ]);
+  assert.deepEqual(swallowed(`［＃縦中横］12《し${D}ゆうに》［＃縦中横終わり］`), [{ kind: 'rubyInTcy', span: { start: 8, end: 15 }, reading: 'じゆうに' }]);
+  // After a value field with no values given, the match is unsure: like a miss, the loss is not reported.
+  const field = valueAnnotation(VALUE_NAMES.title);
+  assert.deepEqual(swallowed(`｜${field}《よみ》［＃「${VALUE_NAMES.title}」は縦中横］`), []);
+  assert.deepEqual(swallowed(`｜${field}《よみ》［＃「${VALUE_NAMES.title}」は縦中横］`, new Map([[VALUE_NAMES.title, VALUE_NAMES.title]])), [
+    { kind: 'rubyInTcy', span: { start: 0, end: field.length + 5 }, reading: 'よみ' },
+  ]);
+  // Partial coverage misses the ruby (reported as a missing target) and swallows nothing.
+  assert.deepEqual(swallowed('12《じゅうに》［＃「1」は縦中横］'), []);
+  assert.deepEqual(swallowed('令和［＃縦中横］12［＃縦中横終わり］年《ねん》'), []);
 });
 
 test('縦中横: a span holds what its cell shows, over where that was written', () => {
   assert.deepEqual(held(spanned('1234')), [{ text: '1234', span: { start: 6, end: 10 } }]);
   assert.deepEqual(held(spanned('')), [{ text: '', span: { start: 6, end: 6 } }]);
-  // Ruby markup joins the cell as typed; a comment adds nothing but sits inside the range.
-  assert.deepEqual(held(spanned('漢《かん》')), [{ text: '漢《かん》', span: { start: 6, end: 11 } }]);
-  assert.deepEqual(held(spanned('｜1［＃x］2《いち》')), [{ text: '｜12《いち》', span: { start: 6, end: 17 } }]);
+  // A ruby keeps its base and loses its markup; a comment adds nothing; both sit inside the range.
+  assert.deepEqual(held(spanned('漢《かん》')), [{ text: '漢', span: { start: 6, end: 11 } }]);
+  assert.deepEqual(held(spanned('｜1［＃x］2《いち》')), [{ text: '12', span: { start: 6, end: 17 } }]);
   // A start inside an open span opens nothing.
   assert.deepEqual(held('［＃縦中横］12［＃縦中横］34［＃縦中横終わり］'), [{ text: '1234', span: { start: 6, end: 16 } }, null]);
 });

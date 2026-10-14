@@ -115,6 +115,9 @@ const EXPLICIT_CASES: readonly [string, string[]][] = [
   // A 縦中横 span edge ends the base: the ｜ turns text on either side of it.
   ['［＃縦中横］｜1［＃縦中横終わり］2《いち》', ['tcySpanStart ［＃縦中横］', 'text ｜1', 'tcySpanEnd ［＃縦中横終わり］', 'base 2', 'rubyReading 《いち》']],
   ['｜［＃縦中横］12［＃縦中横終わり］《じゅうに》', ['text ｜', 'tcySpanStart ［＃縦中横］', 'text 12', 'tcySpanEnd ［＃縦中横終わり］', 'text 《じゅうに》']],
+  // A 終わり with no span open, or a start inside one, changes nothing: it is no edge (#147).
+  ['｜山田［＃縦中横終わり］太郎《やまだたろう》', ['rubyMark ｜', 'text 山田', 'tcySpanEnd ［＃縦中横終わり］', 'text 太郎', 'rubyReading 《やまだたろう》']],
+  ['［＃縦中横］1｜2［＃縦中横］3《さん》［＃縦中横終わり］', ['tcySpanStart ［＃縦中横］', 'text 1', 'rubyMark ｜', 'text 2', 'tcySpanStart ［＃縦中横］', 'text 3', 'rubyReading 《さん》', 'tcySpanEnd ［＃縦中横終わり］']],
 ];
 
 test('an explicit ruby holds the annotations inside its base; a ｜ without a reading stays typed', () => {

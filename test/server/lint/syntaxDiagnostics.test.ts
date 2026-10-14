@@ -327,8 +327,9 @@ test('縦中横: a span holding too much warns over what it holds, whatever clos
   assert.deepEqual(onLine('［＃縦中横］1234［＃縦中横終わり］'), [['syntax.tcyTooLong', '1234']]);
   assert.deepEqual(onLine('［＃縦中横］123［＃縦中横終わり］'), []); // three render cleanly
   assert.deepEqual(onLine('［＃縦中横］12辻\u{E0100}［＃縦中横終わり］'), []); // a variation selector is no character of its own
-  // Ruby markup inside joins the cell as typed; a comment adds nothing.
-  assert.deepEqual(onLine('［＃縦中横］漢《かん》［＃縦中横終わり］'), [['syntax.tcyTooLong', '漢《かん》']]);
+  // A ruby inside keeps its base alone (its reading is reported instead); a comment adds nothing.
+  assert.deepEqual(onLine('［＃縦中横］漢《かん》［＃縦中横終わり］'), [['syntax.rubyInTcy', '《かん》']]);
+  assert.deepEqual(onLine('［＃縦中横］漢字《かんじ》の国［＃縦中横終わり］'), [['syntax.tcyTooLong', '漢字《かんじ》の国'], ['syntax.rubyInTcy', '《かんじ》']]);
   assert.deepEqual(onLine('［＃縦中横］12［＃x］3［＃縦中横終わり］'), []);
   // Closed by the line end: the range is the content still.
   for (const eol of ['', '\n次', '\r\n次']) {

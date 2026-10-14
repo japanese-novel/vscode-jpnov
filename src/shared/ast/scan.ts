@@ -10,7 +10,8 @@
  * (https://www.aozora.gr.jp/annotation/external_character.html); any other ※ is text.
  *
  * An explicit ｜ base runs up to its 《 whatever sits inside it
- * (https://www.aozora.gr.jp/annotation/etc.html#ruby); only the edge of a 縦中横 span ends it.
+ * (https://www.aozora.gr.jp/annotation/etc.html#ruby); only the edge of a 縦中横 span ends it. A
+ * ［＃縦中横終わり］ with no span open, or a ［＃縦中横］ inside one, changes nothing and is no edge.
  *
  * Pure + vscode-free.
  */
@@ -164,6 +165,7 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
   };
 
   let readingsEnded = false; // no 》 from here to the line end: a later 《 has none to find
+  let tcyOpen = false; // a 縦中横 span closes with its line, so the scanner can follow it
   let i = from;
   while (i < to) {
     const ch = src.charAt(i);
@@ -186,8 +188,9 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
       const annotation = char === undefined
         ? classifyAnnotation(src, i, end, i === from, issues)
         : gaijiNode(src, i - GAIJI_MARK.length, end, char);
-      if (annotation.kind === 'tcySpanStart' || annotation.kind === 'tcySpanEnd') {
+      if (annotation.kind === (tcyOpen ? 'tcySpanEnd' : 'tcySpanStart')) {
         release(); // a 縦中横 span is one cell of its own: a ｜ base never crosses its edge
+        tcyOpen = !tcyOpen;
       }
       // Inside a ｜ base the annotation is part of it (｜山田［＃「山田」に傍点］《やまだ》).
       const into = held === null ? nodes : held.nodes;
