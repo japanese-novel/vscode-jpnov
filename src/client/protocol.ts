@@ -213,9 +213,13 @@ export interface Cursor {
   readonly character: number;
 }
 
-/** Host → preview webview: glide the column holding the cursor to the reveal position. */
+/**
+ * Host → preview webview: glide the column holding the cursor to the reveal position. `uri` names
+ * the document the cursor is in; the webview acts only while it shows that document.
+ */
 export interface RevealMessage extends Cursor {
   readonly type: 'reveal';
+  readonly uri: string;
 }
 
 /** The two `jpnov.layout.*` grid keys the preview's layout widget adjusts in place. */

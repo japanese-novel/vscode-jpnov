@@ -277,8 +277,9 @@ export interface MockState {
   /** What `workspace.applyEdit` resolves to (false = the editor refused the edit). */
   applyEditResult: boolean;
   onDidChangeDoc: EventEmitter<{ document: FakeTextDocument }>;
-  onDidChangeActiveEditor: EventEmitter<{ document: FakeTextDocument } | undefined>;
-  activeEditor: { document: FakeTextDocument; viewColumn?: number } | undefined;
+  onDidChangeActiveEditor: EventEmitter<FakeTextEditor | undefined>;
+  /** `window.activeTextEditor`: the editor being typed in; the preview reads its selections. */
+  activeEditor: FakeTextEditor | undefined;
   /** Editors the preview's cursor-follow consults via `window.visibleTextEditors`. */
   visibleEditors: FakeTextEditor[];
   onDidChangeSelection: EventEmitter<FakeSelectionChange>;
@@ -362,9 +363,7 @@ export function createMockState(): MockState {
     appliedEdits: [],
     applyEditResult: true,
     onDidChangeDoc: new EventEmitter<{ document: FakeTextDocument }>(),
-    onDidChangeActiveEditor: new EventEmitter<
-      { document: FakeTextDocument } | undefined
-    >(),
+    onDidChangeActiveEditor: new EventEmitter<FakeTextEditor | undefined>(),
     activeEditor: undefined,
     visibleEditors: [],
     onDidChangeSelection: new EventEmitter<FakeSelectionChange>(),

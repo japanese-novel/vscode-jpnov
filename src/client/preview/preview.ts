@@ -1,7 +1,7 @@
 /**
  * The live preview: one client-owned WebviewPanel mirroring the active `.jpnov` editor on its
  * live (dirty) buffer. The SERVER renders (`jpnov/renderFile`); this class decides WHEN to
- * render, follows the editor's top-most cursor, and owns webview security: the server HTML must
+ * render, follows the cursor of the editor being typed in, and owns webview security: the server HTML must
  * be hardened (strict CSP `<meta>`, a per-render nonce on the inline `<style>`, the nonce'd
  * bundle: cursor follow + the layout widget) before it is assigned to `webview.html`. The panel
  * survives window reloads through the serializer in extension.ts — `adopt()` must stay
@@ -73,18 +73,19 @@ export class Preview {
   /** URI string of the document currently shown, to scope edit/cursor re-renders. */
   private currentDocUri: string | undefined;
   /**
-   * The last cursor baked into a render or posted as a reveal — always for currentDocUri,
-   * reset on document switch. A re-render falls back here while the editor is transiently
-   * absent from visibleTextEditors, instead of snapping to the document head.
+   * The editor the preview follows: the previewable editor most recently active, the one being
+   * typed in. Unlike `window.activeTextEditor` it does not flip when the panel or a non-`.jpnov`
+   * editor takes focus, so with the same document open in two groups the cursor reveals and the
+   * re-renders both read this one editor (#157).
    */
-  private lastReveal: Cursor | undefined;
+  private followed: vscode.TextEditor | undefined;
   /**
    * Uri of the last `.jpnov` document rendered or made active; open() falls back to it when no
    * previewable editor is active. Resolved through workspace.textDocuments at use time, so a
    * closed document is skipped.
    */
   private lastDocUri: string | undefined;
-  /** Lifetime listener behind {@link lastDocUri} and editor-switch re-renders; released by dispose(). */
+  /** Lifetime listener behind {@link followed}, {@link lastDocUri} and editor-switch re-renders; released by dispose(). */
   private readonly activeEditorListener: vscode.Disposable;
   /**
    * Serializes renders so a slow request can't clobber a newer buffer's output.
@@ -119,11 +120,14 @@ export class Preview {
       save: vscode.l10n.t('Save Preview Layout to Settings…'),
       show: vscode.l10n.t('Show Preview Layout Controls'),
     };
-    this.lastDocUri = this.previewableEditor(vscode.window.activeTextEditor)?.document.uri.toString();
-    // Re-render when the user switches which file is active (a no-op while no panel is open).
+    this.followed = this.previewableEditor(vscode.window.activeTextEditor);
+    this.lastDocUri = this.followed?.document.uri.toString();
+    // Follow and re-render when the user switches which file is active (the render is a no-op
+    // while no panel is open).
     this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor((next) => {
       const editor = this.previewableEditor(next);
       if (editor !== undefined) {
+        this.followed = editor;
         this.lastDocUri = editor.document.uri.toString();
         void this.renderDocument(editor.document);
       }
@@ -192,9 +196,8 @@ export class Preview {
    *
    * Content policy is active-editor-first: this preview mirrors the CURRENTLY active
    * editor, and revival can happen long after reload (a restored tab deserializes when
-   * it first becomes visible), so the persisted state may be stale. `state.uri` is used
-   * only when no previewable editor is active; the persisted cursor scrolls the restored
-   * render only when the rendered document is `state.uri` itself.
+   * it first becomes visible), so the persisted state may be stale. `state.uri` and its
+   * cursor are used only when no previewable editor is active.
    */
   adopt(panel: vscode.WebviewPanel, state: unknown): void {
     if (this.panel !== undefined) {
@@ -213,8 +216,7 @@ export class Preview {
       // Paint before the async render: the server is cold right after a reload, so the
       // first response can take seconds, and a wedged start must never leave a blank tab.
       panel.webview.html = this.loadingShell(panel.webview);
-      const fallback = editor.document.uri.toString() === uri ? cursor : undefined;
-      void this.renderDocument(editor.document, fallback);
+      void this.renderDocument(editor.document);
     } else if (uri !== undefined) {
       panel.webview.html = this.loadingShell(panel.webview);
       void this.renderRestored(panel, uri, cursor);
@@ -309,11 +311,14 @@ export class Preview {
     return doc !== undefined && this.isPreviewable(doc) ? doc : undefined;
   }
 
-  /** Posts a scroll-to-cursor message to the live webview (no re-render). */
-  private reveal(at: Cursor): void {
-    this.lastReveal = at;
+  /**
+   * Posts a scroll-to-cursor message to the live webview (no re-render). The message names its
+   * document: the webview acts only while it shows `uri`, so a cursor move during a render that
+   * is still in flight for a newly switched-to document cannot scroll the previous one.
+   */
+  private reveal(uri: string, at: Cursor): void {
     // Picked, not spread: a vscode.Position keeps them in getters.
-    const message: RevealMessage = { type: 'reveal', line: at.line, character: at.character };
+    const message: RevealMessage = { type: 'reveal', uri, line: at.line, character: at.character };
     // Posts to the webview; postMessage never rejects (resolves false if the panel is gone), so void is safe.
     void this.panel?.webview.postMessage(message);
   }
@@ -438,10 +443,13 @@ export class Preview {
           this.scheduleRender();
         }
       }),
-      // ...and follow the top-most cursor as it moves (a scroll message, no re-render).
+      // ...and follow the cursor of the followed editor (a scroll message, no re-render). Only
+      // that editor: an edit shifts the cursors of other editors on the same document and VS Code
+      // reports those moves too, which would drag the preview to the other group.
       vscode.window.onDidChangeTextEditorSelection((e) => {
-        if (e.textEditor.document.uri.toString() === this.currentDocUri) {
-          this.reveal(minCursor(e.selections));
+        const uri = e.textEditor.document.uri.toString();
+        if (e.textEditor === this.followed && uri === this.currentDocUri) {
+          this.reveal(uri, minCursor(e.selections));
         }
       }),
     );
@@ -484,9 +492,6 @@ export class Preview {
       return;
     }
     const uri = doc.uri.toString();
-    if (uri !== this.currentDocUri) {
-      this.lastReveal = undefined; // the remembered cursor belongs to the old document
-    }
     this.currentDocUri = uri;
     this.lastDocUri = uri;
     panel.title = vscode.l10n.t('{0} — Preview', lastPathSegment(uri));
@@ -525,19 +530,28 @@ export class Preview {
     if (seq !== this.renderSeq) {
       return;
     }
-    // Sampled at swap time, after the seq check: pre-await sampling bakes a stale cursor,
-    // and a dropped response must not write lastReveal. `fallback` (revived panel state)
-    // applies only before any live cursor is known.
-    const active = this.topCursor(uri) ?? this.lastReveal ?? fallback ?? DOC_HEAD;
-    this.lastReveal = active;
+    // Sampled at swap time, after the seq check: pre-await sampling bakes a stale cursor. The
+    // followed editor when it shows the document; else any visible editor on it (the document
+    // was never followed: opened from the walkthrough, or restored); else `fallback`, the
+    // revived panel state.
+    const active = this.editorCursor(this.followed, uri) ??
+      this.visibleCursor(uri) ??
+      fallback ??
+      DOC_HEAD;
     panel.webview.html = this.harden(result.html, panel.webview, active, uri, layout);
   }
 
-  /** The top-most (earliest) cursor among all selections in an editor for `docUri`. */
-  private topCursor(docUri: string): Cursor | undefined {
+  /** The earliest cursor of `ed` when it shows `docUri`. */
+  private editorCursor(ed: vscode.TextEditor | undefined, docUri: string): Cursor | undefined {
+    return ed?.document.uri.toString() === docUri ? minCursor(ed.selections) : undefined;
+  }
+
+  /** The earliest cursor of the first visible editor showing `docUri`. */
+  private visibleCursor(docUri: string): Cursor | undefined {
     for (const ed of vscode.window.visibleTextEditors) {
-      if (ed.document.uri.toString() === docUri) {
-        return minCursor(ed.selections);
+      const at = this.editorCursor(ed, docUri);
+      if (at !== undefined) {
+        return at;
       }
     }
     return undefined;
@@ -628,7 +642,6 @@ export class Preview {
     this.panelDisposables.length = 0;
     this.panel = undefined;
     this.currentDocUri = undefined;
-    this.lastReveal = undefined;
     // The overrides live with the panel: the next one starts on the settings.
     this.layoutOverride.clear();
     this.syncContext();

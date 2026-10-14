@@ -3,7 +3,9 @@
  * the column holding the cursor — the last whose `data-line`, then `data-ch` (absent = 0), is at
  * or before the cursor's line and character — at the {@link REVEAL_RATIO} viewport position:
  * synchronously at parse time (so the first paint is already parked, never a frame at the origin),
- * on `reveal` messages (with a {@link REVEAL_EASE} glide), on resize, and re-asserted after load.
+ * on `reveal` messages for this document (with a {@link REVEAL_EASE} glide; one for another
+ * document, posted while that document's render is still in flight, is ignored), on resize, and
+ * re-asserted after load.
  * It persists `{uri, line, character}` through the webview state API for the window-reload
  * serializer. History scroll restoration is forced to manual so a same-URL html swap can't
  * async-replay the old offset. The uri and the cursor arrive via the host's `__INIT` bootstrap.
@@ -103,8 +105,8 @@ reveal(cur);
 window.addEventListener('message', (e: MessageEvent) => {
   const m: unknown = e.data;
   if (typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'reveal') {
-    const { line, character } = m as { line?: unknown; character?: unknown };
-    if (typeof line === 'number' && typeof character === 'number') {
+    const { uri, line, character } = m as { uri?: unknown; line?: unknown; character?: unknown };
+    if (uri === init.uri && typeof line === 'number' && typeof character === 'number') {
       const at = { line, character };
       reveal(at, true);
       persist(at);
