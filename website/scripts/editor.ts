@@ -5,12 +5,12 @@
 import { createRecognizer } from '../../src/server/highlight/recognizer.ts';
 import { buildSemanticTokens, SEMANTIC_LEGEND } from '../../src/server/semanticTokens.ts';
 import { scan } from '../../src/shared/ast/scan.ts';
+import type { ParsedJpbook } from '../../src/shared/book/jpbook.ts';
+import { nameSurfaces } from '../../src/shared/book/names.ts';
 import type { EditorLine, EditorToken, TokenKind } from './contract.ts';
 
-export interface Vocabulary {
-  readonly cast: readonly string[];
-  readonly keywords: readonly string[];
-}
+/** A book's `characters:` / `keywords:` lists, as the product parses them. */
+export type Vocabulary = ParsedJpbook['names'];
 
 /** LSP token type → contract kind (the legend is the product's; see semanticTokens.ts HIGHLIGHTS). */
 const KIND_OF: Readonly<Record<string, TokenKind>> = {
@@ -49,8 +49,9 @@ function decode(data: readonly number[]): Span[] {
 }
 
 export function colourLines(src: string, vocab: Vocabulary): EditorLine[] {
+  const recognizer = createRecognizer(vocab.characters.flatMap((e) => nameSurfaces(e.name)), vocab.keywords.map((e) => e.text));
   const spans = new Map<number, Span[]>();
-  for (const span of decode(buildSemanticTokens(scan(src), createRecognizer(vocab.cast, vocab.keywords)).data)) {
+  for (const span of decode(buildSemanticTokens(scan(src), recognizer).data)) {
     const line = spans.get(span.line);
     if (line === undefined) {
       spans.set(span.line, [span]);

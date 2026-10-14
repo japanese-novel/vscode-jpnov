@@ -122,7 +122,7 @@ function renderPreviewSample(texts: Texts, sample: PreviewSample, stage: StageSo
     kind: 'preview',
     src,
     options: { charsPerLine: layout.charsPerLine, bandCells: layout.charsPerLine + 2 * EDGE_INSET },
-    editorLines: sample.vocabulary === undefined ? [] : colourLines(src, sample.vocabulary),
+    editorLines: sample.vocabulary === undefined ? [] : colourLines(src, parseJpbook(texts.sample(sample.vocabulary)).names),
     diagnostics: sample.vocabulary === undefined ? [] : lintSource(src).diagnostics,
     preview: fragment,
   };

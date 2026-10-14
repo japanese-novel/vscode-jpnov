@@ -5,6 +5,13 @@ header: 作品名　一
 headerAlign: center
 footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
 footerAlign: right
+characters:
+  - 山田《やまだ》太郎《たろう》
+  - 山田｜花子《はなこ》
+  - John Smith
+keywords:
+  - 王都
+  - 聖剣
 cover:
   - cover.jpnov
 ---

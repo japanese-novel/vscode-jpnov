@@ -4,17 +4,10 @@ import type { BuildChrome, PreviewChrome } from '../../src/shared/compiler/chrom
 import type { PaperOrientation, PaperSize } from '../../src/shared/compiler/geometry.ts';
 import { LINKS } from '../src/copy/links.ts';
 import type { SampleName } from './contract.ts';
-import type { Vocabulary } from './editor.ts';
 
 /** docs/specimens/: the README screenshot specimens, shared so the site shows the same text. */
 export const SPECIMENS = ['neko', 'notation', 'kinsoku'] as const;
 export type SpecimenName = (typeof SPECIMENS)[number];
-
-/** The stage's cast and coined words (`jpnov.editor.highlight.*` in the sample workspace). */
-export const VOCABULARY: Vocabulary = {
-  cast: ['山田　太郎', '山田　花子', 'John Smith'],
-  keywords: ['王都', '聖剣'],
-};
 
 /**
  * The stage's 書式 (`jpnov.layout.charsPerLine` / `linesPerPage`): fewer cells than the 40×34
@@ -29,8 +22,8 @@ export interface PreviewSample {
   readonly source: { readonly specimen: SpecimenName } | { readonly state: 'typing' | 'emphasised' | 'fixed' };
   readonly layout?: Partial<LayoutSettings>;
   readonly chrome?: Partial<PreviewChrome>;
-  /** Colour the editor lines and lint the source (the stage samples). */
-  readonly vocabulary?: Vocabulary;
+  /** The `.jpbook` in `src/samples/` whose `characters:` / `keywords:` colour the editor lines; its presence also lints the source (the stage samples). */
+  readonly vocabulary?: string;
 }
 
 export interface BookSample {
@@ -60,8 +53,8 @@ export const SAMPLES: readonly Sample[] = [
   { name: 'kinsokuOff', kind: 'preview', source: { specimen: 'kinsoku' }, layout: { charsPerLine: 20, kinsoku: 'none' }, chrome: { lineNumbers: false } },
   { name: 'kinsokuOn', kind: 'preview', source: { specimen: 'kinsoku' }, layout: { charsPerLine: 20 }, chrome: { lineNumbers: false } },
   { name: 'cover', kind: 'book', source: { jpbook: 'book.jpbook' }, keepPages: [0] },
-  { name: 'stageTyping', kind: 'preview', source: { state: 'typing' }, layout: STAGE_LAYOUT, vocabulary: VOCABULARY },
-  { name: 'stageEmphasised', kind: 'preview', source: { state: 'emphasised' }, layout: STAGE_LAYOUT, vocabulary: VOCABULARY },
-  { name: 'stageFixed', kind: 'preview', source: { state: 'fixed' }, layout: STAGE_LAYOUT, vocabulary: VOCABULARY },
+  { name: 'stageTyping', kind: 'preview', source: { state: 'typing' }, layout: STAGE_LAYOUT, vocabulary: 'book.jpbook' },
+  { name: 'stageEmphasised', kind: 'preview', source: { state: 'emphasised' }, layout: STAGE_LAYOUT, vocabulary: 'book.jpbook' },
+  { name: 'stageFixed', kind: 'preview', source: { state: 'fixed' }, layout: STAGE_LAYOUT, vocabulary: 'book.jpbook' },
   { name: 'stageBook', kind: 'book', source: { jpbook: 'book.jpbook' }, layout: STAGE_LAYOUT, keepPages: [1], printButton: { href: PRINT_HREF } },
 ];
