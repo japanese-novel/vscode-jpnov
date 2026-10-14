@@ -57,6 +57,16 @@ test('dash: any other dash glyph is rewritten to the chosen one, length preserve
   assert.deepEqual(dashScan('彼は—――と', BAR), [{ start: 2, end: 5, fix: '――――', message: CHAR }]);
 });
 
+test('dash: a doubled look-alike is a dash, a lone one is a sign; ー is never a dash', () => {
+  assert.deepEqual(dashScan('彼は－－と', BAR), [{ start: 2, end: 4, fix: '――', message: CHAR }]);
+  assert.deepEqual(dashScan('彼は––と', BAR), [{ start: 2, end: 4, fix: '――', message: CHAR }]);
+  // a lone look-alike is a minus sign, a range, or minusPosition's stray — not a dash
+  assert.deepEqual(flagged(dashScan, '気温は－5度', BAR), []);
+  assert.deepEqual(flagged(dashScan, '１–２', BAR), []);
+  // the prolonged sound mark is prose, however long the run
+  assert.deepEqual(flagged(dashScan, '「あーーーー！」', BAR), []);
+});
+
 test('dash: each mode judges by its own glyph; an unset mode checks nothing', () => {
   assert.deepEqual(flagged(dashScan, '彼は——と', { mode: 'emDash' }), []);
   assert.deepEqual(flagged(dashScan, '彼は──と', { mode: 'boxDrawing' }), []);

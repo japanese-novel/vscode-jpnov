@@ -32,7 +32,7 @@
   "jpnov.lint.common.sentenceLength.description": "一文がこの文字数を超えたら警告します。推奨: 100。空欄で無効。",
   "jpnov.lint.common.maxTen.description": "一文の読点（、）がこの数を超えたら警告します。推奨: 3。空欄で無効。",
   "jpnov.lint.common.maxKanjiRun.description": "漢字がこの文字数を超えて連続したら警告します。推奨: 6。空欄で無効。",
-  "jpnov.lint.common.dash.description": "本文で使うダッシュ文字を指定します。ほかのダッシュ文字や奇数個の連続を警告します。自動修正可。どれを選んでも、組版では em ダッシュ（—）になります。",
+  "jpnov.lint.common.dash.description": "本文で使うダッシュ文字を指定します。ほかのダッシュ文字、「－－」「––」による代用、奇数個の連続を警告します。自動修正可。どれを選んでも、組版では em ダッシュ（—）になります。",
   "jpnov.lint.common.dash.emDash.label": "em ダッシュ（—）",
   "jpnov.lint.common.dash.emDash.description": "ダッシュを —（U+2014）に統一します。",
   "jpnov.lint.common.dash.horizontalBar.label": "全角ダッシュ（―）",

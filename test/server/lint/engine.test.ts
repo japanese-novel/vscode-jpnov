@@ -133,7 +133,14 @@ test('dash fix pairs an odd run and rewrites a foreign glyph in place', () => {
   assert.equal(applied('彼は——と', DASH_BAR), '彼は――と'); // same length, chosen glyph
   assert.equal(applied('彼は―――と', DASH_BAR), '彼は――――と'); // odd rounds up
   assert.equal(applied('彼は――と', { 'jpnov.lint.common.dash': 'boxDrawing' }), '彼は──と');
+  assert.equal(applied('彼は－－と', DASH_BAR), '彼は――と'); // a doubled look-alike is a dash
   assert.equal(applied('彼は―と', { 'jpnov.lint.common.dash': 'off' }), '彼は―と'); // retired spelling still reads as disabled
+});
+
+test('dash leaves a lone minus to minusPosition', () => {
+  const both = { ...DASH_BAR, 'jpnov.lint.common.minusPosition': true };
+  assert.deepEqual(lint('　気温は－５度。', both), []);
+  assert.deepEqual(lint('　ダッシュ－だ。', both), [{ code: 'lint.common.minusPosition', text: '－' }]);
 });
 
 test('dash parity stays the dash rule; ellipsis parity is the ellipsis rule', () => {
