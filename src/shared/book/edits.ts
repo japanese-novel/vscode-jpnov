@@ -5,19 +5,17 @@
  * never disagree). Metadata is edited by KEY, not by line: setting a key leaves ONE line
  * for it (an empty value is written as `key:`), and the lines of every other key stay where
  * they are.
- * The entry planners take an {@link EntryList} (chapters = body lines, covers = the `- path`
- * items under `cover:`, the key's own value included) and never touch the other list.
+ * The entry planners take an {@link EntryList} (chapters = body lines; covers, characters and
+ * keywords = the `- item` lines under their key, the key's own value included) and never touch
+ * another list.
  */
 import {
-  COVER_KEY,
-  coverPathOf,
-  entryIdentity,
-  entryPathOf,
   FENCE,
   KNOWN_KEYS,
-  isCover,
+  identityOf,
+  inlineKeyOf,
   isEntryOf,
-  isInlineCover,
+  listKeyOf,
   META_KEYS,
   metaLinesOf,
   metaKeyOf,
@@ -37,8 +35,8 @@ export interface TextReplace {
   readonly newText: string;
 }
 
-/** README-style cover item prefix, used when the list has no existing item to mirror. */
-const COVER_ITEM_PREFIX = '  - ';
+/** README-style list item prefix, used when the list has no existing item to mirror. */
+const ITEM_PREFIX = '  - ';
 
 /** The document's newline flavour, so inserted lines never mix EOLs into a CRLF file. */
 function eolOf(text: string): string {
@@ -132,7 +130,7 @@ export function setMeta(text: string, key: MetaKey, value: string): TextReplace[
 /**
  * Inserts a new key line at its {@link KNOWN_KEYS} position: after the nearest earlier
  * key the metadata holds (its line in Error included), else before the nearest later one, else
- * at the end of the metadata. `cover` is the last key, so a bare `cover:` is only ever a LATER
+ * at the end of the metadata. The list keys come last, so a list's key line is only ever a LATER
  * key: the insert goes above it, never right under it where it would close the list.
  */
 function insertMeta(parsed: ParsedJpbook, eol: string, key: MetaKey, entry: string): TextReplace {
@@ -166,29 +164,28 @@ function insertAtMetaEnd(parsed: ParsedJpbook, eol: string, block: string): Text
   return { start: at(parsed.fence, 0), end: at(parsed.fence, 0), newText: `${block}${eol}` };
 }
 
-/** The path an entry line lists (a cover item's marker excluded) — what the panel rows show and dedupe by. */
+/** The value an entry line lists (an item's marker excluded) — what the panel rows show and dedupe by. */
 export function entryKeyOf(pl: ParsedLine): string {
-  return entryPathOf(pl)?.value ?? pl.value;
+  return pl.item?.value ?? pl.value;
 }
 
-/** The {@link entryIdentity} of each path already in `list` (a cover item's path excludes its marker) —
- *  the set GUI adds dedupe against, by the same identity. */
+/** The identity of each entry already in `list` — the set GUI adds dedupe against, by {@link identityOf}. */
 export function listedEntries(lines: readonly ParsedLine[], list: EntryList): Set<string> {
-  return new Set(lines.filter(isEntryOf(list)).map((pl) => entryIdentity(entryKeyOf(pl))));
+  return new Set(lines.filter(isEntryOf(list)).map((pl) => pl.item?.identity ?? pl.value));
 }
 
 /**
- * Appends entries (paths from the book's folder) to `list`, skipping any already listed there
- * (a GUI add must not manufacture `duplicate` warnings). Chapters go at the end of the
- * document, below a `---` added first when none closes the metadata; covers after the open
- * list's last item (the indent and marker of the last `- ` item mirrored), or as a new
- * `cover:` key at the end of the metadata. Null when nothing is new.
+ * Appends entries (paths from the book's folder, or names) to `list`, skipping any already
+ * listed there (a GUI add must not manufacture duplicate warnings). Chapters go at the end of the
+ * document, below a `---` added first when none closes the metadata; the items of a keyed list
+ * after its last item (the indent and marker of the last `- ` item mirrored), or as a new key at
+ * the end of the metadata. Null when nothing is new.
  */
-export function appendEntries(text: string, list: EntryList, rels: readonly string[]): TextReplace | null {
+export function appendEntries(text: string, list: EntryList, values: readonly string[]): TextReplace | null {
   const parsed = parseJpbook(text);
   const eol = eolOf(text);
   const listed = listedEntries(parsed.lines, list);
-  const fresh = rels.filter((rel) => !listed.has(entryIdentity(rel)));
+  const fresh = values.filter((value) => !listed.has(identityOf(list, value)));
   if (fresh.length === 0) {
     return null;
   }
@@ -198,29 +195,29 @@ export function appendEntries(text: string, list: EntryList, rels: readonly stri
     return appendAtEnd(parsed.lines, eol, lines.join(eol));
   }
 
-  // Only the first `cover:` key opens a list (a repeat is a muted warning), so every
-  // `isCover` line belongs to it.
-  const key = metaLinesOf(parsed).find((pl) => metaKeyOf(pl.value) === COVER_KEY);
+  // Only the first line of a key opens its list (a repeat is a muted warning), so every entry
+  // line of the list belongs to it.
+  const keyName = listKeyOf(list);
+  const key = metaLinesOf(parsed).find((pl) => metaKeyOf(pl.value) === keyName);
   if (key === undefined) {
-    return insertAtMetaEnd(parsed, eol, [metaLine(COVER_KEY, ''), ...fresh.map((rel) => `${COVER_ITEM_PREFIX}${rel}`)].join(eol));
+    return insertAtMetaEnd(parsed, eol, [metaLine(keyName, ''), ...fresh.map((value) => `${ITEM_PREFIX}${value}`)].join(eol));
   }
-  const items = parsed.lines.filter(isCover);
+  const items = parsed.lines.filter(isEntryOf(list));
   const last = items[items.length - 1];
-  return appendAfterLine(last ?? key, fresh.map((rel) => `${eol}${itemPrefix(last)}${rel}`).join(''));
+  return appendAfterLine(last ?? key, fresh.map((value) => `${eol}${itemPrefix(last)}${value}`).join(''));
 }
 
-/** What precedes a `- ` item's path on its line (indent and marker); the README-style prefix off an item. */
+/** What precedes a `- ` item's value on its line (indent and marker); the README-style prefix off an item. */
 function itemPrefix(item: ParsedLine | undefined): string {
-  if (item === undefined || isInlineCover(item)) {
-    return COVER_ITEM_PREFIX;
+  if (item?.item === undefined || inlineKeyOf(item) !== null) {
+    return ITEM_PREFIX;
   }
-  const path = coverPathOf(item);
-  return path === null ? COVER_ITEM_PREFIX : item.raw.slice(0, path.range.startChar);
+  return item.raw.slice(0, item.item.range.startChar);
 }
 
-/** A cover entry as a `- ` item line: an inline `cover: path` becomes `  - path`, an item travels as written. */
+/** An entry as a `- ` item line: an inline `key: value` becomes `  - value`, an item travels as written. */
 function asItem(pl: ParsedLine): string {
-  return isInlineCover(pl) ? `${COVER_ITEM_PREFIX}${entryKeyOf(pl)}` : pl.raw;
+  return inlineKeyOf(pl) !== null ? `${ITEM_PREFIX}${entryKeyOf(pl)}` : pl.raw;
 }
 
 /** The entry line of `list` at `line`, or null — the guard every mover uses (other lists are null). */
@@ -247,7 +244,7 @@ export function resolveEntry(lines: readonly ParsedLine[], list: EntryList, ref:
 
 /**
  * Deletes the entry line entirely (the file itself is untouched), as {@link deleteRun} does;
- * an inline `cover: path` keeps its `cover:` and loses its path, so the list stays open. Null
+ * an inline `key: value` keeps its key and loses its value, so the list stays open. Null
  * when `line` is not an entry of `list`.
  */
 export function removeEntry(text: string, list: EntryList, line: number): TextReplace | null {
@@ -256,10 +253,25 @@ export function removeEntry(text: string, list: EntryList, line: number): TextRe
   if (pl === null) {
     return null;
   }
-  if (isInlineCover(pl)) {
-    return { start: at(pl.line, pl.range.startChar), end: at(pl.line, pl.range.endChar), newText: metaLine(COVER_KEY, '') };
+  const inlineKey = inlineKeyOf(pl);
+  if (inlineKey !== null) {
+    return { start: at(pl.line, pl.range.startChar), end: at(pl.line, pl.range.endChar), newText: metaLine(inlineKey, '') };
   }
   return deleteRun(parsed.lines, pl, pl);
+}
+
+/**
+ * Rewrites the entry's value in place (its marker, indent or key kept), as the panel's input box
+ * sets a name. Null when `line` is not an entry of `list`, or the value is empty once sanitized.
+ */
+export function replaceEntry(text: string, list: EntryList, line: number, value: string): TextReplace | null {
+  const parsed = parseJpbook(text);
+  const pl = entryAt(parsed.lines, list, line);
+  const clean = sanitizeValue(value);
+  if (pl?.item === undefined || clean === '') {
+    return null;
+  }
+  return { start: at(pl.line, pl.item.range.startChar), end: at(pl.line, pl.item.range.endChar), newText: clean };
 }
 
 /**
@@ -267,8 +279,8 @@ export function removeEntry(text: string, list: EntryList, line: number): TextRe
  * list's last entry). Planned as delete + insert against the ORIGINAL text — the ranges
  * never overlap, so they apply as one `WorkspaceEdit`. Blank lines and metadata stay where
  * they are; only the entry line travels (with its own indent and marker; an inline
- * `cover: path` travels as a `- ` item, and moving an entry before it turns it into one under
- * a bare `cover:`). Null when the move is a no-op or either line is not an entry of `list`.
+ * `key: value` travels as a `- ` item, and moving an entry before it turns it into one under
+ * the bare key). Null when the move is a no-op or either line is not an entry of `list`.
  */
 export function moveEntryTo(
   text: string,
@@ -300,8 +312,9 @@ export function moveEntryTo(
     if (entries[fromIdx + 1]?.line === beforeLine) {
       return null;
     }
-    if (isInlineCover(target)) {
-      const block = [metaLine(COVER_KEY, ''), asItem(from), asItem(target)].join(eol);
+    const inlineKey = inlineKeyOf(target);
+    if (inlineKey !== null) {
+      const block = [metaLine(inlineKey, ''), asItem(from), asItem(target)].join(eol);
       return [removal, { start: at(target.line, target.range.startChar), end: at(target.line, target.range.endChar), newText: block }];
     }
     return [removal, { start: at(beforeLine, 0), end: at(beforeLine, 0), newText: `${asItem(from)}${eol}` }];

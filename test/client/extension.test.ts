@@ -1,15 +1,16 @@
 /**
- * The entry module's server sync: once the server runs, the lint selection and the highlight
- * vocabulary it holds are the current ones — also when a setting or a workspace folder
- * changed while it was starting, and after the restart that follows a crash. `activate()`
- * runs against the vscode mock and a fake LanguageClient the test steps through its states.
+ * The entry module's server sync: once the server runs, the lint selection it holds is the
+ * current one and the books have been listed (the listing is what gives it the narration
+ * vocabulary) — also when a setting or a workspace folder changed while it was starting, and
+ * after the restart that follows a crash. `activate()` runs against the vscode mock and a fake
+ * LanguageClient the test steps through its states.
  *
  * Runs in CI via `npm run test:integration`; for direct runs see test/client/README.md.
  */
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HighlightChangedNotification, LintConfigChangedNotification } from '../../src/shared/protocol.ts';
+import { LintConfigChangedNotification, ListBooksRequest } from '../../src/shared/protocol.ts';
 import {
   buildVscode,
   createMockState,
@@ -27,16 +28,14 @@ mock.module('vscode', { namedExports: buildVscode(state) });
 const State = { Stopped: 1, Running: 2, Starting: 3, StartFailed: 4 } as const;
 type StateValue = (typeof State)[keyof typeof State];
 
-/** The two snapshots: `initializationOptions` carries both, each notification replaces one. */
+/** The snapshot: `initializationOptions` carries it, its notification replaces it. */
 interface Snapshots {
   lintConfig?: unknown;
-  highlight?: unknown;
 }
 
 /** The server's handlers: the snapshot each notification replaces. */
 const HANDLERS: Readonly<Record<string, keyof Snapshots>> = {
   [LintConfigChangedNotification]: 'lintConfig',
-  [HighlightChangedNotification]: 'highlight',
 };
 
 /** `holds` models the server process: the seed of its latest start, replaced by each notification its handlers know. */
@@ -126,7 +125,6 @@ const A = 'file:///ws/a';
 const B = 'file:///ws/b';
 const C = 'file:///ws/c';
 const LINT = 'jpnov.lint.common.questionExclamationMarks';
-const NONE = { characters: [], keywords: [] };
 
 function folder(uri: string, index: number): { uri: Uri; name: string; index: number } {
   return { uri: Uri.parse(uri), name: `f${String(index)}`, index };
@@ -176,6 +174,8 @@ interface Change {
   apply(): void;
   /** What the server must hold afterwards. */
   holds: Snapshots;
+  /** True when the change re-lists the books (the folders decide which books there are). */
+  lists?: true;
 }
 
 const CHANGES: readonly Change[] = [
@@ -185,15 +185,7 @@ const CHANGES: readonly Change[] = [
       state.config[LINT] = 'tcy';
       configChanged(LINT);
     },
-    holds: { lintConfig: { [LINT]: 'tcy' }, highlight: { [A]: NONE, [B]: NONE } },
-  },
-  {
-    name: 'a jpnov.editor.highlight.* setting',
-    apply() {
-      state.scopedConfig.set(`${B}|jpnov.editor.highlight.characters`, ['山田　太郎']);
-      configChanged('jpnov.editor.highlight.characters');
-    },
-    holds: { lintConfig: {}, highlight: { [A]: NONE, [B]: { characters: ['山田　太郎'], keywords: [] } } },
+    holds: { lintConfig: { [LINT]: 'tcy' } },
   },
   {
     name: 'an added folder',
@@ -202,7 +194,8 @@ const CHANGES: readonly Change[] = [
       state.workspaceFolders?.push(added);
       state.onDidChangeFolders.fire({ added: [added], removed: [] });
     },
-    holds: { lintConfig: {}, highlight: { [A]: NONE, [B]: NONE, [C]: NONE } },
+    holds: { lintConfig: {} },
+    lists: true,
   },
   {
     name: 'a removed folder',
@@ -210,7 +203,8 @@ const CHANGES: readonly Change[] = [
       const removed = state.workspaceFolders?.splice(1) ?? [];
       state.onDidChangeFolders.fire({ added: [], removed });
     },
-    holds: { lintConfig: {}, highlight: { [A]: NONE } },
+    holds: { lintConfig: {} },
+    lists: true,
   },
 ];
 
@@ -218,6 +212,9 @@ interface Moment {
   name: string;
   /** Takes a started client to Running, applying `change` at this moment of its life. */
   play(client: FakeLanguageClient, change: Change): void;
+  /** How often the server comes up, and whether the change lands while it runs. */
+  starts: number;
+  whileRunning: boolean;
 }
 
 const MOMENTS: readonly Moment[] = [
@@ -227,6 +224,8 @@ const MOMENTS: readonly Moment[] = [
       change.apply();
       client.run();
     },
+    starts: 1,
+    whileRunning: false,
   },
   {
     name: 'a change while the server runs reaches it at once',
@@ -234,6 +233,8 @@ const MOMENTS: readonly Moment[] = [
       client.run();
       change.apply();
     },
+    starts: 1,
+    whileRunning: true,
   },
   {
     name: 'a change made while the server runs survives its crash and restart (#84)',
@@ -243,6 +244,8 @@ const MOMENTS: readonly Moment[] = [
       client.crash();
       client.run();
     },
+    starts: 2,
+    whileRunning: true,
   },
   {
     name: 'a change while the server restarts after a crash reaches it once it runs (#84)',
@@ -252,6 +255,8 @@ const MOMENTS: readonly Moment[] = [
       change.apply();
       client.run();
     },
+    starts: 2,
+    whileRunning: false,
   },
 ];
 
@@ -261,18 +266,20 @@ for (const moment of MOMENTS) {
       const client = start();
       moment.play(client, change);
       assert.deepEqual(client.holds, change.holds);
+      // Every start lists the books; a folder change while running lists them again.
+      const listings = client.sent.filter((method) => method === ListBooksRequest).length;
+      assert.equal(listings, moment.starts + (change.lists === true && moment.whileRunning ? 1 : 0));
     });
   }
 }
 
-test('each start sends every seeded snapshot once', () => {
+test('each start sends the seeded snapshot once, then lists the books (the server reads their names from that)', () => {
   const client = start();
-  const seeded = Object.keys(client.holds);
   client.run();
-  assert.deepEqual(client.sent.map((method) => HANDLERS[method]), seeded);
+  assert.deepEqual(client.sent, [LintConfigChangedNotification, ListBooksRequest]);
   client.crash();
   client.run();
-  assert.deepEqual(client.sent.slice(seeded.length).map((method) => HANDLERS[method]), seeded);
+  assert.deepEqual(client.sent.slice(2), [LintConfigChangedNotification, ListBooksRequest]);
 });
 
 test('the listeners send nothing while the server starts', () => {

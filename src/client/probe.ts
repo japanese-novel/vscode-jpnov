@@ -2,7 +2,7 @@
  * The startup probe: whether one workspace folder looks like a novel project, so
  * `startIfProjectPresent` (extension.ts) can fork the server with no document open. Three
  * signals, cheapest first: a `jpnov.*` setting at the WORKSPACE or FOLDER level — never the
- * user level (a personal cast list must not auto-start every window); a root-level `*.jpbook`
+ * user level (a personal preference must not auto-start every window); a root-level `*.jpbook`
  * that is a PLAIN FILE (strict `FileType.File`); a `findFiles` capped at one match, which needs
  * a search provider. A false positive only causes a benign start — the server stays the
  * arbiter of what is a book.

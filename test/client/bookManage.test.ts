@@ -26,7 +26,7 @@ const ROOT = 'file:///ws';
 /** A book at the folder root: its entries count from the folder itself. */
 const BOOK = `${ROOT}/book.jpbook`;
 
-type List = 'chapters' | 'covers';
+type List = 'chapters' | 'covers' | 'characters' | 'keywords';
 const ENTRY = { uri: BOOK, rootUri: ROOT, fileRel: 'book.jpbook' };
 
 function listNode(list: List = 'chapters', entry: typeof ENTRY = ENTRY): unknown {
@@ -41,8 +41,8 @@ function seed(text: string, files: readonly string[], book = BOOK): void {
 }
 
 async function runAddFiles(list: List = 'chapters', entry: typeof ENTRY = ENTRY): Promise<void> {
-  const handler = state.registeredCommands.get('jpbook.addFiles');
-  assert.ok(handler, 'jpbook.addFiles must be registered');
+  const handler = state.registeredCommands.get('jpbook.addEntries');
+  assert.ok(handler, 'jpbook.addEntries must be registered');
   await handler(listNode(list, entry));
 }
 
@@ -382,6 +382,13 @@ function reseed(text: string): void {
   seed(text, []);
 }
 
+/** The validator of the last input box, as the mock recorded it. */
+function lastValidator(): (value: string) => string | null | Promise<string | null> {
+  const validate = state.inputBoxCalls.at(-1)?.options?.validateInput;
+  assert.ok(validate, 'the input box validates');
+  return validate;
+}
+
 /** Runs `jpbook.editMeta` on the seeded book as the panel dispatches it; returns how often the book was saved. */
 async function runEditMeta(metaKey: string): Promise<number> {
   let saves = 0;
@@ -509,8 +516,7 @@ test('the divider 字下げ box takes 1-99 only: the line head is not on offer (
   reseed('title: 作品名\ndivider: ＊\n---\n');
   answer({ picked: { label: '＊', pick: 'preset' } }, { picked: { label: 'Indented', indented: true } }, { typed: undefined });
   assert.equal(await runEditMeta('divider'), 0);
-  const validate = state.inputBoxCalls.at(-1)?.options?.validateInput;
-  assert.ok(validate);
+  const validate = lastValidator();
   for (const ok of ['1', '３', String(INDENT_MAX), fullWidthDigits(INDENT_MAX), ' 5 ']) {
     assert.equal(validate(ok), null, ok);
   }
@@ -579,4 +585,84 @@ test('a refused edit or a failed save is toasted (#90)', async () => {
   assert.equal(state.appliedEdits.length, 1);
   assert.equal(saves, 1);
   assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't save book.jpbook."]);
+});
+
+// --- the name lists -------------------------------------------------------------
+
+test('addEntries(characters) asks for one name in an input box and opens the list above the fence', async () => {
+  seed('title: t\n---\na.jpnov\n', []);
+  state.inputBoxQueue.push(' 山田《やまだ》太郎《たろう》 ');
+  await runAddFiles('characters');
+
+  assert.deepEqual(state.quickPicks, [], 'no file picker for a name');
+  assert.equal(state.inputBoxCalls.length, 1);
+  assert.equal(state.inputBoxCalls[0]?.options?.value, '');
+  assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 0, 2, 0], newText: 'characters:\n  - 山田《やまだ》太郎《たろう》\n' }]);
+  assert.deepEqual(state.writtenFiles, []);
+  assert.deepEqual(opened(), []);
+});
+
+test('addEntries(keywords) extends an open list; a dismissed or empty input box adds nothing', async () => {
+  seed('keywords:\n  - 王都\n---\na.jpnov\n', []);
+  state.inputBoxQueue.push('聖剣');
+  await runAddFiles('keywords');
+  assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 6, 2, 6], newText: '\n  - 聖剣' }]);
+  state.appliedEdits.length = 0;
+
+  state.inputBoxQueue.push(undefined); // Esc
+  await runAddFiles('keywords');
+  assert.deepEqual(state.appliedEdits, []);
+});
+
+test('the name input refuses an empty value, a non-ruby annotation, and a base already in the list', async () => {
+  seed('characters:\n  - 山田　太郎\n---\na.jpnov\n', []);
+  state.inputBoxQueue.push(undefined);
+  await runAddFiles('characters');
+  const validate = lastValidator();
+  assert.equal(await validate(''), 'Enter a name');
+  assert.equal(await validate('  '), 'Enter a name');
+  assert.equal(await validate('山田［＃太字］'), 'a name is text and ruby only; this item is ignored: 山田［＃太字］');
+  assert.equal(await validate('《やまだ》'), 'a name is text and ruby only; this item is ignored: 《やまだ》');
+  assert.equal(await validate('山田《やまだ》太郎《たろう》'), 'Already in this book'); // the same base, another writing
+  assert.equal(await validate('山田太郎'), 'Already in this book');
+  assert.equal(await validate('山田　花子'), null);
+  assert.equal(await validate('John Smith'), null);
+
+  // A keyword's input has its own words; the character list is no obstacle to it.
+  state.inputBoxQueue.push(undefined);
+  await runAddFiles('keywords');
+  const keyword = lastValidator();
+  assert.equal(await keyword(''), 'Enter a keyword');
+  assert.equal(await keyword('山田太郎'), null);
+});
+
+test('editEntry rewrites a name in place, prefilled with the item as written; its own base is no duplicate', async () => {
+  seed('characters:\n  - 山田　太郎\n  - 山田　花子\n---\na.jpnov\n', []);
+  state.inputBoxQueue.push('山田《やまだ》太郎《たろう》');
+  await runEntry('jpbook.editEntry', 'characters', 2, '山田　太郎');
+  assert.equal(state.inputBoxCalls[0]?.options?.value, '山田　太郎');
+  assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 4, 2, 9], newText: '山田《やまだ》太郎《たろう》' }]);
+  const validate = lastValidator();
+  assert.equal(await validate('山田太郎'), null, 'the row being edited is not its own duplicate');
+  assert.equal(await validate('山田　花子'), 'Already in this book');
+  state.appliedEdits.length = 0;
+
+  // A stale row, or a row of a file list, plans nothing.
+  state.inputBoxQueue.push('x');
+  await runEntry('jpbook.editEntry', 'characters', 2, '山田　太郎', 2);
+  state.inputBoxQueue.push('x');
+  await runEntry('jpbook.editEntry', 'chapters', 5, 'a.jpnov');
+  assert.deepEqual(state.appliedEdits, []);
+});
+
+test('removeEntry / moveEntryDown work on a name list like any other', async () => {
+  seed('characters:\n  - 山田　太郎\n  - 山田　花子\n---\na.jpnov\n', []);
+  await runEntry('jpbook.removeEntry', 'characters', 2, '山田　太郎');
+  assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 0, 3, 0], newText: '' }]);
+  state.appliedEdits.length = 0;
+  await runEntry('jpbook.moveEntryDown', 'characters', 2, '山田　太郎');
+  assert.deepEqual(state.appliedEdits, [
+    { uri: BOOK, range: [2, 0, 3, 0], newText: '' },
+    { uri: BOOK, range: [3, 9, 3, 9], newText: '\n  - 山田　太郎' },
+  ]);
 });

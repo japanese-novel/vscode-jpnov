@@ -9,6 +9,15 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { Recognizer } from '../../../src/server/highlight/recognizer.ts';
 import { buildSemanticTokens as tokensOf } from '../../../src/server/semanticTokens.ts';
 import { scan } from '../../../src/shared/ast/scan.ts';
+import { nameSurfaces, readName } from '../../../src/shared/book/names.ts';
+
+/** The surfaces a recognizer gets for these listed names (as the vocabulary store expands them). */
+export function cast(...names: readonly string[]): string[] {
+  return names.flatMap((text) => {
+    const read = readName(text);
+    return read.ok ? nameSurfaces(read.name) : [];
+  });
+}
 
 export interface Tok {
   line: number;

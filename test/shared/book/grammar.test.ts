@@ -1,12 +1,12 @@
 /**
- * The hand-written .jpbook grammar against the parser: the cover-item markers come from
- * jpbook.ts COVER_ITEM_MARKS (on drift it prints the class to paste), and the metadata region
+ * The hand-written .jpbook grammar against the parser: the list-item markers come from
+ * jpbook.ts ITEM_MARKS (on drift it prints the class to paste), and the metadata region
  * runs from the top of the file to the fence parseJpbook reads.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { COVER_ITEM_MARKS, parseJpbook } from '../../../src/shared/book/jpbook.ts';
+import { ITEM_MARKS, parseJpbook } from '../../../src/shared/book/jpbook.ts';
 import { readRepoFile } from '../repo.ts';
 import { HEAD } from './_fixture.ts';
 
@@ -25,18 +25,29 @@ const book = JSON.parse(readRepoFile('syntaxes/jpbook.tmLanguage.json')) as {
 };
 
 const region = book.patterns.find((p) => p.begin !== undefined);
-const MARKERS = `[${COVER_ITEM_MARKS.join('')}]`;
+const MARKERS = `[${ITEM_MARKS.join('')}]`;
 
-test('the .jpbook item rule accepts exactly the parser cover markers, before the key-value rule', () => {
-  // A cover path may contain a colon, so the item rule has to win over the generic `key: value` rule.
+test('the .jpbook item rules accept exactly the parser markers: the path rule, then the name rule, then key-value', () => {
+  // A cover path or a name may contain a colon, so the item rules have to win over the generic
+  // `key: value` rule; a `.jpnov` item is a path, so the path rule comes before the name rule.
   const body = book.repository['metadata-body']?.patterns ?? [];
-  const item = body.findIndex((p) => p.match?.includes('.jpnov') === true);
+  const path = body.findIndex((p) => p.match?.includes('.jpnov') === true);
   const keyValue = body.findIndex((p) => p.match?.includes(':：') === true);
-  assert.ok(item >= 0, 'cover item rule not found in the metadata body');
+  const name = body.findIndex((p, i) => i !== path && i !== keyValue && p.match?.includes(MARKERS) === true);
+  assert.ok(path >= 0, 'cover item rule not found in the metadata body');
+  assert.ok(name >= 0, 'name item rule not found in the metadata body');
   assert.ok(keyValue >= 0, 'key-value rule not found in the metadata body');
-  assert.ok(item < keyValue, 'the item rule must precede the key-value rule (a path may contain a colon)');
-  const pattern = body[item]?.match ?? '';
-  assert.ok(pattern.includes(MARKERS), `stale cover-marker class in:\n${pattern}\nPASTE:\n${MARKERS}`);
+  assert.ok(path < name && name < keyValue, 'the item rules must precede the key-value rule, the path rule first');
+  for (const i of [path, name]) {
+    const pattern = body[i]?.match ?? '';
+    assert.ok(pattern.includes(MARKERS), `stale marker class in:\n${pattern}\nPASTE:\n${MARKERS}`);
+  }
+  // The name rule paints what the parser reads as a name, markers and indent as the parser takes
+  // them (a `---` is the region's end, which the engine tries before the body's rules).
+  const paints = new RegExp(body[name]?.match ?? '(?!)');
+  for (const [line, isItem] of [['- 山田　太郎', true], ['　－山田《やまだ》', true], ['-', false], ['title: t', false]] as const) {
+    assert.equal(paints.test(line), isItem, line);
+  }
 });
 
 test('the .jpbook metadata region is one rule from the document start over the metadata body', () => {

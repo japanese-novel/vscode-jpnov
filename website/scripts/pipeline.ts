@@ -6,7 +6,7 @@
 import { readdir } from 'node:fs/promises';
 
 import { parse } from '../../src/shared/ast/parse.ts';
-import { checkJpbook, composeBookChrome, coverPathOf, parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, entryPathOf, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { EDGE_INSET } from '../../src/shared/compiler/geometry.ts';
 import { renderBook } from '../../src/shared/compiler/document.ts';
 import type { BookInput } from '../../src/shared/compiler/document.ts';
@@ -54,7 +54,7 @@ function bookFromJpbook(texts: Texts, name: string, chrome: BookSample['chrome']
   const files = parsed.lines.filter((pl) => pl.kind === 'ok').map((pl) => ({ name: pl.value, src: texts.sample(pl.value) }));
   const covers = parsed.lines
     .filter((pl) => pl.kind === 'coverEntry')
-    .map((pl) => coverPathOf(pl))
+    .map((pl) => entryPathOf(pl))
     .filter((entry) => entry !== null)
     .map((entry) => ({ name: entry.value, src: texts.sample(entry.value) }));
   const input: BookInput = {
@@ -122,7 +122,7 @@ function renderPreviewSample(texts: Texts, sample: PreviewSample, stage: StageSo
     kind: 'preview',
     src,
     options: { charsPerLine: layout.charsPerLine, bandCells: layout.charsPerLine + 2 * EDGE_INSET },
-    editorLines: sample.vocabulary === undefined ? [] : colourLines(src, sample.vocabulary),
+    editorLines: sample.vocabulary === undefined ? [] : colourLines(src, parseJpbook(texts.sample(sample.vocabulary)).names),
     diagnostics: sample.vocabulary === undefined ? [] : lintSource(src).diagnostics,
     preview: fragment,
   };

@@ -23,11 +23,9 @@ import {
 } from 'vscode-languageclient/node';
 
 import {
-  HighlightChangedNotification,
   LintConfigChangedNotification,
   ReadTextRequest,
   ServerErrorNotification,
-  type HighlightChangedParams,
   type LintConfigChangedParams,
   type ReadTextParams,
   type ReadTextResult,
@@ -40,7 +38,6 @@ import { BooksViewProvider } from './book/view.ts';
 import { command } from './commands.ts';
 import { registerAutoIndent } from './editor/autoIndent.ts';
 import { registerWordCommands } from './editor/wordCommands.ts';
-import { buildHighlightSnapshot } from './highlightConfig.ts';
 import { registerAnnotationHover } from './hover.ts';
 import { buildLintSnapshot } from './lintConfig.ts';
 import { folderIsNovelProject } from './probe.ts';
@@ -93,12 +90,6 @@ function pushLint(): void {
   void client?.sendNotification(LintConfigChangedNotification, params);
 }
 
-/** Sends every folder's highlight vocabulary. Only while Running, like `pushLint()`. */
-function pushHighlight(): void {
-  const params: HighlightChangedParams = { highlight: buildHighlightSnapshot() };
-  void client?.sendNotification(HighlightChangedNotification, params);
-}
-
 /**
  * Phase 2: construct the LanguageClient + UI singletons and start the server.
  * Idempotent and synchronous through construction, so `preview`/`booksView` exist the
@@ -138,7 +129,6 @@ function ensureStarted(): void {
     ],
     initializationOptions: {
       lintConfig: buildLintSnapshot(),
-      highlight: buildHighlightSnapshot(),
     },
     middleware: {
       // A document request waits for its document's open (see documentSync.ts).
@@ -213,8 +203,8 @@ function ensureStarted(): void {
   // when any jpnov.layout.* setting changes (the txt/outDir members only feed
   // on-demand builds, but the extra refresh is idempotent and settings edits are rare);
   // re-enumerate books when the out dir moves. Gated on Running: the state listener below
-  // re-sends lint and highlight when the server next comes up, and the preview/books re-read
-  // their snapshots on the next request anyway.
+  // re-sends the lint snapshot and re-lists the books when the server next comes up, and the
+  // preview/books re-read their snapshots on the next request anyway.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (client?.state !== State.Running) {
@@ -222,9 +212,6 @@ function ensureStarted(): void {
       }
       if (e.affectsConfiguration('jpnov.lint')) {
         pushLint();
-      }
-      if (e.affectsConfiguration('jpnov.editor.highlight')) {
-        pushHighlight();
       }
       if (e.affectsConfiguration('jpnov.layout') || e.affectsConfiguration('jpnov.lint.common.dash')) {
         // The dash choice is the one lint key the render snapshot also carries.
@@ -253,40 +240,36 @@ function ensureStarted(): void {
     client.onRequest(ReadTextRequest, (params: ReadTextParams): Promise<ReadTextResult> => readText(params)),
   );
 
-  // Folder add/remove while running: re-push the FULL highlight map (replacement semantics —
-  // this is also how a removed root's vocabulary is dropped) and re-enumerate books. Gated on
-  // Running like the settings pushes above; a change inside the startup window is covered by
-  // the state listener (the map) and, on the first start, the post-start refresh (the books)
-  // below.
+  // Folder add/remove while running: re-enumerate the books (the listing also replaces the
+  // server's per-root vocabulary, so a removed root's names go with it). Gated on Running like
+  // the settings pushes above; a change inside the startup window is covered by the state
+  // listener below.
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       if (client?.state !== State.Running) {
         return;
       }
-      pushHighlight();
       void booksView?.refresh();
     }),
   );
 
-  // The server holds the snapshots `initializationOptions` carried when the client was built,
-  // and the two Running-gated listeners above skip a change that arrives while it is starting.
-  // So send both again each time it comes up: after the first start, and after the restart
-  // vscode-languageclient makes when the server process dies.
+  // The server holds the snapshot `initializationOptions` carried when the client was built,
+  // and the Running-gated listeners above skip a change that arrives while it is starting. So
+  // send it again each time it comes up, and list the books (nothing else fills the panel on a
+  // cold start, and the listing is what gives the server the books' names): after the first
+  // start, and after the restart vscode-languageclient makes when the server process dies.
   context.subscriptions.push(
     client.onDidChangeState((e) => {
       if (e.newState === State.Running) {
         pushLint();
-        pushHighlight();
+        void booksView?.refresh();
       }
     }),
   );
 
   // Start the client (and the server process). start() is called exactly once (single-flight
-  // latch above), so a hard startup failure surfaces exactly one popup. On success, kick the
-  // first Books enumeration — nothing else fills the panel on a cold start (the jpbook
-  // watcher only reacts to create/delete).
-  client.start().then(
-    () => void booksView?.refresh(),
+  // latch above), so a hard startup failure surfaces exactly one popup.
+  client.start().catch(
     (err: unknown) => {
       const message = errorText(err);
       // Terminal popup inside the rejection branch; showErrorMessage never rejects so void is safe.
@@ -365,7 +348,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.workspace.onDidChangeWorkspaceFolders((e) => {
       // Only the not-yet-started case lives here; once started, the Running-gated listener
-      // registered in ensureStarted() re-pushes the vocabulary map and refreshes the books.
+      // registered in ensureStarted() refreshes the books.
       if (!started) {
         void startIfProjectPresent(e.added);
       }

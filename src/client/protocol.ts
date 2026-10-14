@@ -26,15 +26,16 @@ export interface BookGroupVM {
   readonly books: readonly BookVM[];
 }
 
-/** One chapter or cover row in a `detail`. */
+/** One row of an entry list in a `detail`: a chapter, a cover page, a character, a keyword. */
 export interface EntryVM {
   readonly line: number;
-  /** The entry path as written in the `.jpbook` (a cover item's marker excluded); with `line` and
-   *  the detail's `version`, the row's identity the row verbs echo. */
+  /** The entry's value as written in the `.jpbook` (an item's marker excluded): a path, or a name
+   *  with its ruby; with `line` and the detail's `version`, the row's identity the row verbs echo. */
   readonly path: string;
   readonly name: string;
   readonly folder: string;
-  readonly fileUri: string;
+  /** The file a path row opens; null for a name row, which an input box edits instead. */
+  readonly fileUri: string | null;
   /** Absent or not a file; the webview renders the row as an error. */
   readonly missing: boolean;
 }
@@ -43,7 +44,7 @@ export interface EntryVM {
  * Which entry list a detail row or a panel verb refers to — also the `DetailMessage` field
  * names. Mirrors `EntryList` in `#/shared/book/jpbook.ts` (this module imports nothing).
  */
-export type EntryList = 'chapters' | 'covers';
+export type EntryList = 'chapters' | 'covers' | 'characters' | 'keywords';
 
 /** One Book-Info metadata row in a `detail` (`note` is the （既定）/（未設定） status beside the label). */
 export interface MetaVM {
@@ -67,7 +68,7 @@ export interface StateMessage {
   readonly groups: readonly BookGroupVM[];
 }
 
-/** Host → webview: one book's DETAIL screen (covers, chapters + Book Info). */
+/** Host → webview: one book's DETAIL screen (Book Info, the names, covers, chapters). */
 export interface DetailMessage {
   readonly type: 'detail';
   readonly uri: string;
@@ -76,6 +77,8 @@ export interface DetailMessage {
   readonly version: number;
   readonly chapters: readonly EntryVM[];
   readonly covers: readonly EntryVM[];
+  readonly characters: readonly EntryVM[];
+  readonly keywords: readonly EntryVM[];
   readonly meta: readonly MetaVM[];
   /** Host-initiated open (create-book reveal, failed-build hand-off, ready re-hydration): the
    *  webview adopts the intent instead of dropping the push as a stale race, and re-applies its
@@ -114,6 +117,15 @@ export type BooksOutbound =
   // the `path` written there, the detail's `version`); the host acts only while the text still
   // matches, and answers a stale row with a re-push.
   | { readonly type: 'addEntries'; readonly uri: string; readonly list: EntryList }
+  // A name row's primary action: an input box that rewrites the item (a path row opens its file).
+  | {
+    readonly type: 'editEntry';
+    readonly uri: string;
+    readonly list: EntryList;
+    readonly line: number;
+    readonly path: string;
+    readonly version: number;
+  }
   | {
     readonly type: 'removeEntry';
     readonly uri: string;
@@ -172,6 +184,14 @@ export interface Labels {
   readonly covers: string;
   readonly addCovers: string;
   readonly noCovers: string;
+  readonly characters: string;
+  readonly addCharacters: string;
+  readonly noCharacters: string;
+  readonly keywords: string;
+  readonly addKeywords: string;
+  readonly noKeywords: string;
+  /** Tooltip and accessible name of a name row's edit action. */
+  readonly editEntry: string;
   readonly noBooksTitle: string;
   readonly noBooksBody: string;
   /** Appended to the empty state's body when no folder is open. */

@@ -108,7 +108,7 @@ h1, h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 .entry.drop-after { box-shadow: inset 0 -2px 0 var(--vscode-focusBorder); }
 .err { flex: 0 0 auto; color: var(--vscode-list-errorForeground, #f88070); }
 .pen { flex: 0 0 auto; color: var(--vscode-descriptionForeground); opacity: 0; }
-.meta:hover .pen, .meta:focus-visible .pen { opacity: 1; }
+.meta:hover .pen, .meta:focus-visible .pen, .emain:hover .pen, .emain:focus-visible .pen { opacity: 1; }
 .empty { padding: 4px 8px; color: var(--vscode-descriptionForeground); font-size: 12px; }
 /* The permanent "new file" action row at each list's tail: muted against real entries. */
 .action { color: var(--vscode-descriptionForeground); }

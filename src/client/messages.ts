@@ -62,8 +62,14 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('unsupported .jpbook version "{0}" (this extension reads {1})', s(0), s(1));
     case 'jpbook.metaEmptyValue':
       return vscode.l10n.t('{0} needs a value', s(0));
-    case 'jpbook.coverItemWithoutKey':
-      return vscode.l10n.t('a "- " item needs a "cover:" line above it; any other key ends the list: {0}', s(0));
+    case 'jpbook.itemWithoutKey':
+      return vscode.l10n.t('a "- " item needs a "cover:", "characters:" or "keywords:" line above it; any other key ends the list: {0}', s(0));
+    case 'jpbook.nameEmpty':
+      return vscode.l10n.t('an empty item (nothing to recognise); it is ignored');
+    case 'jpbook.nameNotPlain':
+      return vscode.l10n.t('a name is text and ruby only; this item is ignored: {0}', s(0));
+    case 'jpbook.nameConflict':
+      return vscode.l10n.t('"{0}" is also listed in {1}, written differently (ruby or split); the first one found applies', s(0), s(1));
     case 'syntax.unclosedAnnotation':
       return vscode.l10n.t('unterminated ［＃ annotation (missing ］)');
     case 'syntax.unterminatedBlock':

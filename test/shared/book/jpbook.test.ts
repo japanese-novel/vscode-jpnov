@@ -6,12 +6,11 @@ import {
   completeMetaLine,
   composeBookChrome,
   composeDividerValue,
-  COVER_ITEM_MARKS,
-  coverPathOf,
+  ITEM_MARKS,
   entryIdentity,
+  inlineKeyOf,
   KNOWN_KEYS,
-  isCover,
-  isInlineCover,
+  isEntryOf,
   HEADER,
   JPBOOK_VERSION,
   META_KEYS,
@@ -37,13 +36,19 @@ const EMPTIES = { author: '', header: '', footer: '', divider: '' } as const;
 const chapters = (text: string): readonly ParsedLine[] => below(parse(`---\n${text}`), 1).lines;
 const chapterKinds = (text: string): JpbookLineKind[] => chapters(text).map((l) => l.kind);
 const E = (name: string, isDir = false): CompletionEntry => ({ name, isDir });
+/** The value and span an entry line lists, its identity aside; null off an entry. */
+const valueOf = (pl: ParsedLine): { value: string; range: ParsedLine['range'] } | null =>
+  pl.item === undefined ? null : { value: pl.item.value, range: pl.item.range };
+/** The entry a chapter line of `path` carries. */
+const chapterItem = (path: string, startChar = 0): ParsedLine['item'] =>
+  ({ value: path, range: { startChar, endChar: startChar + path.length }, identity: entryIdentity(path) });
 
 // --- parseJpbook: chapter lines ---------------------------------------------
 
 test('parseJpbook returns ordered ok lines with exact ranges', () => {
   assert.deepEqual(chapters('a.jpnov\nb.jpnov'), [
-    { line: 0, range: { startChar: 0, endChar: 7 }, raw: 'a.jpnov', value: 'a.jpnov', kind: 'ok' },
-    { line: 1, range: { startChar: 0, endChar: 7 }, raw: 'b.jpnov', value: 'b.jpnov', kind: 'ok' },
+    { line: 0, range: { startChar: 0, endChar: 7 }, raw: 'a.jpnov', value: 'a.jpnov', kind: 'ok', list: 'chapters', item: chapterItem('a.jpnov') },
+    { line: 1, range: { startChar: 0, endChar: 7 }, raw: 'b.jpnov', value: 'b.jpnov', kind: 'ok', list: 'chapters', item: chapterItem('b.jpnov') },
   ]);
 });
 
@@ -59,7 +64,7 @@ test('parseJpbook skips blank / whitespace-only / full-width-space-only lines (z
 test('parseJpbook is CRLF-safe: strips trailing \\r, range excludes it', () => {
   const got = chapters('a.jpnov\r\nb.jpnov\r\n');
   assert.equal(got.length, 3);
-  assert.deepEqual(got[0], { line: 0, range: { startChar: 0, endChar: 7 }, raw: 'a.jpnov', value: 'a.jpnov', kind: 'ok' });
+  assert.deepEqual(got[0], { line: 0, range: { startChar: 0, endChar: 7 }, raw: 'a.jpnov', value: 'a.jpnov', kind: 'ok', list: 'chapters', item: chapterItem('a.jpnov') });
   assert.equal(got[1]?.value, 'b.jpnov');
   assert.equal(got[2]?.kind, 'blank');
 });
@@ -72,6 +77,8 @@ test('parseJpbook trims edges (incl. full-width) but preserves interior whitespa
     raw: '  chapter one.jpnov  ',
     value: 'chapter one.jpnov',
     kind: 'ok',
+    list: 'chapters',
+    item: chapterItem('chapter one.jpnov', 2),
   });
   assert.deepEqual(got[1], {
     line: 1,
@@ -79,12 +86,14 @@ test('parseJpbook trims edges (incl. full-width) but preserves interior whitespa
     raw: '　a b.jpnov',
     value: 'a b.jpnov',
     kind: 'ok',
+    list: 'chapters',
+    item: chapterItem('a b.jpnov', 1),
   });
 });
 
 test('parseJpbook allows subdir paths', () => {
   assert.deepEqual(chapters('chapters/01.jpnov'), [
-    { line: 0, range: { startChar: 0, endChar: 17 }, raw: 'chapters/01.jpnov', value: 'chapters/01.jpnov', kind: 'ok' },
+    { line: 0, range: { startChar: 0, endChar: 17 }, raw: 'chapters/01.jpnov', value: 'chapters/01.jpnov', kind: 'ok', list: 'chapters', item: chapterItem('chapters/01.jpnov') },
   ]);
 });
 
@@ -128,7 +137,7 @@ test('parseJpbook dedupes by entryIdentity: ./, empty segments, a folded .. and 
 // --- parseJpbook: metadata ---------------------------------------------------
 
 const ORPHAN = (value: string): JpbookLineKind => ({
-  error: { code: 'jpbook.coverItemWithoutKey', args: [value] },
+  error: { code: 'jpbook.itemWithoutKey', args: [value] },
 });
 
 test('parseJpbook: an empty metadata block (a lone fence): the keys an empty value suits are empty, the others absent', () => {
@@ -425,10 +434,10 @@ test('cover: item paths validate like chapter paths, quoting the line an item st
 test('the metadata key list is the user-visible contract', () => {
   // A stable contract, pinned literally: everything else derives from these constants.
   assert.deepEqual([...KNOWN_KEYS], [
-    'title', 'author', 'header', 'headerAlign', 'footer', 'footerAlign', 'divider', 'cover',
+    'title', 'author', 'header', 'headerAlign', 'footer', 'footerAlign', 'divider', 'cover', 'characters', 'keywords',
   ]);
   assert.deepEqual([...FURNITURE_ALIGNS], ['right', 'left', 'rightLeft', 'leftRight', 'center']);
-  assert.deepEqual([...COVER_ITEM_MARKS], ['-', '－']);
+  assert.deepEqual([...ITEM_MARKS], ['-', '－']);
 });
 
 test('cover: a marker with no path behind it reports the line, not an empty name', () => {
@@ -452,45 +461,116 @@ test('cover: a duplicate key warns and mutes its items (no orphan cascade)', () 
   assert.deepEqual(kinds('cover:\ncover:\n'), ['cover', DUP_COVER, 'blank']);
 });
 
-test('coverPathOf spans the PATH only, past the marker and any leading whitespace', () => {
+test('itemValueOf spans the PATH only, past the marker and any leading whitespace', () => {
   const lines = parse('cover:\n  - src/c2.jpnov\n---\n').lines;
   const item = lines[1];
   assert.ok(item);
-  assert.deepEqual(coverPathOf(item), {
+  assert.deepEqual(valueOf(item), {
     value: 'src/c2.jpnov',
     range: { startChar: 4, endChar: 16 },
   });
   // The span ends where the trimmed line does — only the marker is excluded.
-  assert.equal(coverPathOf(item)?.range.endChar, item.range.endChar);
-  assert.ok(isCover(item));
+  assert.equal(valueOf(item)?.range.endChar, item.range.endChar);
+  assert.ok(isEntryOf('covers')(item));
+  assert.equal(item.list, 'covers');
   const fence = lines[2];
   assert.ok(fence);
-  // The fence IS item-shaped (`coverShape('---')` slices `--`); what makes this null is the
+  // The fence IS item-shaped (`itemShape('---', …)` slices `--`); what makes this null is the
   // line's KIND. Never relax that guard back to a shape test.
-  assert.equal(coverPathOf(fence), null);
+  assert.equal(valueOf(fence), null);
 });
 
-test('coverPathOf returns null for the bare key line (no path to point at)', () => {
+test('itemValueOf returns null for the bare key line (no path to point at)', () => {
   const key = parse('cover:\n- c.jpnov\n').lines[0];
   assert.ok(key);
   assert.equal(key.kind, 'cover');
-  assert.equal(isCover(key), false);
-  assert.equal(isInlineCover(key), false);
-  assert.equal(coverPathOf(key), null);
+  assert.equal(key.list, 'covers'); // the key line belongs to its list, an entry of it it is not
+  assert.equal(isEntryOf('covers')(key), false);
+  assert.equal(inlineKeyOf(key), null);
+  assert.equal(valueOf(key), null);
 });
 
-test('coverPathOf spans the value of an inline cover: key line, past the colon and its whitespace', () => {
+test('itemValueOf spans the value of an inline cover: key line, past the colon and its whitespace', () => {
   const lines = parse('cover: src/c.jpnov\n  cover：  c.jpnov\n- d.jpnov\n').lines;
   const [inline, wide, item] = lines;
   assert.ok(inline && wide && item);
-  assert.deepEqual(coverPathOf(inline), { value: 'src/c.jpnov', range: { startChar: 7, endChar: 18 } });
-  assert.ok(isInlineCover(inline));
+  assert.deepEqual(valueOf(inline), { value: 'src/c.jpnov', range: { startChar: 7, endChar: 18 } });
+  assert.equal(inlineKeyOf(inline), 'cover');
   // The second key is a muted duplicate: no path to point at, however it is written.
-  assert.equal(coverPathOf(wide), null);
-  assert.equal(isInlineCover(item), false);
+  assert.equal(valueOf(wide), null);
+  assert.equal(inlineKeyOf(item), null);
   const indented = parse('  cover：  c.jpnov\n').lines[0];
   assert.ok(indented);
-  assert.deepEqual(coverPathOf(indented), { value: 'c.jpnov', range: { startChar: 10, endChar: 17 } });
+  assert.deepEqual(valueOf(indented), { value: 'c.jpnov', range: { startChar: 10, endChar: 17 } });
+});
+
+// --- parseJpbook: the name lists ----------------------------------------------
+
+const NOT_PLAIN = (value: string): JpbookLineKind => ({ warning: { code: 'jpbook.nameNotPlain', args: [value] } });
+const EMPTY_NAME: JpbookLineKind = { warning: { code: 'jpbook.nameEmpty', args: [] } };
+
+test('characters/keywords: a bare key opens a list of "- " names; a value on the key line is its first item', () => {
+  assert.deepEqual(kinds('characters:\n- 山田　太郎\n- John Smith\nkeywords:\n- 王都\n---\nch.jpnov\n'), [
+    'names', 'name', 'name', 'names', 'name', 'fence', 'ok', 'blank',
+  ]);
+  assert.deepEqual(kinds('characters: 山田　太郎\n- 山田　花子\n'), ['name', 'name', 'blank']);
+  const got = parse('characters: 山田　太郎\n- 山田《やまだ》花子《はなこ》\nkeywords:\n  - 王都《おうと》\n');
+  assert.deepEqual(got.lines.map((l) => l.list), ['characters', 'characters', 'keywords', 'keywords', undefined]);
+  assert.deepEqual(got.names.characters.map((n) => [n.line, n.text, n.name.parts.map((p) => p.base)]), [
+    [0, '山田　太郎', ['山田', '太郎']],
+    [1, '山田《やまだ》花子《はなこ》', ['山田', '花子']],
+  ]);
+  assert.deepEqual(got.names.keywords.map((n) => [n.line, n.text, n.name.parts]), [[3, '王都《おうと》', [{ base: '王都', reading: 'おうと' }]]]);
+  assert.deepEqual(got.meta, EMPTIES); // the lists are never JpbookMeta fields
+  // The item's value and span, past the marker or the colon.
+  assert.deepEqual(valueOf(got.lines[0] ?? fail()), { value: '山田　太郎', range: { startChar: 12, endChar: 17 } });
+  assert.deepEqual(valueOf(got.lines[3] ?? fail()), { value: '王都《おうと》', range: { startChar: 4, endChar: 11 } });
+  assert.equal(inlineKeyOf(got.lines[0] ?? fail()), 'characters');
+  const second = got.lines[1] ?? fail();
+  assert.equal(second.item?.identity, '山田花子');
+  assert.equal(isEntryOf('characters')(second), true);
+  assert.equal(isEntryOf('keywords')(second), false);
+});
+
+function fail(): never {
+  assert.fail('line missing');
+}
+
+test('characters/keywords: an item that is no name warns and is ignored; a repeated base warns too', () => {
+  assert.deepEqual(kinds('characters:\n- 山田［＃「山田」に傍点］\n- 《やまだ》\n- 山田《》\n-\n- 山田\n'), [
+    'names', NOT_PLAIN('山田［＃「山田」に傍点］'), NOT_PLAIN('《やまだ》'), NOT_PLAIN('山田《》'), EMPTY_NAME, 'name', 'blank',
+  ]);
+  // The base decides a repeat: another writing (a reading, a split, a space) of the same base is one.
+  const got = parse('characters:\n- 山田　太郎\n- 山田《やまだ》太郎《たろう》\n- 山田太郎\n- John Smith\n- JohnSmith\nkeywords:\n- 山田太郎\n');
+  assert.deepEqual(got.lines.map((l) => l.kind), ['names', 'name', 'nameDuplicate', 'nameDuplicate', 'name', 'nameDuplicate', 'names', 'name', 'blank']);
+  assert.deepEqual(got.names.characters.map((n) => n.text), ['山田　太郎', 'John Smith']);
+  assert.deepEqual(got.names.keywords.map((n) => n.text), ['山田太郎']); // the two lists dedupe on their own
+  // A rejected or repeated item still belongs to its list (the editor knows what it was meant to be).
+  assert.deepEqual(got.lines.map((l) => l.list), [...Array<string>(6).fill('characters'), 'keywords', 'keywords', undefined]);
+  assert.deepEqual(parse('characters:\n- 山田［＃太字］\n').lines[1]?.list, 'characters');
+});
+
+test('characters/keywords: an item with no open list is the same Error as an orphan cover item; keys close lists', () => {
+  assert.deepEqual(kinds('- 山田\n'), [ORPHAN('- 山田'), 'blank']);
+  assert.deepEqual(kinds('characters:\n- 山田\ntitle: t\n- 太郎\n'), ['names', 'name', 'meta', ORPHAN('- 太郎'), 'blank']);
+  // One list's key closes another's; a repeated key is a muted duplicate (its items warn, nothing collects).
+  assert.deepEqual(kinds('characters:\n- 山田\nkeywords:\n- 王都\ncharacters:\n- 太郎\n'), [
+    'names', 'name', 'names', 'name',
+    { warning: { code: 'jpbook.metaDuplicateKey', args: ['characters'] } },
+    { warning: { code: 'jpbook.metaDuplicateKey', args: ['characters'] } },
+    'blank',
+  ]);
+  assert.deepEqual(parse('characters:\n- 山田\ncharacters:\n- 太郎\n').names.characters.map((n) => n.text), ['山田']);
+  // A cover list and a name list are independent; `- x.jpnov` under characters is a name.
+  assert.deepEqual(kinds('cover:\n- c.jpnov\ncharacters:\n- c.jpnov\n'), ['cover', 'coverEntry', 'names', 'name', 'blank']);
+});
+
+test('characters/keywords: an empty list is as legal as an absent key, and never an Error', () => {
+  const got = parse('characters:\nkeywords:\n---\nch.jpnov\n');
+  assert.deepEqual(got.lines.map((l) => l.kind), ['names', 'names', 'fence', 'ok', 'blank']);
+  assert.deepEqual(got.names, { characters: [], keywords: [] });
+  assert.equal(checkJpbook(parseJpbook(`${metaWith('characters:\n- 山田［＃太字］\n-')}a.jpnov`)).ok, true);
+  assert.deepEqual(parse('---\n').names, { characters: [], keywords: [] });
 });
 
 // --- writtenKeysOf -----------------------------------------------------------
@@ -682,7 +762,7 @@ test('completeMetaLine offers every key on an empty line, inserted as "key: "', 
 
 test('completeMetaLine leaves out the keys already written', () => {
   assert.deepEqual(completeMetaLine('', new Set(['title', 'cover'])).map((c) => c.label), [
-    'author', 'header', 'headerAlign', 'footer', 'footerAlign', 'divider',
+    'author', 'header', 'headerAlign', 'footer', 'footerAlign', 'divider', 'characters', 'keywords',
   ]);
   assert.deepEqual(completeMetaLine('t', new Set(['title'])), []);
 });

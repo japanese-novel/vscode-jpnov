@@ -404,6 +404,8 @@ divider:
 | `footerAlign` | `right` | Footer placement: pinned (`right`, `left`), alternating per page (`rightLeft`, `leftRight`), or centred (`center`) |
 | `divider` | empty | Chapter divider inserted between chapters that do not open with a heading (e.g. `＊　＊　＊`); a bare mark is centred along the line at build time, a `［＃３字下げ］` prefix indents it instead; empty for a single blank line |
 | `cover` | — | Cover pages placed before the body: a cover sheet, a title page, a synopsis (see below); a single page may be written inline as `cover: cover.jpnov` |
+| `characters` | — | The cast, one name per item, ruby allowed; highlighted in the narration (see [highlighting](#character--keyword-highlighting)) |
+| `keywords` | — | Coined words, one per item, ruby allowed; bolded in the narration (see [highlighting](#character--keyword-highlighting)) |
 
 The header is the first line, exactly `jpbook/1`: a first line that is anything
 else, or that names a version this extension has no parser for, fails the build,
@@ -411,8 +413,9 @@ and nothing below it is read. A key that is not written is an empty one; `title`
 `headerAlign` and `footerAlign` cannot be empty, so a book without them is not
 built, and its `---` line is flagged. Unknown keys
 warn and are ignored, so future keys stay forward-compatible. The seven keys from `title` to `divider`
-are also editable from the **Book Info** rows in the Books view, and `cover`
-from its **Cover pages** section.
+are also editable from the **Book Info** rows in the Books view, `cover`
+from its **Cover pages** section, and the two lists from its **Characters** and
+**Keywords** sections.
 
 The header and footer take the same value annotations as a cover page (below), plus
 ページ番号, the current page; any other annotation or ruby prints as typed.
@@ -479,36 +482,54 @@ if placed at the line head.
 
 ## Character & keyword highlighting
 
-Declare your **cast** and a few **coined keywords** in settings (**Japanese
-Novel — Editor**, per workspace folder), so they stand out while you
-write — handy where Japanese drops the subject:
+Declare your **cast** and a few **coined keywords** in the book file — the
+`characters` and `keywords` lists of a `.jpbook`, written like `cover` — so they
+stand out while you write — handy where Japanese drops the subject:
 
-```json
-// .vscode/settings.json
-{
-  "jpnov.editor.highlight.characters": ["山田　太郎", "John Smith"],
-  "jpnov.editor.highlight.keywords": ["王都"]
-}
+```text
+jpbook/1
+title: 作品名　第一巻
+author: ペンネーム
+headerAlign: center
+footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
+footerAlign: right
+characters:
+  - 山田　太郎
+  - 山田《やまだ》花子《はなこ》
+  - John Smith
+keywords:
+  - 王都《おうと》
+---
+第一章.jpnov
 ```
 
-- **`jpnov.editor.highlight.characters`** — each name is split on the half-/full-width
-  space into surname + given, so the full name, the surname alone, and the
-  given name alone are all recognised. A character is highlighted only where it
-  reads as a **subject**: a name (optionally with one honorific such as `さん` /
-  `先生` / `ちゃん`) immediately followed by `は` or `が` — e.g. `太郎は`,
-  `山田さんが`. Common pronouns (`僕` / `私` / `俺` / `彼` / `彼女` …) are
-  recognised the same way. Dialogue inside `「」` / `『』` is left in the body
-  colour; only narration is scanned.
-- **`jpnov.editor.highlight.keywords`** — coined terms (a fantasy noun, a place, …)
-  are **bolded** wherever they appear in narration, without changing colour.
-  If a surface is in both lists, the subject form wins.
+- **`characters`** — an item is text with ruby, nothing else (an item holding
+  another annotation warns and is ignored). A name splits into surname + given
+  at a space and at every ruby boundary — `山田　太郎`, `山田《やまだ》花子《はなこ》`
+  and `山田｜花子《はなこ》` all split, `｜山田花子《やまだはなこ》` and `山田花子` do
+  not; an implicit ruby base is the run the body gives it, so `山田太郎《たろう》`
+  is one word — and the full name, the surname alone and the given name alone
+  are all recognised. A character is highlighted only where it reads as a
+  **subject**: a name (optionally with one honorific such as `さん` / `先生` /
+  `ちゃん`) immediately followed by `は` or `が` — e.g. `太郎は`, `山田さんが`.
+  Common pronouns (`僕` / `私` / `俺` / `彼` / `彼女` …) are recognised the same
+  way. Dialogue inside `「」` / `『』` is left in the body colour; only narration
+  is scanned. Matching reads the body's base text, so `山田花子は` and
+  `山田《やまだ》花子《はなこ》は` are the same; a reading that differs from the book's
+  is never flagged.
+- **`keywords`** — coined terms (a fantasy noun, a place, …) are **bolded**
+  wherever they appear in narration, without changing colour. If a surface is
+  in both lists, the subject form wins.
 
 Matching is exact — no dictionary, no guessing — so ordinary words are never
-miscoloured and invented names are always caught. Both lists apply per
-workspace folder and take effect immediately in open
-editors — no reload, no rebuild. Colouring is delivered as LSP semantic tokens;
-override the colours under `editor.semanticTokenColorCustomizations` if you
-like.
+miscoloured and invented names are always caught. A chapter uses the lists of
+**every** `.jpbook` in its folder (the nearest open workspace folder), whichever
+book it is in: a series writes a name once, in the volume it first appears in,
+and a name written differently (ruby, split) in two volumes warns in both. The
+lists take effect in open editors when the book file is saved — no reload, no
+rebuild — and the Books view edits them in its **Characters** and **Keywords**
+sections. Colouring is delivered as LSP semantic tokens; override the colours
+under `editor.semanticTokenColorCustomizations` if you like.
 
 ![Narration with a coloured character subject and a bolded keyword](docs/images/vscode-highlight.png)
 
@@ -557,8 +578,8 @@ with no base or no reading) are always reported, independent of lint settings.
 ## Settings reference
 
 Most settings are window-level; the output folder is resolved per book file
-(set it per workspace folder or in user settings), and the highlighting lists
-are per workspace folder.
+(set it per workspace folder or in user settings). The cast and keyword lists
+are not settings: they live in the `.jpbook` files.
 
 ### Japanese Novel — Layout & Output
 
@@ -621,8 +642,6 @@ form, and `ruby.kana` to ruby readings.
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `jpnov.editor.autoIndent` | `true` | Full-width space on Enter, removed again for `「`/`『` lines (see auto indent) |
-| `jpnov.editor.highlight.characters` | `[]` | Cast names, per workspace folder (see highlighting) |
-| `jpnov.editor.highlight.keywords` | `[]` | Coined terms, per workspace folder (see highlighting) |
 | `jpnov.editor.updateRefsOnFileMove` | `prompt` | Update `.jpbook` paths on rename/move (`always`, `never`) |
 
 ## Commands

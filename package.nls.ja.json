@@ -27,7 +27,7 @@
   "walkthrough.build.title": "章をまとめて本にする",
   "walkthrough.build.description": "下の「本を作成」でファイル名を入力すると、新しい本が「本の一覧」で開きます（フォルダーは開かなくても使えますが、[小説のフォルダーを開いておく](command:workbench.action.files.openFolder)と、その中の本が自動で並びます）。章の追加・並べ替えも、タイトルやヘッダーといった「本の情報」の編集もその場で行えます。あとは出力したい本にチェックを入れます。一覧の下のボタンで、ページ組版の HTML・電子書籍の EPUB・青空文庫形式のテキストに出力します。このうち「印刷／PDF 保存」ボタンは、本を HTML に出力してブラウザーで開きます。そのまま印刷や PDF 保存ができます。`.jpbook` 1 つが本 1 冊です。中身はただのテキストファイルなので、手で書いても同じです（例を参照）。\n[本を作成](command:jpbook.createFile)\n[「本の一覧」を開く](command:workbench.view.extension.jpnov)",
   "walkthrough.highlight.title": "（任意）執筆と推敲を助ける設定",
-  "walkthrough.highlight.description": "登場人物と造語を登録すると、執筆中の地の文でハイライトされます（名前は `太郎は` のように主語として読める箇所で色が付き、造語は現れた箇所が太字になります）。文章校正（行頭の字下げ・文末の句点・台詞の締めなど）は書いている間に自動で行われます。項目ごとのオン／オフも、投稿前の追加の確認も、文章校正の設定で調整できます。\n[ハイライト設定を開く](command:workbench.action.openSettings?%22jpnov.editor.highlight%22)\n[文章校正の設定を開く](command:workbench.action.openSettings?%22jpnov.lint%22)",
+  "walkthrough.highlight.description": "登場人物と造語を本のファイルに登録すると（`.jpbook` の `characters:`・`keywords:`。「本の一覧」の「登場人物」「造語」からも追加できます）、執筆中の地の文でハイライトされます（名前は `太郎は` のように主語として読める箇所で色が付き、造語は現れた箇所が太字になります）。文章校正（行頭の字下げ・文末の句点・台詞の締めなど）は書いている間に自動で行われます。項目ごとのオン／オフも、投稿前の追加の確認も、文章校正の設定で調整できます。\n[本の一覧を開く](command:workbench.view.extension.jpnov)\n[文章校正の設定を開く](command:workbench.action.openSettings?%22jpnov.lint%22)",
   "jpnov.lint.title": "小説 — 文章校正",
   "jpnov.lint.common.sentenceLength.description": "一文がこの文字数を超えたら警告します。推奨: 100。空欄で無効。",
   "jpnov.lint.common.maxTen.description": "一文の読点（、）がこの数を超えたら警告します。推奨: 3。空欄で無効。",
@@ -136,7 +136,5 @@
   "jpnov.editor.updateRefsOnFileMove.never.label": "更新しない",
   "jpnov.editor.updateRefsOnFileMove.never.description": "本のファイルを変更しません。",
   "jpnov.editor.title": "小説 — エディター",
-  "jpnov.editor.autoIndent.description": "改行すると、次の行の行頭に全角スペースを 1 つ入れます。その行を 「 や 『 で書き始めたときと、何も書かずにそのまま改行したときは、このスペースを取り除きます。対象は自動で入れたスペースだけです。",
-  "jpnov.editor.highlight.characters.description": "登場人物の名前（1 項目 1 人、例: `山田　太郎`）。名前は半角・全角スペースで姓と名に分割し、フルネーム・姓のみ・名のみをすべて認識します。色が付くのは地の文だけで、名前（`さん` などの敬称 1 つまで可）の直後に `は`・`が` が続く、主語として読める箇所に限ります。空の項目と重複は無視されます。",
-  "jpnov.editor.highlight.keywords.description": "造語・固有名詞（架空の名詞・地名など、1 項目 1 語）。地の文に現れた箇所を、本文と同じ色のまま太字にします。登場人物と重なる語は、`は`・`が` が続く主語の形なら登場人物、それ以外の箇所は造語として扱われます。空の項目と重複は無視されます。"
+  "jpnov.editor.autoIndent.description": "改行すると、次の行の行頭に全角スペースを 1 つ入れます。その行を 「 や 『 で書き始めたときと、何も書かずにそのまま改行したときは、このスペースを取り除きます。対象は自動で入れたスペースだけです。"
 }

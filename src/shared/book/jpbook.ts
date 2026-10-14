@@ -4,7 +4,8 @@
  *
  * A `.jpbook` opens with its header line ({@link HEADER}: the format and its version), then its
  * metadata — the seven `key: value` lines of {@link META_KEYS}, all required, plus the optional
- * `cover:` list — closes it with a `---` line, and continues with one chapter path per line.
+ * lists `cover:`, `characters:` and `keywords:` — closes it with a `---` line, and continues with
+ * one chapter path per line.
  *
  * Chapter and cover paths are relative to the DIRECTORY OF THE `.jpbook`, as an `import` is to
  * its module: `a.jpnov`, `./a.jpnov`, `../drafts/a.jpnov`, and nothing bounds them. The
@@ -23,6 +24,7 @@ import { displayText } from '../chars.ts';
 import { nonBlank } from '../compiler/reflow.ts';
 import type { LocalizableMessage } from '../protocol.ts';
 import { pathSegments } from '../uri.ts';
+import { nameIdentity, readName, type ListedName, type NameEntry } from './names.ts';
 
 /** A column span within a single document line (`endChar` exclusive). */
 export interface JpbookRange {
@@ -42,13 +44,17 @@ export interface JpbookRange {
  * - `'duplicate'` — a valid path that repeats an earlier `'ok'` line; a Warning, not built.
  * - `'cover'`     — a bare `cover:` key line, opening the cover list.
  * - `'coverEntry'` — a cover path: a `- ` item, or the `cover: path` key line, which opens the
- *                  list and is its first item; a front page in the html build ({@link coverPathOf}).
+ *                  list and is its first item; a front page in the html build ({@link entryPathOf}).
  * - `'coverDuplicate'` — a cover path repeating an earlier one; a Warning, not built.
+ * - `'names'`     — a bare `characters:` or `keywords:` key line, opening that list.
+ * - `'name'`      — a valid item of a name list ({@link ParsedJpbook.names} holds what it reads as):
+ *                  a `- ` item, or the `characters: name` key line, the list's first item.
+ * - `'nameDuplicate'` — a name whose base repeats an earlier item's; a Warning, ignored.
  * - `{ error }`   — a syntax problem (e.g. backslash, non-`.jpnov`, key-less metadata, an empty
  *                  `title`, a bad alignment) to surface as an Error; a book with any such line is not built
  *                  ({@link checkJpbook}). Its value is a {@link LocalizableMessage}.
- * - `{ warning }` — a tolerated metadata problem (unknown/duplicate key); the line is ignored
- *                  and the book still builds.
+ * - `{ warning }` — a tolerated metadata problem (unknown/duplicate key, an item that is no name);
+ *                  the line is ignored and the book still builds.
  */
 export type JpbookLineKind =
   | 'blank'
@@ -61,6 +67,9 @@ export type JpbookLineKind =
   | 'cover'
   | 'coverEntry'
   | 'coverDuplicate'
+  | 'names'
+  | 'name'
+  | 'nameDuplicate'
   | { readonly error: LocalizableMessage }
   | { readonly warning: LocalizableMessage };
 
@@ -74,25 +83,51 @@ export interface ParsedLine {
   /** The trimmed content (empty for blank lines). */
   readonly value: string;
   readonly kind: JpbookLineKind;
+  /**
+   * The list the line belongs to, whatever its kind: a chapter line below the fence, a list's key
+   * line, or an item under it (one in Error or Warning included, so the editor knows what the
+   * line was meant to be). Absent off every list.
+   */
+  readonly list?: EntryList;
+  /** The entry the line lists, as the parser read it; present exactly when the line IS an entry of its list. */
+  readonly item?: ItemValue;
 }
 
-/** A chapter entry line — `duplicate` still counts (it renders, moves, and dedupes like `ok`). */
-function isChapter(pl: ParsedLine): boolean {
-  return pl.kind === 'ok' || pl.kind === 'duplicate';
+/**
+ * An entry's value (a path, a name) and its absolute column span — the ONE slicing rule
+ * diagnostics, document links, rename tracking and the panel share: the whole trimmed line of a
+ * chapter, the text past the marker (or the key's colon) of a list item. `identity` is what the
+ * list dedupes by ({@link identityOf}); a name carries what it reads as.
+ */
+export interface ItemValue {
+  readonly value: string;
+  readonly range: JpbookRange;
+  readonly identity: string;
+  readonly name?: ListedName;
 }
 
-/** A cover path line — `coverDuplicate` counts too (it links and rename-tracks). */
-export function isCover(pl: ParsedLine): boolean {
-  return pl.kind === 'coverEntry' || pl.kind === 'coverDuplicate';
+/** The lists whose items are names, written under the key of the same name. */
+export const NAME_LISTS = ['characters', 'keywords'] as const;
+export type NameList = (typeof NAME_LISTS)[number];
+
+export function isNameList(list: EntryList): list is NameList {
+  return (NAME_LISTS as readonly string[]).includes(list);
 }
 
-/** The two editable entry lists of a book — the panel's sections and the `list` its verbs carry. */
-const ENTRY_LISTS = ['chapters', 'covers'] as const;
+/** The editable entry lists of a book — the panel's sections and the `list` its verbs carry. */
+const ENTRY_LISTS = ['chapters', 'covers', ...NAME_LISTS] as const;
 export type EntryList = (typeof ENTRY_LISTS)[number];
 
-/** The line predicate of one list: chapters = ok|duplicate, covers = coverEntry|coverDuplicate. */
+/** The lists written under a key in the metadata; the chapters follow the fence instead. */
+export type KeyedList = Exclude<EntryList, 'chapters'>;
+
+/** The lists whose items are paths to `.jpnov` files. */
+export type FileList = 'chapters' | 'covers';
+
+/** The line predicate of one list: an entry line that belongs to it (a repeat counts — it
+ *  renders, moves, and dedupes like the first; a rejected item does not). */
 export function isEntryOf(list: EntryList): (pl: ParsedLine) => boolean {
-  return list === 'chapters' ? isChapter : isCover;
+  return (pl) => pl.list === list && pl.item !== undefined;
 }
 
 /** Narrows an untrusted value (a webview message field) to a list name. */
@@ -135,19 +170,35 @@ function isEmptiable(key: MetaKey): key is Exclude<MetaKey, 'title' | 'headerAli
 /** The list-valued front-page key — parsed as line kinds, never a {@link JpbookMeta} field. */
 export const COVER_KEY = 'cover';
 
-/** Cover list-item markers; the `.jpbook` grammar derives its class from this (grammar-sync). */
-export const COVER_ITEM_MARKS = ['-', '－'] as const;
+/** The key each keyed list is written under: the front pages, then the name lists (each under the key of its name). */
+const KEY_OF_LIST: Readonly<Record<KeyedList, string>> = { covers: COVER_KEY, characters: 'characters', keywords: 'keywords' };
 
-/** True iff `ch` opens a cover list item. The ONE marker test — the completion router runs it
- *  at the cursor's path start, the parser at the head of a trimmed line. */
-export function isCoverMark(ch: string): boolean {
-  return (COVER_ITEM_MARKS as readonly string[]).includes(ch);
+/** The list-valued keys, in writing order. */
+export const LIST_KEYS: readonly string[] = Object.values(KEY_OF_LIST);
+
+export function listKeyOf(list: KeyedList): string {
+  return KEY_OF_LIST[list];
+}
+
+/** The list a key opens, or null for a single-valued or unknown key. */
+function listOfKey(key: string): KeyedList | null {
+  return (Object.keys(KEY_OF_LIST) as KeyedList[]).find((list) => KEY_OF_LIST[list] === key) ?? null;
+}
+
+/** List-item markers; the `.jpbook` grammar derives its class from this (grammar-sync). */
+export const ITEM_MARKS = ['-', '－'] as const;
+
+/** True iff `ch` opens a list item. The ONE marker test — the completion router runs it at the
+ *  cursor's path start, the parser at the head of a trimmed line. */
+export function isItemMark(ch: string): boolean {
+  return (ITEM_MARKS as readonly string[]).includes(ch);
 }
 
 /** Every recognized key in writing order (unknown-key message, key completion, key insertion).
- *  `cover` stays out of {@link META_KEYS}: the panel's meta rows and `setMeta` edit the book's
- *  own metadata, one line per key. */
-export const KNOWN_KEYS = [...META_KEYS, COVER_KEY] as const;
+ *  The list keys stay out of {@link META_KEYS}: the panel's meta rows and `setMeta` edit the
+ *  book's own metadata, one line per key. They come LAST, so a meta line is never inserted right
+ *  under a list's key line, where it would close the list. */
+export const KNOWN_KEYS = [...META_KEYS, ...LIST_KEYS] as const;
 
 /** The line that closes the metadata; the chapters follow it. */
 export const FENCE = '---';
@@ -164,13 +215,18 @@ export function metaKeyOf(value: string): string | null {
   return key === '' ? null : key;
 }
 
+/** The item portion of a trimmed line and its offset within it, past the marker and the whitespace after it. */
+export interface ItemShape {
+  readonly item: string;
+  readonly offset: number;
+}
+
 /**
- * The path portion of a cover line's TRIMMED value and its offset within it: after a `- `
- * marker, else after the `cover:` key's colon; null off both shapes. Marker first, as the
- * parser dispatches.
+ * The item portion of a list line's TRIMMED value: after a `- ` marker, else after the colon of
+ * `key`; null off both shapes. Marker first, as the parser dispatches.
  */
-export function coverShape(value: string): { readonly path: string; readonly offset: number } | null {
-  const sep = isCoverMark(value.charAt(0)) ? 1 : metaKeyOf(value) === COVER_KEY ? colonIndex(value) + 1 : -1;
+export function itemShape(value: string, key: string): ItemShape | null {
+  const sep = isItemMark(value.charAt(0)) ? 1 : metaKeyOf(value) === key ? colonIndex(value) + 1 : -1;
   if (sep < 0) {
     return null;
   }
@@ -178,34 +234,32 @@ export function coverShape(value: string): { readonly path: string; readonly off
   while (offset < value.length && isEdgeWhitespace(value.charAt(offset))) {
     offset += 1;
   }
-  return { path: value.slice(offset), offset };
+  return { item: value.slice(offset), offset };
 }
 
-/** True for a `cover: path` line: the key line that is also the list's first item (never a `- ` item). */
-export function isInlineCover(pl: ParsedLine): boolean {
-  return isCover(pl) && metaKeyOf(pl.value) === COVER_KEY;
-}
-
-/**
- * A cover item's path and its absolute column span — the ONE slicing rule diagnostics,
- * document links and rename tracking share. Keyed on the line's KIND, never its shape: a
- * fence is item-shaped too (`---` slices to `--`).
- */
-export function coverPathOf(pl: ParsedLine): { readonly value: string; readonly range: JpbookRange } | null {
-  if (!isCover(pl)) {
+/** The key of a `key: item` line — the key line that is also its list's first item; null for a `- ` item or a non-entry. */
+export function inlineKeyOf(pl: ParsedLine): string | null {
+  if (pl.item === undefined || pl.list === undefined || pl.list === 'chapters') {
     return null;
   }
-  const shape = coverShape(pl.value);
-  if (shape === null || shape.path === '') {
-    return null;
-  }
-  const startChar = pl.range.startChar + shape.offset;
-  return { value: shape.path, range: { startChar, endChar: startChar + shape.path.length } };
+  const key = listKeyOf(pl.list);
+  return metaKeyOf(pl.value) === key ? key : null;
 }
 
-/** The path + span a chapter or cover line points at; null for every other line. */
-export function entryPathOf(pl: ParsedLine): { readonly value: string; readonly range: JpbookRange } | null {
-  return isChapter(pl) ? { value: pl.value, range: pl.range } : coverPathOf(pl);
+/** The path a chapter or cover line points at; null for every other line (a name is no path). */
+export function entryPathOf(pl: ParsedLine): ItemValue | null {
+  return pl.list === 'chapters' || pl.list === 'covers' ? pl.item ?? null : null;
+}
+
+/** What makes two values of `list` one entry: a path's {@link entryIdentity}, a name's base
+ *  ({@link nameIdentity}; a value that is no name is its own). The parser records it on each
+ *  entry ({@link ItemValue.identity}); this is for a value not yet listed. */
+export function identityOf(list: EntryList, value: string): string {
+  if (!isNameList(list)) {
+    return entryIdentity(value);
+  }
+  const read = readName(value);
+  return read.ok ? nameIdentity(read.name) : value;
 }
 
 /**
@@ -264,7 +318,22 @@ export interface ParsedJpbook {
    * parser reads: that line reports itself.
    */
   readonly metaErrors: readonly MetaError[];
+  /** {@link namesOf} the lines: the valid items of each name list, repeats left out. */
+  readonly names: Readonly<Record<NameList, readonly NameEntry[]>>;
 }
+
+/** The valid items of each name list in document order, repeats left out (an unwritten list is empty). */
+export function namesOf(lines: readonly ParsedLine[]): Readonly<Record<NameList, readonly NameEntry[]>> {
+  const entry = (pl: ParsedLine): NameEntry | null =>
+    pl.kind === 'name' && pl.item?.name !== undefined ? { line: pl.line, text: pl.item.value, name: pl.item.name, identity: pl.item.identity } : null;
+  return {
+    characters: lines.filter((pl) => pl.list === 'characters').map(entry).filter((e) => e !== null),
+    keywords: lines.filter((pl) => pl.list === 'keywords').map(entry).filter((e) => e !== null),
+  };
+}
+
+/** No names at all: what a book no parser reads, or one without the lists, holds. */
+export const NO_NAMES = namesOf([]);
 
 /** The line the metadata ends before: its closing fence, else the end of the file. */
 export function metaEndOf(parsed: ParsedJpbook): number {
@@ -339,11 +408,12 @@ const PARSERS: ReadonlyMap<string, BodyParser> = new Map([[JPBOOK_VERSION, parse
  * everywhere; interior whitespace is preserved (a filename may contain spaces). Every line
  * above the first `---` is metadata, and a line there without a key is an Error. Duplicate
  * keys keep the FIRST line (one in Error included: an empty `title:` or a bad alignment takes
- * its key and reports itself). A `cover` list opens at the first `cover:` line (a value on it
- * is the list's first item), survives blank lines and closes at any other metadata line or the
- * fence. Chapter and cover paths must be backslash-free `.jpnov` (any
- * letter case); later repeats of a path (by {@link entryIdentity}) are
- * `'duplicate'`/`'coverDuplicate'`, the two lists deduping independently. Never throws.
+ * its key and reports itself). A list opens at the first line of its key (`cover:`,
+ * `characters:`, `keywords:`; a value on it is the list's first item), survives blank lines and
+ * closes at any other metadata line or the fence. Chapter and cover paths must be
+ * backslash-free `.jpnov` (any letter case); later repeats of a path (by {@link entryIdentity})
+ * are `'duplicate'`/`'coverDuplicate'`. A name is text and ruby (`readName`); a later repeat of
+ * its base (by `nameIdentity`) is `'nameDuplicate'`. Every list dedupes on its own. Never throws.
  */
 export function parseJpbook(text: string): ParsedJpbook {
   const contents = text.split('\n').map((raw) => (raw.endsWith('\r') ? raw.slice(0, -1) : raw));
@@ -362,6 +432,7 @@ export function parseJpbook(text: string): ParsedJpbook {
     meta: {},
     fence: null,
     metaErrors: [],
+    names: NO_NAMES,
   });
 
   const value = first.slice(bom);
@@ -376,100 +447,128 @@ export function parseJpbook(text: string): ParsedJpbook {
   return parseBody(header('header'), contents);
 }
 
-/** Version 1: `key: value` metadata and a `cover:` list above the `---`, chapter paths below. */
+/** Version 1: `key: value` metadata and the lists above the `---`, chapter paths below. */
 function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbook {
-  const seen = new Set<string>();
-  const seenCovers = new Set<string>();
-  /** Records `path` in `seen` by its identity; true when it was there already. */
-  const repeated = (seen: Set<string>, path: string): boolean => {
-    const key = entryIdentity(path);
-    if (seen.has(key)) {
+  /** What a line was read as: its kind, the list it belongs to, the entry it lists. */
+  type Classified = Pick<ParsedLine, 'kind' | 'list' | 'item'>;
+
+  // What each list has listed so far, by identity: a path's for the file lists, a base's for the names.
+  const seen: Record<EntryList, Set<string>> = { chapters: new Set(), covers: new Set(), characters: new Set(), keywords: new Set() };
+  /** Records `identity` for `list`; true when it was there already. */
+  const repeated = (list: EntryList, identity: string): boolean => {
+    if (seen[list].has(identity)) {
       return true;
     }
-    seen.add(key);
+    seen[list].add(identity);
     return false;
   };
   // Keys a line already took, a line in Error included.
   const takenKeys = new Set<MetaKey>();
+  const listKeysSeen = new Set<string>();
   const meta: { -readonly [K in keyof JpbookMeta]?: JpbookMeta[K] } = {};
 
   let state: 'meta' | 'body' = 'meta';
-  let coverKeySeen = false;
-  // 'muted' = a DUPLICATE `cover:` key: its items warn instead of collecting, so a whole
-  // second list cannot cascade into orphan-item Errors.
-  let coverList: 'open' | 'muted' | null = null;
+  // The list the `- ` items belong to right now; null outside every list. Muted = under a
+  // DUPLICATE key: its items warn instead of collecting, so a whole second list cannot cascade
+  // into orphan-item Errors.
+  let openList: { readonly list: KeyedList; readonly muted: boolean } | null = null;
+
+  /** A source line before it is classified. */
+  type Line = Omit<ParsedLine, 'kind'>;
+
+  /** The item's column span on its line. */
+  const spanOf = (pl: Line, shape: ItemShape): JpbookRange => {
+    const startChar = pl.range.startChar + shape.offset;
+    return { startChar, endChar: startChar + shape.item.length };
+  };
 
   // Rejections quote the WHOLE line: a sliced marker can leave a fence-lookalike (`----`).
-  const coverPathKind = (path: string, line: string): JpbookLineKind => {
-    if (path.includes('\\')) {
-      return { error: { code: 'jpbook.backslashSeparator', args: [line] } };
+  const pathItem = (list: FileList, pl: Line, shape: ItemShape): Classified => {
+    if (shape.item.includes('\\')) {
+      return { kind: { error: { code: 'jpbook.backslashSeparator', args: [pl.value] } }, list };
     }
-    if (!hasJpnovExt(path)) {
-      return { error: { code: 'jpbook.notJpnov', args: [line] } };
+    if (!hasJpnovExt(shape.item)) {
+      return { kind: { error: { code: 'jpbook.notJpnov', args: [pl.value] } }, list };
     }
-    return repeated(seenCovers, path) ? 'coverDuplicate' : 'coverEntry';
+    const identity = entryIdentity(shape.item);
+    const dup = repeated(list, identity);
+    const kind = list === 'chapters' ? (dup ? 'duplicate' : 'ok') : (dup ? 'coverDuplicate' : 'coverEntry');
+    return { kind, list, item: { value: shape.item, range: spanOf(pl, shape), identity } };
   };
 
-  const coverItemKind = (value: string): JpbookLineKind => {
-    if (coverList === null) {
-      return { error: { code: 'jpbook.coverItemWithoutKey', args: [value] } };
+  const nameItem = (list: NameList, pl: Line, shape: ItemShape): Classified => {
+    const read = readName(shape.item);
+    if (!read.ok) {
+      const warning: LocalizableMessage = read.error === 'empty'
+        ? { code: 'jpbook.nameEmpty', args: [] }
+        : { code: 'jpbook.nameNotPlain', args: [shape.item] };
+      return { kind: { warning }, list };
     }
-    if (coverList === 'muted') {
-      return { warning: { code: 'jpbook.metaDuplicateKey', args: [COVER_KEY] } };
-    }
-    return coverPathKind(coverShape(value)?.path ?? '', value);
+    const identity = nameIdentity(read.name);
+    const kind = repeated(list, identity) ? 'nameDuplicate' : 'name';
+    return { kind, list, item: { value: shape.item, range: spanOf(pl, shape), identity, name: read.name } };
   };
 
-  const metaKind = (value: string): JpbookLineKind => {
-    coverList = null; // any key/value (or broken) metadata line ends an open cover list
+  const keyedItem = (list: KeyedList, pl: Line, shape: ItemShape): Classified =>
+    list === 'covers' ? pathItem(list, pl, shape) : nameItem(list, pl, shape);
+
+  /** A `- ` line: an item of the open list. Its shape always exists (the line opens with a marker). */
+  const markerLine = (pl: Line): Classified => {
+    if (openList === null) {
+      return { kind: { error: { code: 'jpbook.itemWithoutKey', args: [pl.value] } } };
+    }
+    const key = listKeyOf(openList.list);
+    if (openList.muted) {
+      return { kind: { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } }, list: openList.list };
+    }
+    return keyedItem(openList.list, pl, itemShape(pl.value, key) ?? { item: '', offset: 0 });
+  };
+
+  const metaLine = (pl: Line): Classified => {
+    openList = null; // any key/value (or broken) metadata line ends an open list
+    const { value } = pl;
     const key = metaKeyOf(value);
     if (key === null) {
-      return { error: { code: 'jpbook.metaNotKeyValue', args: [value] } };
+      return { kind: { error: { code: 'jpbook.metaNotKeyValue', args: [value] } } };
     }
-    if (key === COVER_KEY) {
-      if (coverKeySeen) {
-        coverList = 'muted';
-        return { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } };
+    const list = listOfKey(key);
+    if (list !== null) {
+      if (listKeysSeen.has(key)) {
+        openList = { list, muted: true };
+        return { kind: { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } }, list };
       }
-      coverKeySeen = true;
-      coverList = 'open';
+      listKeysSeen.add(key);
+      openList = { list, muted: false };
       // A value on the key line is the list's first item; a bad one still opens the list.
-      const path = coverShape(value)?.path ?? '';
-      return path === '' ? 'cover' : coverPathKind(path, value);
+      const shape = itemShape(value, key) ?? { item: '', offset: 0 };
+      if (shape.item === '') {
+        return { kind: list === 'covers' ? 'cover' : 'names', list };
+      }
+      return keyedItem(list, pl, shape);
     }
     if (!(META_KEYS as readonly string[]).includes(key)) {
-      return { warning: { code: 'jpbook.metaUnknownKey', args: [key, KNOWN_KEYS.join(', ')] } };
+      return { kind: { warning: { code: 'jpbook.metaUnknownKey', args: [key, KNOWN_KEYS.join(', ')] } } };
     }
     const metaKey = key as MetaKey;
     if (takenKeys.has(metaKey)) {
-      return { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } };
+      return { kind: { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } } };
     }
     takenKeys.add(metaKey);
     // metaKeyOf returned a key, so the line has a colon: colonIndex is non-negative here.
     const val = value.slice(colonIndex(value) + 1).trim();
     // Blank once the characters no output can carry are dropped.
     if (!isEmptiable(metaKey) && nonBlank(displayText(val)) === null) {
-      return { error: emptyValue(metaKey) };
+      return { kind: { error: emptyValue(metaKey) } };
     }
     if (isAlignKey(metaKey)) {
       if (!(FURNITURE_ALIGNS as readonly string[]).includes(val)) {
-        return { error: { code: 'jpbook.metaBadEnum', args: [key, val, FURNITURE_ALIGNS.join(', ')] } };
+        return { kind: { error: { code: 'jpbook.metaBadEnum', args: [key, val, FURNITURE_ALIGNS.join(', ')] } } };
       }
       meta[metaKey] = val as FurnitureAlign;
-      return 'meta';
+      return { kind: 'meta' };
     }
     meta[metaKey] = val;
-    return 'meta';
-  };
-
-  const bodyKind = (value: string): JpbookLineKind => {
-    if (value.includes('\\')) {
-      return { error: { code: 'jpbook.backslashSeparator', args: [value] } };
-    }
-    if (!hasJpnovExt(value)) {
-      return { error: { code: 'jpbook.notJpnov', args: [value] } };
-    }
-    return repeated(seen, value) ? 'duplicate' : 'ok';
+    return { kind: 'meta' };
   };
 
   const lines: ParsedLine[] = [header];
@@ -484,21 +583,21 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
       continue;
     }
 
-    let kind: JpbookLineKind;
+    let read: Classified;
     if (state === 'body') {
-      kind = bodyKind(value);
+      read = pathItem('chapters', pl, { item: value, offset: 0 });
     } else if (value === FENCE) {
       state = 'body';
-      kind = 'fence';
-    } else if (isCoverMark(value.charAt(0))) {
-      kind = coverItemKind(value);
+      read = { kind: 'fence' };
+    } else if (isItemMark(value.charAt(0))) {
+      read = markerLine(pl);
     } else {
-      kind = metaKind(value);
+      read = metaLine(pl);
     }
-    const parsed = { ...pl, kind };
+    const parsed: ParsedLine = { ...pl, ...read };
     lines.push(parsed);
     firstContent ??= parsed;
-    if (kind === 'fence') {
+    if (parsed.kind === 'fence') {
       fence ??= parsed;
     }
   }
@@ -520,7 +619,7 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
       at(fence, emptyValue(key));
     }
   }
-  return { lines, meta, fence: fence?.line ?? null, metaErrors };
+  return { lines, meta, fence: fence?.line ?? null, metaErrors, names: namesOf(lines) };
 }
 
 /** The Error a key that needs a value reports, written empty or not written at all. */

@@ -60,14 +60,26 @@ test('no previously caught name appears anywhere in the repository text', () => 
 const DOC_SAMPLES = ['README.md', 'README.en.md', 'docs/SCREENSHOTS.md', 'media/walkthrough/build.md'];
 /** A sample title / author / header: a placeholder word, optionally with a volume suffix (第一巻 / 一 / その一). */
 const PLACEHOLDER_VALUE = /^(作品名|ペンネーム|作品集|My 作品集|みんな)(　.+)?$/u;
+/** A sample character or keyword (a `- ` item that is no `.jpnov` path, or the value of `characters:`/`keywords:`):
+ *  the placeholder names, with their readings in any of the notation's forms. */
+const PLACEHOLDER_NAME = /^(｜?山田(《やまだ》)?[ 　｜]?(太郎|花子)(《(たろう|はなこ|やまだたろう|やまだはなこ)》)?|John Smith|王都(《おうと》)?|聖剣(《せいけん》)?)$/u;
 
-test('docs .jpbook samples carry placeholder titles, authors and headers only (or none)', () => {
+test('docs .jpbook samples carry placeholder titles, authors, headers, characters and keywords only (or none)', () => {
   const offenders: string[] = [];
   for (const rel of DOC_SAMPLES) {
     const lines = readFileSync(join(ROOT, rel), 'utf8').split('\n');
+    let fenced = false; // only a code block holds a sample; a Markdown bullet is prose
     for (const [i, line] of lines.entries()) {
+      if (line.startsWith('```')) {
+        fenced = !fenced;
+        continue;
+      }
       const m = /^(title|author|header):\s*(.*)$/u.exec(line);
       if (m !== null && m[2] !== '' && !PLACEHOLDER_VALUE.test(m[2] ?? '')) {
+        offenders.push(`${rel}:${String(i + 1)}: ${line}`);
+      }
+      const item = /^\s*(?:[-－]|characters:|keywords:)\s*(\S.*?)\s*$/u.exec(line);
+      if (fenced && item !== null && line.trim() !== '---' && !/\.jpnov$/iu.test(item[1] ?? '') && !PLACEHOLDER_NAME.test(item[1] ?? '')) {
         offenders.push(`${rel}:${String(i + 1)}: ${line}`);
       }
     }

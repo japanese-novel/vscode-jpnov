@@ -14,10 +14,10 @@ import { createRecognizer } from '../../../src/server/highlight/recognizer.ts';
 import { tokenTypeIndex } from '../../../src/server/semanticTokens.ts';
 import { INDENT_MAX, VALUE_NAMES, indentAnnotation, valueAnnotation } from '../../../src/shared/ast/notation.ts';
 import { blockOf, innerOf } from '../../shared/ast/_shape.ts';
-import { at, buildSemanticTokens, covers, decode, doc } from './tokens.ts';
+import { at, buildSemanticTokens, covers, decode, doc, cast } from './tokens.ts';
 
 // A small project: 山田 太郎 as cast, 聖剣 as a coined keyword.
-const rec = createRecognizer(['山田　太郎'], ['聖剣']);
+const rec = createRecognizer(cast('山田　太郎'), ['聖剣']);
 
 const MARKER = tokenTypeIndex('marker');
 const CHARACTER = tokenTypeIndex('character');
