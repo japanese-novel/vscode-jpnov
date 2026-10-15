@@ -124,8 +124,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.extensionUri = extensionUri;
 
     // A `.jpbook` appearing/disappearing changes the book SET, and a SAVE can change its
-    // title (a book label) or chapters (the open detail), so create/delete/change
-    // all re-list. The watcher only fires onDidChange for on-disk writes — not per keystroke.
+    // title (a book label), chapters (the open detail) or names (the server's vocabulary), so
+    // create/delete/change all re-list. The watcher only fires onDidChange for on-disk writes —
+    // not per keystroke.
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.jpbook');
     // Chapter existence backs the detail's missing flags, so a `.jpnov` appearing/disappearing
     // re-stats the open detail. Content saves don't move the panel — change events stay ignored.

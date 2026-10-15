@@ -1,7 +1,8 @@
 /**
- * Build-time pagination engine: flows a manuscript's content into an explicit
- * page → line DOM skeleton (`<div class="page"><div class="grid"><div class="line">…`). Unlike the
- * continuous preview, the build output is paginated IN the compiler so printed pages are
+ * The layout engine: `buildRows` turns the AST into rows of units for every output; `paginate` /
+ * `pagesToHtml` flow them into the build's page → line DOM skeleton
+ * (`<div class="page"><div class="grid"><div class="line">…`), `flowToHtml` into the preview's
+ * continuous flow. The build is paginated IN the compiler so printed pages are
  * WYSIWYG and the page furniture (header, footer, line numbers, 原稿用紙 grid) has real
  * elements to hang off. Pure + vscode-free.
  *

@@ -8,8 +8,8 @@
  *   live editor features resolve them, and its output lands in `<dir>/<outDir>/<stem>.<ext>`,
  *   the stem being the `.jpbook`'s file name (a `${workspaceFolder}/…` outDir, the default
  *   included, counts from the book's root instead, when it has one);
- * - a `.jpbook` with an Error line, or with a required key missing, is that book's build error
- *   (the first such line's message, else the missing keys); the book is never built partially;
+ * - a `.jpbook` with an Error line, an unterminated metadata block, or a required key empty or
+ *   unwritten fails as a whole: `checkJpbook` reports the first of these in document order;
  * - page furniture comes from each book's OWN metadata (`composeBookChrome`), so one batch build
  *   carries a different header per volume;
  * - the server never touches `vscode.fs` nor decodes bytes: manuscript text arrives through

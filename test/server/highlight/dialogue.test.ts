@@ -41,7 +41,7 @@ test('annotation-internal 「対象」 does not corrupt the dialogue stack', () 
   assert.equal(at(toks, 0, text.indexOf('太郎は'))?.type, CHARACTER);
 });
 
-test('dialogue content keeps the body colour even for a configured surface', () => {
+test('dialogue content keeps the body colour even for a listed name', () => {
   const toks = decode(buildSemanticTokens(doc('「王都は強い」'), rec).data);
   assert.ok(!covers(toks, '「'.length, CHARACTER)); // 王都 not a character inside the quote
   assert.ok(!toks.some((t) => t.type === KEYWORD)); // and not bolded as a keyword either

@@ -196,6 +196,7 @@ function printToPdfArgs(pdf: string, url: string): string[] {
     '--disable-gpu',
     '--no-first-run',
     '--no-default-browser-check',
+    '--use-mock-keychain',
     '--no-pdf-header-footer',
     `--print-to-pdf=${pdf}`,
     url,

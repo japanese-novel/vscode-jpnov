@@ -12,7 +12,7 @@ One repository ships three programs.
 | --- | --- | --- | --- |
 | Client | `src/client/` | the VS Code extension host | the Books view and the preview panel, commands, settings snapshots, every file write |
 | Server | `src/server/` | a forked Node process, LSP over IPC | parsing, diagnostics, lint, highlighting, rendering, builds |
-| Webviews | `src/client/webview/` | the webview's own browser context | the scripts of the Books view and the preview |
+| Webviews | `src/client/webview/` | the webview's own browser context | the scripts of the Books view and the preview, and the 傍点 probe the compiler inlines into its HTML (`probe/`) |
 
 `src/shared/` holds what client and server both use: the manuscript pipeline
 (`ast/`, `compiler/`), the settings resolvers (`config/`), the `.jpbook` manifest
@@ -62,7 +62,8 @@ AST              what the notation means     ──▶  editor: diagnostics, lin
    │  buildRows   src/shared/compiler/layout.ts
    ▼
 rows of units
-   ├─ wrap, 禁則, paginate   ──▶  preview, book HTML
+   ├─ wrap, 禁則             ──▶  preview
+   ├─ wrap, 禁則, paginate   ──▶  book HTML
    └─ reflow                 ──▶  EPUB
 
 The text build prints the nodes.
@@ -79,7 +80,8 @@ The text build prints the nodes.
 The editor side of the server keeps one scan and one resolve per document
 version (`src/server/parsed.ts`). The highlighter reads the nodes; the syntax
 diagnostics, the lint and the preview read the AST. The builds parse on their
-own, from the files they read through `jpnov/readText`, with the book's values.
+own, from the files they read through `jpnov/readText`; a cover page, and the
+page furniture, also get the book's values.
 
 The outputs:
 
@@ -166,7 +168,7 @@ source → Scanner → Tokenizer → Parser → AST → Resolver → Analyzer �
 | In full | Here |
 | --- | --- |
 | Scanner, Tokenizer, Parser | `scan.ts` with `classify.ts`, one pass |
-| AST | the nodes |
+| AST | the nodes (the textbook's AST is the parser's output; what this document calls the AST is the Resolver's) |
 | Resolver | `resolve.ts` |
 | Analyzer | syntax diagnostics (`src/server/syntax.ts`), lint (`src/server/lint/`), highlighting, the annotation features (`src/server/annotations.ts`) |
 | IR | the rows of units |
@@ -191,15 +193,17 @@ when it has none), and its output name is its own file name.
 The same file means the same book whichever folder is open, and with none.
 
 A root is a workspace folder, and a folder nested in another is a root of its
-own. A root decides three things only: which `.jpbook` files discovery finds
+own. A root decides five things: which `.jpbook` files discovery finds
 (the walk stops at every other root, at dot-folders and at `node_modules`), the group a
-book is listed under, and the `outDir` value of the books found under it. A
+book is listed under, the `outDir` value of the books found under it, the
+narration vocabulary of the chapters under it (the union of the `characters:`
+and `keywords:` of every `.jpbook` under that root, whichever book the chapter
+is in), and which books a `.jpbook`'s names are checked against for the
+conflict diagnostic. A
 `.jpbook` open in the editor that no root contains is listed too, with the
 `outDir` the client reads for its uri (`rootUri: null`, the 「開いているファイル」
-group). The folder a chapter sits in decides the settings of that file (the
-encoding it is read in) and the narration vocabulary it is highlighted with: the
-union of the lists of every `.jpbook` under that root, whichever book the
-chapter is in.
+group); it adds no names. The folder a chapter sits in decides the settings of
+that file (the encoding it is read in) as well.
 
 Each reader takes the book's directory from one place:
 

@@ -200,11 +200,12 @@ function ensureStarted(): void {
   context.subscriptions.push(preview, booksView, registerRenameTracking(), registerAnnotationHover(client));
 
   // Push jpnov.lint.* changes so the server re-lints open files live; re-render the preview
-  // when any jpnov.layout.* setting changes (the txt/outDir members only feed
-  // on-demand builds, but the extra refresh is idempotent and settings edits are rare);
-  // re-enumerate books when the out dir moves. Gated on Running: the state listener below
-  // re-sends the lint snapshot and re-lists the books when the server next comes up, and the
-  // preview/books re-read their snapshots on the next request anyway.
+  // when any jpnov.layout.* setting changes (the txt/outDir members only feed on-demand
+  // builds, but the extra refresh is idempotent and settings edits are rare). No outDir
+  // listener: the list carries nothing derived from it, and each build reads the snapshot
+  // afresh (`bookTargets`). Gated on Running: the state listener below re-sends the lint
+  // snapshot and re-lists the books when the server next comes up, and the preview re-reads
+  // its snapshot on the next request anyway.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (client?.state !== State.Running) {
@@ -216,12 +217,6 @@ function ensureStarted(): void {
       if (e.affectsConfiguration('jpnov.layout') || e.affectsConfiguration('jpnov.lint.common.dash')) {
         // The dash choice is the one lint key the render snapshot also carries.
         preview?.refresh();
-      }
-      if (e.affectsConfiguration('jpnov.layout.outDir')) {
-        // A moved outDir changes which books exist (it is excluded from discovery) and where
-        // output lands: re-list
-        // (refresh() self-catches and is refreshSeq-serialized, so the dropped promise is safe).
-        void booksView?.refresh();
       }
     }),
   );

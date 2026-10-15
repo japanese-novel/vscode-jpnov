@@ -5,8 +5,8 @@
  * ASCII quotes stay out of the pair set — the open and close glyphs are identical, so pairing
  * them can only be guessed.
  *
- * A matched 《》 pair in prose is a base-less reading (the scanner keeps it literal; the syntax
- * layer warns with syntax.rubyBaseMissing) and balances here. An unmatched prose 《 or 》 is
+ * A matched 《》 pair in prose is a base-less reading (the Scanner keeps it literal and reports
+ * syntax.rubyBaseMissing) and balances here. An unmatched prose 《 or 》 is
  * always a broken ruby — flagging it here is the feature.
  *
  * Relative imports only (native test loader); vscode-free.

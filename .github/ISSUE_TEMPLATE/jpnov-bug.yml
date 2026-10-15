@@ -49,5 +49,5 @@ body:
       placeholder: |
         バージョン: 1.131.0
         OS: Windows_NT x64 10.0.26100
-        Japanese Novel 0.7.0
-        変更した設定: 1 行の文字数 20、禁則処理「厳格」
+        Japanese Novel 0.9.0
+        変更した設定: 1 行の文字数 20、禁則処理「緩め」
