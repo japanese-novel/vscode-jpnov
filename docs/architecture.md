@@ -48,6 +48,8 @@ esbuild produces two bundles, `dist/client/extension.js` and
 generated modules first (`scripts/gen-styles.ts`, `scripts/gen-webview.ts`), and
 the TextMate grammar of `.jpnov` is generated from the notation and the colour of
 each part role (`scripts/gen-grammar.ts`); generated files are not committed.
+`npm run gen` (`scripts/gen.ts`) runs the three together, and every script that
+reads `src/` runs it first through its `pre*` hook.
 
 ## The pipeline
 
