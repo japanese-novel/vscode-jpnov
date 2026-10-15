@@ -17,8 +17,7 @@
  * change, so a listing after a title edit recolours nothing. `othersOf()` gives a book's
  * neighbours in its root, for the conflict diagnostics of an open `.jpbook`.
  *
- * vscode-free true leaf: value imports are limited to the recognizer, the shared name helpers
- * and the URI string helpers, so plain `node --test` can load this module without a resolver hook.
+ * vscode-free: its value imports are the recognizer, the name helpers and the URI helpers.
  */
 import { createRecognizer } from './recognizer.ts';
 import { longestPrefixRoot, normalizeRootUri, uriKey } from '../fsUri.ts';

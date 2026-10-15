@@ -1,6 +1,7 @@
 /**
- * The live preview: one client-owned WebviewPanel mirroring the active `.jpnov` editor on its
- * live (dirty) buffer. The SERVER renders (`jpnov/renderFile`); this class decides WHEN to
+ * The live preview: one client-owned WebviewPanel mirroring the followed `.jpnov` editor (the
+ * last previewable one made active) on its live (dirty) buffer. The SERVER renders
+ * (`jpnov/renderFile`); this class decides WHEN to
  * render, follows the cursor of the editor being typed in, and owns webview security: the server HTML must
  * be hardened (strict CSP `<meta>`, a per-render nonce on the inline `<style>`, the nonce'd
  * bundle: cursor follow + the layout widget) before it is assigned to `webview.html`. The panel
@@ -225,7 +226,7 @@ export class Preview {
     }
   }
 
-  /** Re-renders the shown document with fresh settings (extension.ts calls this on `jpnov.layout.*` edits); a no-op when nothing is shown. */
+  /** Re-renders the shown document with fresh settings (extension.ts calls this when `jpnov.layout.*` or `jpnov.lint.common.dash` changes); a no-op when nothing is shown. */
   refresh(): void {
     const doc = this.openPreviewable(this.currentDocUri);
     if (doc !== undefined) {

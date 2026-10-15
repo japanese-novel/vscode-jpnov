@@ -4,8 +4,8 @@
  * carries an identical `source` and shape — and the {@link Finding} the syntax diagnostics and
  * the lint both publish: a diagnostic with its fix, when one is mechanical.
  *
- * Imports only `vscode-languageserver/node` (already a dependency of every consumer) and a type
- * of `targets.ts`; owns no state and loads no other server module, so it stays a leaf (no cycle risk).
+ * Imports `vscode-languageserver/node`, the shared message renderer and wire types, and a type of
+ * `targets.ts`; owns no state and loads no other server module, so it stays a leaf.
  */
 import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { Diagnostic, Range } from 'vscode-languageserver/node';

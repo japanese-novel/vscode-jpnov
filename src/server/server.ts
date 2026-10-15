@@ -11,6 +11,9 @@
  *   listing finds, root by root).
  * - `jpnov/readText` (server -> client): the only custom request this side sends; manuscript
  *   and manifest text comes back decoded by the client.
+ * - `.jpnov`: semantic tokens, `jpnov/hover`, document highlights, rename of a 対象文字列,
+ *   diagnostics and lint (its selection: `initialize`, then `jpnov/lintConfigChanged`).
+ * - `.jpbook`: completion, document links, live diagnostics.
  */
 import {
   CodeActionKind,
@@ -271,7 +274,7 @@ connection.onCompletion((params) => {
   );
 });
 
-// Cmd+click targets: one link per valid chapter line pointing at the resolved file URI.
+// Cmd+click targets: one link per valid chapter or cover line pointing at the resolved file URI.
 connection.onDocumentLinks((params) => {
   const doc = documents.get(params.textDocument.uri);
   if (doc?.languageId !== 'jpbook') {
@@ -281,7 +284,7 @@ connection.onDocumentLinks((params) => {
 });
 
 // Live per-line diagnostics for an open .jpbook (missing/duplicate paths, metadata
-// problems). Debounced per URI and version-guarded so async fs existence checks never publish
+// problems, name conflicts with the root's other books). Debounced per URI and version-guarded so async fs existence checks never publish
 // results for stale text.
 const jpbookDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 const JPBOOK_DEBOUNCE_MS = 250;
@@ -411,7 +414,8 @@ documents.onDidChangeContent((e) => {
   }
 });
 
-// Closing a book file drops its (buffer-scoped) diagnostics; a later build republishes if needed.
+// Closing a .jpbook or .jpnov drops its buffer-scoped diagnostics and caches; a later build
+// republishes if needed.
 documents.onDidClose((e) => {
   clearTimeout(jpbookDebounce.get(e.document.uri));
   jpbookDebounce.delete(e.document.uri);

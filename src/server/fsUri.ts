@@ -1,7 +1,7 @@
 /**
- * Tiny URI string helpers shared across the server's filesystem seams (build / jpbook).
- * PURE string ops: no `node:fs`, no `vscode-languageserver` imports — a true leaf,
- * so any server module can pull it in without dragging dependencies along.
+ * Tiny URI string helpers for the server's filesystem seams (build, jpbook, the vocabulary
+ * store, server.ts). PURE string ops over `#/shared/uri.ts`: no `node:fs`, no
+ * `vscode-languageserver`, so any server module can pull it in.
  *
  * Scheme handling is deliberately a prefix test, not URL parsing: the server only ever
  * distinguishes `file:` (real disk via `node:fs`) from "anything else" (virtual fs over the

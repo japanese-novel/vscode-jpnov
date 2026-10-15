@@ -23,8 +23,7 @@ export interface BookInput {
   readonly divider?: string | undefined;
   /**
    * タイトル／ペンネーム for ［＃ここに「…」の値を表示］ on cover pages and in the page furniture,
-   * decided by the caller (the build gives a book without a title the stem of its output
-   * name); absent = ''.
+   * decided by the caller (the build passes the book's `title:`, never empty); absent = ''.
    * The counts (総ページ数, 原稿用紙換算枚数, ページ番号) derive from the render itself.
    */
   readonly title?: string | undefined;

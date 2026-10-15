@@ -5,8 +5,9 @@
  * where JIS X 0208 alone would refuse; the runtime's SINGLE-byte range deviates from the spec, so
  * that half is written out by hand below and the test digest guards the rest.
  *
- * Pure + vscode-free: the client encodes artifacts with it, the server's `shiftJisSafe` lint asks
- * it what is representable. Both must agree, so neither may keep a private table.
+ * Pure + vscode-free: the client encodes artifacts with it; the `shiftJisSafe` lint and the
+ * `.jpbook` divider check ask it what is representable. All must agree, so none may keep a
+ * private table.
  *
  * Decomposed kana (か + U+3099) are composed per grapheme cluster, on both sides, through the
  * shared {@link composeKana} — pair-wise composition only, never whole-text NFC.

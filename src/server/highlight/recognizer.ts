@@ -5,7 +5,7 @@
  * `src/shared/book/names.ts`) and keywords — pure and synchronous, with no dictionary and no async
  * load. A character is highlighted ONLY where it reads as a SUBJECT: a name (a surname/given alone
  * is fine, optionally followed by ONE honorific) immediately followed by は or が. The particle marks the subject and is coloured together with the name. Built-in
- * pronouns (僕 私 彼 彼女 俺 あたし) follow the same subject rule. Keywords match exactly and only where
+ * pronouns ({@link PRONOUNS}: 私 僕 俺 彼 彼女 あたし わたくし わし 少年 少女) follow the same subject rule. Keywords match exactly and only where
  * no character matched, so a surface in BOTH lists reads as the character when it is a
  * subject (followed by は or が) and as a plain keyword otherwise.
  *
@@ -15,7 +15,7 @@
 
 /** Honorifics that may sit between a name and its subject particle; coloured together with the name. */
 const HONORIFICS = ['先生', 'ちゃん', 'さま', 'たん', 'さん', '様', '君', '殿'];
-/** Built-in pronoun subjects, recognised exactly like a configured name. */
+/** Built-in pronoun subjects, recognised like a listed name. */
 const PRONOUNS = ['彼女', '私', '僕', '彼', '俺', 'あたし', 'わたくし', 'わし', '少年', '少女'];
 /** Subject-marking particles that must immediately follow a name(+honorific) for it to highlight. */
 const PARTICLES = ['は', 'が'];

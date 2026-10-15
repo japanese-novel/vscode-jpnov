@@ -20,7 +20,7 @@ export function compareStr(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** The directory a `.jpbook` sits in: what its entries and its output folder count from. */
+/** The directory a `.jpbook` sits in: what its entries (and a bare relative outDir) count from. */
 export function bookDir(bookUri: string): vscode.Uri {
   return vscode.Uri.joinPath(vscode.Uri.parse(bookUri), '..');
 }

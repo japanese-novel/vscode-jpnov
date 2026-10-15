@@ -3,8 +3,9 @@
  * composition and the fs-free completion logic.
  *
  * A `.jpbook` opens with its header line ({@link HEADER}: the format and its version), then its
- * metadata — the seven `key: value` lines of {@link META_KEYS}, all required, plus the optional
- * lists `cover:`, `characters:` and `keywords:` — closes it with a `---` line, and continues with
+ * metadata — the seven `key: value` lines of {@link META_KEYS} (three required, the rest empty
+ * when unwritten), plus the optional lists `cover:`, `characters:` and `keywords:` — closes it
+ * with a `---` line, and continues with
  * one chapter path per line.
  *
  * Chapter and cover paths are relative to the DIRECTORY OF THE `.jpbook`, as an `import` is to
@@ -145,7 +146,8 @@ export function isEntryList(v: unknown): v is EntryList {
 }
 
 /**
- * The recognized single-valued metadata keys, every one required; the page-furniture keys are
+ * The recognized single-valued metadata keys (`title`, `headerAlign` and `footerAlign` required,
+ * the others empty when unwritten); the page-furniture keys are
  * shared VERBATIM with {@link BuildChrome}'s field names. Adding a key: extend {@link JpbookMeta},
  * the book template (`create.ts`), handle it in the parser's key switch and — when it feeds the
  * render — in {@link composeBookChrome} for page furniture, or at the assembly seam
@@ -276,8 +278,9 @@ export function identityOf(list: EntryList, value: string): string {
 }
 
 /**
- * A book's metadata, field names = file keys, values as written. Every key is required: a
- * parse holds the keys its lines took ({@link ParsedJpbook.meta} is partial), and
+ * A book's metadata, field names = file keys, values as written. Every key is present: a
+ * parse holds the keys its lines took ({@link ParsedJpbook.meta} is partial; an unwritten
+ * emptiable key reads as ''), and
  * {@link checkJpbook} hands the build the complete set or the error that stands in its way.
  * `title` is display metadata only and never affects the output path.
  */

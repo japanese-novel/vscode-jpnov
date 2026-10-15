@@ -79,8 +79,8 @@ folder, named after its file: `books/volume1.jpbook` builds to
 `${workspaceFolder}/dist` — the workspace folder's `dist`, whatever the book's
 depth. Any other value counts from the `.jpbook`'s own folder: `dist` puts the
 output beside the book, `../dist` one level up. A book under no workspace
-folder counts from its own folder either way. Dot-folders and `node_modules`
-are never scanned for books. A workspace folder is
+folder counts from its own folder either way. Dot-folders, `node_modules` and
+a nested workspace folder (a root of its own) are never scanned for books. A workspace folder is
 optional: a `.jpbook` open in the editor is listed under **Open files** when
 no folder contains it. The extension activates when you open a
 `.jpnov`/`.jpbook`, when a workspace folder contains a `*.jpbook`, or when
@@ -300,7 +300,7 @@ is an icon button):
   and leave its headers and footers off. The `.html` itself lands in the output
   folder: one standalone, paginated vertical file per book (inline CSS, no
   external assets) that prints the same way whenever you reopen it.
-- **Build to Text** — the chapters concatenated as Aozora-format `.txt` (an
+- **TXT** — the chapters concatenated as Aozora-format `.txt` (an
   annotation still open at a chapter's end is closed at the seam, so the
   chapters render exactly as in the HTML build).
 - **Build to EPUB** — a reflowable EPUB 3 per book: vertical writing and
@@ -342,8 +342,9 @@ single line to retarget a submission. Name and move chapter files freely; the
 book keeps its order.
 
 The built output has no table-of-contents page yet. Headings come from
-annotations (see [Annotations](#annotations)), and chapters appear in the
-order the `.jpbook` lists them.
+annotations (see [Annotations](#annotations)): a heading line is set in a bold
+gothic (sans-serif) face at the body size, and the three levels look the same.
+Chapters appear in the order the `.jpbook` lists them.
 
 On `.jpbook` files the editor offers completion (chapter paths, metadata keys,
 and enum values), diagnostics (missing files, duplicates, unknown metadata
@@ -355,8 +356,8 @@ The Books view edits books, too. Open one to see its **Book Info**,
 you already have and creates new ones from a typed name, dragging (or the
 arrow buttons) reorders them, and **×** takes an entry
 out of the book while keeping the file. From the keyboard, ↑/↓ move between
-entries, Alt+↑/↓ reorder them, Delete takes one out, and Esc returns to the
-list. **Cover pages** manages the `cover`
+entries, Alt+↑/↓ reorder them, Delete or Backspace takes one out, and Esc
+returns to the list. **Cover pages** manages the `cover`
 list the same way (see [Submission cover sheets and title
 pages](#submission-cover-sheets-and-title-pages)). Expand **Book Info** and
 click a row to edit that value in place; the buttons at the bottom build only
@@ -514,8 +515,8 @@ keywords:
   are all recognised. A character is highlighted only where it reads as a
   **subject**: a name (optionally with one honorific such as `さん` / `先生` /
   `ちゃん`) immediately followed by `は` or `が` — e.g. `太郎は`, `山田さんが`.
-  Common pronouns (`僕` / `私` / `俺` / `彼` / `彼女` …) are recognised the same
-  way. Dialogue inside `「」` / `『』` is left in the body colour; only narration
+  Ten built-in pronouns (`私` `僕` `俺` `彼` `彼女` `あたし` `わたくし` `わし`
+  `少年` `少女`) are recognised the same way without being listed. Dialogue inside `「」` / `『』` is left in the body colour; only narration
   is scanned. Matching reads the body's base text, so `山田花子は` and
   `山田《やまだ》花子《はなこ》は` are the same; a reading that differs from the book's
   is never flagged.
@@ -547,8 +548,9 @@ inside a line of dialogue, a heading hangs free of the sentence-ending rule,
 and a kanji run split by an annotation (`聴覚視覚［＃太字］区分装置`) still
 counts as one run — the checks see the text the way a reader will.
 
-- **Hygiene checks are on by default** — half-width kana, decomposed (NFD)
-  characters, zero-width spaces, invalid control characters, trailing
+- **Hygiene checks are on by default** — half-width kana, kana with a
+  detached 濁点/半濁点 (`common.noNfd`), zero-width spaces, invalid control
+  characters, characters Shift JIS lacks (`common.shiftJisSafe`), trailing
   spaces (`common.noTrailingSpace`), and a half-width space between full-width
   characters (`common.noHalfWidthSpace`) — so a stray malformed or
   invisible character never slips into a manuscript. The dash check (`common.dash`) is
@@ -614,21 +616,21 @@ form, and `ruby.kana` to ruby readings.
 | Setting | Default | Checks |
 | --- | --- | --- |
 | `jpnov.lint.common.noHankakuKana` | `true` | Half-width kana (auto-fix) |
-| `jpnov.lint.common.noNfd` | `true` | Decomposed (NFD) characters (auto-fix) |
+| `jpnov.lint.common.noNfd` | `true` | Kana with a detached 濁点/半濁点 (U+3099/U+309A), in annotations and ruby too (auto-fix where the pair composes) |
 | `jpnov.lint.common.noZeroWidth` | `true` | Zero-width spaces (U+200B) (auto-fix) |
 | `jpnov.lint.common.noControlChar` | `true` | Invalid control characters (auto-fix) |
 | `jpnov.lint.common.noTrailingSpace` | `true` | Trailing spaces, space-only lines included (auto-fix) |
 | `jpnov.lint.common.shiftJisSafe` | `true` | Characters Shift JIS lacks, written as 〓 in a Shift JIS `.txt` build (`‼` `⁇` `⁈` `⁉` `¡` `¿` are written as their 外字注記) |
 | `jpnov.lint.common.dash` | `horizontalBar` | One dash character throughout, always in pairs (auto-fix) |
-| `jpnov.lint.common.ellipsis` | `true` | Even-count `…` runs; `。。`/`、、`/`・・` stand-ins (auto-fix) |
+| `jpnov.lint.common.ellipsis` | `true` | Even-count `…`/`‥` runs; `。。`/`、、`/`・・` stand-ins (auto-fix) |
 | `jpnov.lint.common.exclamationSpace` | `true` | A full-width space after `！`/`？` when text continues (auto-fix) |
 | `jpnov.lint.common.noHalfWidthSpace` | `true` | Half-width space between full-width characters, or after two or more half-width `!`/`?` (auto-fix) |
 | `jpnov.lint.common.questionExclamationMarks` | `fullWidth` | Half-width pairs `!!` `!?` `?!` `??` set in one square (auto-fix): `fullWidth` (one character, `⁉`) / `tcy` (the 縦中横 annotation) / `off` |
 | `jpnov.lint.narration.indent` | `true` | Narration lines start with `　` or an opening bracket (auto-fix) |
 | `jpnov.lint.narration.endPeriod` | `true` | Narration lines end with `。` (auto-fix) |
-| `jpnov.lint.dialogue.closingPunct` | `true` | No `。`/`、` right before a closing `」` (auto-fix) |
+| `jpnov.lint.dialogue.closingPunct` | `true` | No `。`/`、` right before a closing `」`/`』` (auto-fix) |
 | `jpnov.lint.dialogue.noIndent` | `true` | No leading space on a dialogue line (auto-fix) |
-| `jpnov.lint.common.exclamationRun` | `false` | Double `！？` as the half-width pair; runs of 3+ (auto-fix) |
+| `jpnov.lint.common.exclamationRun` | `false` | A lone `!`/`?` full-width, a double as the half-width pair (both auto-fix); runs of 3+ reported without a fix |
 | `jpnov.lint.common.sentenceLength` | `null` | Sentence length limit (suggested 100) |
 | `jpnov.lint.common.maxTen` | `null` | Commas (、) per sentence (suggested 3) |
 | `jpnov.lint.common.maxKanjiRun` | `null` | Consecutive kanji, counted across annotations (suggested 6) |
@@ -656,15 +658,17 @@ All under the **Japanese Novel** category.
 | Open Preview | Command Palette |
 | Reset Preview Layout to Settings, Save Preview Layout to Settings… | Buttons on the preview's layout chip, Command Palette (both only while the values differ from the settings) |
 | Create a Book… | Books view title bar (`+`), Command Palette |
-| Print / Save as PDF, Build to Text, Build to EPUB | Buttons at the bottom of the Books view |
-| Select All Books, Deselect All Books | Links at the bottom of the Books view |
+| Open the Books View | Command Palette |
 | Refresh Books | Books view title bar |
 | Open the Getting Started Guide | Command Palette |
 | Move One Word Left, Move One Word Right | ⌥← / ⌥→ in `.jpnov` editors (Ctrl+← / Ctrl+→ on Windows and Linux) |
 | Select One Word Left, Select One Word Right | ⇧⌥← / ⇧⌥→ (Ctrl+Shift+← / Ctrl+Shift+→) |
 | Delete One Word Left, Delete One Word Right | ⌥⌫ / ⌥⌦ (Ctrl+Backspace / Ctrl+Delete) |
 
-Only the word commands have default keybindings.
+Only the word commands have default keybindings. The build buttons at the
+bottom of the Books view (**Print / Save as PDF**, **TXT**, the EPUB icon) and
+its **Select all** / **Deselect all** links are buttons of the view, not
+commands.
 
 ## No-AI policy
 

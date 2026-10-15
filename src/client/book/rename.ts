@@ -1,7 +1,7 @@
 /**
  * Pure planning half of the rename tracking (import-style reference updates): given the
  * renames of one `onDidRenameFiles` event, compute the exact line edits each `.jpbook`
- * needs so its chapter paths keep pointing at the moved files. vscode-free — the event
+ * needs so its chapter and cover paths keep pointing at the moved files. vscode-free — the event
  * wiring, the prompt, and the `WorkspaceEdit` live in `tracking.ts`; everything here is
  * unit-testable with plain paths.
  *

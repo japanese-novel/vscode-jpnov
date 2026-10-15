@@ -1,6 +1,6 @@
 /**
  * Unified highlighter: one semantic-token stream colours BOTH Aozora markup and the author's
- * narration (cast names + coined keywords) from the syntax layer of the AST plus the recognizer
+ * narration (cast names + coined keywords) from the Scanner's nodes plus the recognizer
  * over the reconstructed body-text runs. A ruby BASE is body text and flows into its run (only the
  * ｜《》 markers and the reading are holes), so okurigana-split ruby (立《た》ち) still recognises.
  *

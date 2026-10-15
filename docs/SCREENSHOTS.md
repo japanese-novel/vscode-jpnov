@@ -4,7 +4,8 @@
 from the compiler (section A) and **manual VS Code UI captures** (section B).
 Nothing under `docs/` ships in the VSIX — the Marketplace loads these images from
 the GitHub repository via the manifest's `repository` field, so the repo must be
-public by publish time. Both READMEs reference the same files.
+public by publish time. README.md references every image; README.en.md all but
+`vscode-settings.png` and the two `vscode-encoding-*` crops.
 
 Inventory:
 
@@ -16,7 +17,7 @@ Inventory:
 | `kinsoku-off.png` / `kinsoku-on.png` | generated (A) | kinsoku comparison |
 | `vscode-workspace.png` | capture 1, whole window (B) | the writing screen: Books view + editor + preview |
 | `vscode-highlight.png` | capture 4, whole window (B) | the book's cast and keywords beside coloured narration |
-| `vscode-books-panel.png` | crop of capture 2 (B) | open book: Book Info + 表紙 + 目次 |
+| `vscode-books-panel.png` | crop of capture 2 (B) | open book: Book Info + 登場人物 + 造語 (folded) + 表紙 + 目次 |
 | `vscode-lint-quickfix.png` | crop of capture 2 (B) | lint squiggle + quick-fix menu |
 | `vscode-settings.png` | crop of capture 3 (B) | settings search `jpnov` |
 | `vscode-encoding-statusbar.png` / `vscode-encoding-reopen.png` | ad-hoc crops | FAQ: Shift JIS reopen; UI-stable, retake only if that VS Code flow changes |
@@ -41,8 +42,9 @@ Intermediates (HTML, PDFs, uncropped PNGs) stay in `.scratch/shots/` for
 inspection; Chrome quirks and layout constraints are documented as comments
 in the script.
 
-Requirements: macOS with Google Chrome at the standard path, `ffmpeg`
-(`brew install ffmpeg`), Node ≥ 24 (runs TypeScript directly).
+Requirements: macOS with Google Chrome at the standard path, `ffmpeg` at
+`/opt/homebrew/bin/ffmpeg` (`brew install ffmpeg`; the script hard-codes the Apple
+Silicon Homebrew path), Node ≥ 24 (runs TypeScript directly).
 
 ## B. Manual VS Code captures
 
@@ -173,16 +175,16 @@ Whole window, saved as `vscode-workspace.png`.
 
 ### Capture 2 — book management + quick fix
 
-Expand 「本の情報」 and 「表紙」, re-enable `jpnov.lint.narration.indent` (delete the
+Expand 「本の情報」 and 「表紙」 (leave 「登場人物」 and 「造語」 folded), re-enable `jpnov.lint.narration.indent` (delete the
 settings line or set it true — the line-2 sample text is its bait), and open
 the lightbulb menu on the squiggle.
 Whole window, then two crops:
 
 - `vscode-books-panel.png` (sidebar incl. activity bar): from the view header
   down through the 「章を追加…」 row. Must show all seven 本の情報 rows
-  (タイトル・ヘッダー・章区切り filled in; ペンネーム, ヘッダーの配置 and the two フッター
-  rows at their defaults), the 表紙 section (the 表紙.jpnov row and the 「表紙を追加…」
-  row), and the chapter rows.
+  (タイトル・ペンネーム・ヘッダー・章区切り filled in; ヘッダーの配置 and the two フッター
+  rows at the product defaults), the folded 「登場人物」 and 「造語」 headers, the 表紙
+  section (the 表紙.jpnov row and the 「表紙を追加…」 row), and the chapter rows.
   The build buttons are deliberately outside this crop — they are visible in
   `vscode-workspace.png`.
 - `vscode-lint-quickfix.png` (editor area): the squiggle, its hover, and the
@@ -207,7 +209,7 @@ the preview's editor group so its `characters:` (山田　太郎 / John Smith) a
   bold in the narration at 1:1 — the lists and their effect side by side are
   the point of this image. If nothing is coloured, the Books view has not
   listed the books yet (the listing is what hands the server the names); press
-  Refresh Books before capturing.
+  「本の一覧を更新」 (Refresh Books) before capturing.
 
 ### Crop commands
 
