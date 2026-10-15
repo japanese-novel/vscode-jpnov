@@ -1,6 +1,5 @@
 {
   "Japanese Novel Language Server": "小説のプレビューサービス",
-  "Japanese Novel: couldn't start the language server. {0}": "小説: プレビューサービスを起動できませんでした。{0}",
   "text": "テキスト",
   "Japanese Novel: no books selected. Check a book in the Books view, then build.": "小説: 本が選択されていません。まず「本の一覧」でチェックを入れてください。",
   "Japanese Novel: building {0} book(s) to {1}…": "小説: {0} 冊を {1} に出力中…",

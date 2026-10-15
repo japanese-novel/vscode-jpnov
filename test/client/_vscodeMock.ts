@@ -934,6 +934,11 @@ export function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** A fake editor showing `document` with one cursor, for the active/visible editors and the editor events. */
+export function editorAt(document: FakeTextDocument, line = 0, character = 0, viewColumn = 1): FakeTextEditor {
+  return { document, selections: [{ active: { line, character } }], viewColumn };
+}
+
 export function doc(uri: string, languageId: string, text = '', encoding = 'utf8'): FakeTextDocument {
   return { uri: Uri.parse(uri), languageId, version: 1, encoding, getText: () => text, save: () => Promise.resolve(true) };
 }

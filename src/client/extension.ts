@@ -14,10 +14,12 @@
 import * as vscode from 'vscode';
 
 import {
+  CloseAction,
   LanguageClient,
   PrepareRenameRequest,
   State,
   TransportKind,
+  type ErrorHandler,
   type LanguageClientOptions,
   type ServerOptions,
 } from 'vscode-languageclient/node';
@@ -31,7 +33,6 @@ import {
   type ReadTextResult,
   type ServerErrorParams,
 } from '#/shared/protocol.ts';
-import { errorText } from '#/shared/errors.ts';
 
 import { createFile, registerBookCommands } from './book/manage.ts';
 import { BooksViewProvider } from './book/view.ts';
@@ -122,6 +123,9 @@ function ensureStarted(): void {
     transport: TransportKind.ipc,
   };
 
+  // Filled in right after construction (below): the library builds its default handler from the client.
+  const errorHandler = {} as ErrorHandler;
+
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { language: 'jpnov' },
@@ -130,6 +134,11 @@ function ensureStarted(): void {
     initializationOptions: {
       lintConfig: buildLintSnapshot(),
     },
+    errorHandler,
+    // A failed `initialize` is not retried; `false` also keeps the library from showing the
+    // error twice more ("Server initialization failed." and the bare error text) before the
+    // popup it shows in any case, "couldn't create connection to server".
+    initializationFailedHandler: () => false,
     middleware: {
       // A document request waits for its document's open (see documentSync.ts).
       ...documentSync(),
@@ -191,6 +200,15 @@ function ensureStarted(): void {
     serverOptions,
     clientOptions,
   );
+  // The library's own policy restarts a crashed server up to 4 times in 3 minutes, which is right
+  // once it has run and wrong while it starts: a server that dies before `initialize` answers
+  // dies again on the restart, and every attempt costs two popups of the library's own. So a
+  // crash before Running ends the start quietly; the default policy decides the rest.
+  const policy = client.createDefaultErrorHandler();
+  errorHandler.error = (error, message, count) => policy.error(error, message, count);
+  errorHandler.closed = () => (client?.state === State.Running
+    ? policy.closed()
+    : { action: CloseAction.DoNotRestart, handled: true });
 
   preview = new Preview(client);
   booksView = new BooksViewProvider(client, context.extensionUri);
@@ -203,15 +221,15 @@ function ensureStarted(): void {
   // when any jpnov.layout.* setting changes (the txt/outDir members only feed on-demand
   // builds, but the extra refresh is idempotent and settings edits are rare). No outDir
   // listener: the list carries nothing derived from it, and each build reads the snapshot
-  // afresh (`bookTargets`). Gated on Running: the state listener below re-sends the lint
-  // snapshot and re-lists the books when the server next comes up, and the preview re-reads
-  // its snapshot on the next request anyway.
+  // afresh (`bookTargets`). The lint push is gated on Running: the state listener below
+  // re-sends the snapshot when the server next comes up. The preview is not: its request reads
+  // the settings when it is made and waits for the start by itself (vscode-languageclient parks
+  // a request sent while the client starts), so a change during the start lands in the render
+  // that follows; a request to a client that is down fails into the panel, and the state
+  // listener's retry() repaints it.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (client?.state !== State.Running) {
-        return;
-      }
-      if (e.affectsConfiguration('jpnov.lint')) {
+      if (e.affectsConfiguration('jpnov.lint') && client?.state === State.Running) {
         pushLint();
       }
       if (e.affectsConfiguration('jpnov.layout') || e.affectsConfiguration('jpnov.lint.common.dash')) {
@@ -252,27 +270,24 @@ function ensureStarted(): void {
   // and the Running-gated listeners above skip a change that arrives while it is starting. So
   // send it again each time it comes up, and list the books (nothing else fills the panel on a
   // cold start, and the listing is what gives the server the books' names): after the first
-  // start, and after the restart vscode-languageclient makes when the server process dies.
+  // start, and after the restart vscode-languageclient makes when the server process dies. A
+  // preview render that the crash cut short, or that was made while the server was down, is
+  // repainted then too.
   context.subscriptions.push(
     client.onDidChangeState((e) => {
       if (e.newState === State.Running) {
         pushLint();
         void booksView?.refresh();
+        preview?.retry();
       }
     }),
   );
 
   // Start the client (and the server process). start() is called exactly once (single-flight
-  // latch above), so a hard startup failure surfaces exactly one popup.
-  client.start().catch(
-    (err: unknown) => {
-      const message = errorText(err);
-      // Terminal popup inside the rejection branch; showErrorMessage never rejects so void is safe.
-      void vscode.window.showErrorMessage(
-        vscode.l10n.t("Japanese Novel: couldn't start the language server. {0}", message),
-      );
-    },
-  );
+  // latch above). A failed start rejects here after the library has logged the error and shown
+  // its own popup for it ("couldn't create connection to server", with the error text and a
+  // way to the output); a second popup would say nothing new.
+  client.start().catch(() => undefined);
 }
 
 function serverCommand(id: string, run: (...args: unknown[]) => Promise<void> | void): vscode.Disposable {
@@ -375,13 +390,21 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): Thenable<void> | undefined {
   // The disposables (preview, books panel) are torn down by the extension host via
   // context.subscriptions; we only need to stop the client, which shuts down the forked
-  // server process.
-  const stopping = client?.stop();
+  // server process. Only a running client can be stopped: vscode-languageclient rejects a
+  // stop() while the client starts (and then kills the server process two seconds later and
+  // restarts it as a crash), so the start is awaited first (start() returns the start under
+  // way, or the finished one). Should the host exit meanwhile, the server notices its parent
+  // is gone and exits by itself. A client that is stopped or failed to start has no server
+  // process to stop, and start() would launch one.
+  const c = client;
   client = undefined;
   preview = undefined;
   booksView = undefined;
   coldStartWatcher = undefined;
   extCtx = undefined;
   started = false;
-  return stopping;
+  if (c?.state === State.Running || c?.state === State.Starting) {
+    return c.start().then(() => c.stop(), () => undefined);
+  }
+  return undefined;
 }

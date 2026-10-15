@@ -105,6 +105,14 @@ export class Preview {
   private readonly layoutOverride = new Map<PreviewLayoutKey, LayoutOverride>();
   /** The last `jpnov.previewAdjusted` value sent, so only a flip costs a setContext round trip. */
   private adjustedContext: boolean | undefined;
+  /** Whether the last render that landed was a failure (its request rejected); {@link retry} repaints then. */
+  private failed = false;
+  /**
+   * The position the panel last parked its document at (seeded by adopt() with the persisted
+   * state): where a re-render of that document (fresh settings, a server restart) parks while no
+   * editor shows it, so the scroll position survives. Panel-scoped, dropped by teardown().
+   */
+  private shown: { readonly uri: string; readonly cursor: Cursor } | undefined;
   /** The widget's fixed strings, localized once; `hint` is per render. */
   private readonly labels: Omit<PreviewLayoutLabels, 'hint'>;
 
@@ -220,7 +228,8 @@ export class Preview {
       void this.renderDocument(editor.document);
     } else if (uri !== undefined) {
       panel.webview.html = this.loadingShell(panel.webview);
-      void this.renderRestored(panel, uri, cursor);
+      this.shown = cursor === undefined ? undefined : { uri, cursor };
+      void this.renderRestored(panel, uri);
     } else {
       panel.webview.html = this.emptyShell(panel.webview);
     }
@@ -231,6 +240,17 @@ export class Preview {
     const doc = this.openPreviewable(this.currentDocUri);
     if (doc !== undefined) {
       void this.renderDocument(doc);
+    }
+  }
+
+  /**
+   * Re-renders when the last render failed (extension.ts calls this when the server comes up):
+   * the request a crash cut short, or one made while the server was down. Nothing otherwise, so
+   * a render still in flight at the start is not invalidated.
+   */
+  retry(): void {
+    if (this.failed) {
+      this.refresh();
     }
   }
 
@@ -352,7 +372,7 @@ export class Preview {
       this.scheduledFocus = undefined;
       const doc = this.openPreviewable(this.currentDocUri);
       if (doc !== undefined) {
-        void this.renderDocument(doc, undefined, landing);
+        void this.renderDocument(doc, landing);
       }
     }, RENDER_DEBOUNCE_MS);
   }
@@ -457,11 +477,7 @@ export class Preview {
   }
 
   /** Revival tail for a persisted uri: load the document and render, or fall back to the neutral shell. */
-  private async renderRestored(
-    panel: vscode.WebviewPanel,
-    uri: string,
-    cursor: Cursor | undefined,
-  ): Promise<void> {
+  private async renderRestored(panel: vscode.WebviewPanel, uri: string): Promise<void> {
     let doc: vscode.TextDocument | undefined;
     try {
       doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(uri));
@@ -472,7 +488,7 @@ export class Preview {
       return; // closed or replaced while the document loaded
     }
     if (doc !== undefined && this.isPreviewable(doc)) {
-      await this.renderDocument(doc, cursor);
+      await this.renderDocument(doc);
       return;
     }
     panel.webview.html = this.emptyShell(panel.webview);
@@ -483,11 +499,7 @@ export class Preview {
    * renderSeq-serialized (a stale response never lands), so every call site may fire-and-forget
    * with `void`.
    */
-  private async renderDocument(
-    doc: vscode.TextDocument,
-    fallback?: Cursor,
-    focus?: PreviewLayoutKey,
-  ): Promise<void> {
+  private async renderDocument(doc: vscode.TextDocument, focus?: PreviewLayoutKey): Promise<void> {
     const panel = this.panel;
     if (panel === undefined) {
       return;
@@ -518,6 +530,7 @@ export class Preview {
       );
     } catch (err) {
       if (seq === this.renderSeq) {
+        this.failed = true;
         const message = errorText(err);
         panel.webview.html = this.shell(
           `<p>${vscode.l10n.t('Preview failed. {0}', escapeHtml(message))}</p>`,
@@ -531,14 +544,16 @@ export class Preview {
     if (seq !== this.renderSeq) {
       return;
     }
+    this.failed = false;
     // Sampled at swap time, after the seq check: pre-await sampling bakes a stale cursor. The
     // followed editor when it shows the document; else any visible editor on it (the document
-    // was never followed: opened from the walkthrough, or restored); else `fallback`, the
-    // revived panel state.
+    // was never followed: opened from the walkthrough, or restored); else where the panel last
+    // parked this document.
     const active = this.editorCursor(this.followed, uri) ??
       this.visibleCursor(uri) ??
-      fallback ??
+      (this.shown?.uri === uri ? this.shown.cursor : undefined) ??
       DOC_HEAD;
+    this.shown = { uri, cursor: active };
     panel.webview.html = this.harden(result.html, panel.webview, active, uri, layout);
   }
 
@@ -643,6 +658,8 @@ export class Preview {
     this.panelDisposables.length = 0;
     this.panel = undefined;
     this.currentDocUri = undefined;
+    this.shown = undefined;
+    this.failed = false;
     // The overrides live with the panel: the next one starts on the settings.
     this.layoutOverride.clear();
     this.syncContext();

@@ -106,10 +106,11 @@ before(async () => {
 });
 
 after(async () => {
-  if (client) {
-    await client.dispose();
+  try {
+    await client?.dispose(); // fails the suite on errors the server logged
+  } finally {
+    await removeCleanups();
   }
-  await removeCleanups();
 });
 
 test('jpnov/renderFile renders ruby, 縦中横, and the pagebreak marker over the wire', async () => {
