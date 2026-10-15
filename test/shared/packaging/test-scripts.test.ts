@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { readRepoFile, REPO_ROOT } from '../repo.ts';
+import { readPackageScripts, REPO_ROOT } from '../repo.ts';
 
 const SCRIPTS = ['test', 'test:integration', 'test:e2e'] as const;
 
@@ -28,12 +28,10 @@ function patternsOf(script: string): string[] {
 }
 
 function scriptPatterns(): ReadonlyMap<string, readonly string[]> {
-  const pkg = JSON.parse(readRepoFile('package.json')) as {
-    readonly scripts?: Readonly<Record<string, string | undefined>>;
-  };
+  const all = readPackageScripts();
   const out = new Map<string, readonly string[]>();
   for (const name of SCRIPTS) {
-    const script = pkg.scripts?.[name];
+    const script = all[name];
     assert.ok(script !== undefined, `package.json scripts.${name} is missing`);
     const patterns = patternsOf(script);
     assert.ok(patterns.length > 0, `scripts.${name} names no test patterns`);

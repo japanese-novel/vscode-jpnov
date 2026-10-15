@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as esbuild from 'esbuild';
 
-import { runCli, writeIfChanged } from './write.ts';
+import { writeIfChanged } from './write.ts';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 
@@ -138,7 +138,3 @@ export async function writeWebviewModules(production = false): Promise<boolean> 
   })();
   return inFlight;
 }
-
-// CLI: `node scripts/gen-webview.ts` (via `npm run gen:webview`). Non-minified — the production
-// build re-runs writeWebviewModules(true) up front, so the packaged bundle stays minified.
-runCli(import.meta.url, 'webview modules', () => writeWebviewModules(process.argv.includes('--production')));

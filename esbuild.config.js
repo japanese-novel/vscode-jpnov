@@ -2,20 +2,19 @@ import { readFile } from 'node:fs/promises';
 
 import * as esbuild from 'esbuild';
 
-import { writeGrammar } from './scripts/gen-grammar.ts';
+import { generateAll } from './scripts/gen.ts';
 import { styleSourcePaths, writeStylesModule } from './scripts/gen-styles.ts';
 import { webviewSourcePaths, writeWebviewModules } from './scripts/gen-webview.ts';
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
-// Regenerate the generated modules up front so every build (dev, prod, and watch's first pass)
-// bundles fresh sources; the codegen plugins keep --watch rebuilds fresh thereafter. The webview
-// bundle is minified in production so the packaged extension ships minified webview code. The
-// grammar is no bundle input: VS Code reads it from syntaxes/, so a build only keeps it fresh.
-await writeStylesModule();
-await writeWebviewModules(production);
-await writeGrammar();
+// Regenerate every generated module up front (the same run as `npm run gen`) so every build
+// (dev, prod, and watch's first pass) bundles fresh sources; the codegen plugins keep --watch
+// rebuilds fresh thereafter. The webview bundle is minified in production so the packaged
+// extension ships minified webview code. The grammar is no bundle input: VS Code reads it from
+// syntaxes/, so a build only keeps it fresh.
+await generateAll(production);
 
 /** @type {import('esbuild').BuildOptions} */
 const base = {
@@ -65,7 +64,7 @@ const kuromojiTripwire = {
  * Re-runs the styles codegen when a fragment changes: loading the generated module registers
  * the authored `styles/*.css` files as watch dependencies, so in --watch a raw `.css` edit
  * regenerates `styles.generated.ts` and re-triggers the (server-only — the client bundle never
- * imports it) rebuild. Non-watch builds are covered by the up-front writeStylesModule() call.
+ * imports it) rebuild. Non-watch builds are covered by the up-front generateAll() call.
  * @type {import('esbuild').Plugin}
  */
 const stylesCodegen = {
@@ -95,7 +94,7 @@ const webviewCodegen = {
   name: 'webview-codegen',
   setup(build) {
     build.onLoad({ filter: /(?:webviewBundle|emrProbe)\.generated\.ts$/ }, async (args) => {
-      // The up-front writeWebviewModules() already produced these; only --watch needs to re-run on a
+      // The up-front generateAll() already produced these; only --watch needs to re-run on a
       // source change (bundling the webview TS via nested esbuild is the costly step — skip it in
       // one-shot builds, where it would only re-bundle to an identical result).
       if (watch) {
