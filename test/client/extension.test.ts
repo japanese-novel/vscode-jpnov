@@ -10,23 +10,42 @@
 import { test, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { LintConfigChangedNotification, ListBooksRequest } from '../../src/shared/protocol.ts';
+import type { ErrorHandler, LanguageClientOptions } from 'vscode-languageclient/node';
+
+import { LintConfigChangedNotification, ListBooksRequest, RenderFileRequest, type RenderFileParams } from '../../src/shared/protocol.ts';
 import {
   buildVscode,
   createMockState,
   doc,
+  editorAt,
   EventEmitter,
   registrationOnly,
   resetMockState,
+  tick,
   Uri,
 } from './_vscodeMock.ts';
 
 const state = createMockState();
 mock.module('vscode', { namedExports: buildVscode(state) });
 
-/** vscode-languageclient's public `State`. */
+/** vscode-languageclient's public `State`, `CloseAction` and `ErrorAction`. */
 const State = { Stopped: 1, Running: 2, Starting: 3, StartFailed: 4 } as const;
 type StateValue = (typeof State)[keyof typeof State];
+const CloseAction = { DoNotRestart: 1, Restart: 2 } as const;
+const ErrorAction = { Continue: 1, Shutdown: 2 } as const;
+
+/** What the library's default error handler answers; the entry module delegates to it once the server ran. */
+const DEFAULT_ERROR = { action: ErrorAction.Continue, message: 'the default policy' };
+const DEFAULT_CLOSED = { action: CloseAction.Restart, message: 'the default policy' };
+
+/** The client options the entry module passes: the library's, with the members these tests read made required. */
+type ClientOptions = Omit<LanguageClientOptions, 'initializationOptions' | 'errorHandler' | 'initializationFailedHandler'> & {
+  initializationOptions: Snapshots;
+  errorHandler: ErrorHandler;
+  initializationFailedHandler: NonNullable<LanguageClientOptions['initializationFailedHandler']>;
+};
+
+const RENDER_HTML = '<html><head></head><body>本文</body></html>';
 
 /** The snapshot: `initializationOptions` carries it, its notification replaces it. */
 interface Snapshots {
@@ -45,30 +64,50 @@ class FakeLanguageClient {
   holds: Snapshots = {};
   /** Notification and request methods, in the order sent. */
   readonly sent: string[] = [];
+  /** Every `jpnov/renderFile` request's params, in order. */
+  readonly renders: RenderFileParams[] = [];
+  /** Set: every render request rejects with it (a request a crash cut short, or made while the server was down). */
+  renderError: Error | undefined;
+  /** How often `stop()` was called. */
+  stops = 0;
+  readonly options: ClientOptions;
   readonly onNotification = registrationOnly;
   readonly onRequest = registrationOnly;
   private readonly seed: Snapshots;
   private readonly stateChanged = new EventEmitter<{ oldState: StateValue; newState: StateValue }>();
   readonly onDidChangeState = this.stateChanged.event;
+  private starting: Promise<void> | undefined;
   private settle: () => void = () => undefined;
 
   constructor(
     _id: string,
     _name: string,
     _serverOptions: unknown,
-    clientOptions: { initializationOptions: Snapshots },
+    clientOptions: ClientOptions,
   ) {
+    this.options = clientOptions;
     this.seed = clientOptions.initializationOptions;
     FakeLanguageClient.last = this;
   }
 
-  /** A new server process takes the seed, the same value on every start; Starting until `run()`. */
+  /**
+   * A new server process takes the seed, the same value on every start; Starting until `run()`.
+   * Until the client stops, a second call returns the same start (pending or done), as the library does.
+   */
   start(): Promise<void> {
+    if (this.starting !== undefined) {
+      return this.starting;
+    }
     this.holds = structuredClone(this.seed);
     this.move(State.Starting);
-    return new Promise((resolve) => {
+    this.starting = new Promise((resolve) => {
       this.settle = resolve;
     });
+    return this.starting;
+  }
+
+  createDefaultErrorHandler(): ErrorHandler {
+    return { error: () => DEFAULT_ERROR, closed: () => DEFAULT_CLOSED };
   }
 
   /** The initialize reply: Running, then `start()` resolves — the library's order. */
@@ -79,16 +118,18 @@ class FakeLanguageClient {
 
   /** The server process dies and the library restarts it by itself: Stopped, then a new start. */
   crash(): void {
-    this.move(State.Stopped);
+    this.halt();
     void this.start();
   }
 
   /** The library gave up restarting: Stopped for the rest of the session. */
   halt(): void {
+    this.starting = undefined;
     this.move(State.Stopped);
   }
 
   stop(): Promise<void> {
+    this.stops++;
     this.halt();
     return Promise.resolve();
   }
@@ -102,9 +143,13 @@ class FakeLanguageClient {
     return Promise.resolve();
   }
 
-  /** The only request these flows make is `jpnov/listBooks`. */
-  sendRequest(type: string): Promise<unknown> {
+  /** `jpnov/renderFile` answers a page (or fails on demand); the only other request is `jpnov/listBooks`. */
+  sendRequest(type: string, params?: unknown): Promise<unknown> {
     this.sent.push(type);
+    if (type === RenderFileRequest) {
+      this.renders.push(params as RenderFileParams);
+      return this.renderError === undefined ? Promise.resolve({ html: RENDER_HTML }) : Promise.reject(this.renderError);
+    }
     return Promise.resolve({ books: [] });
   }
 
@@ -116,7 +161,14 @@ class FakeLanguageClient {
 }
 
 mock.module('vscode-languageclient/node', {
-  namedExports: { LanguageClient: FakeLanguageClient, PrepareRenameRequest: { type: 'textDocument/prepareRename' }, State, TransportKind: { ipc: 1 } },
+  namedExports: {
+    CloseAction,
+    ErrorAction,
+    LanguageClient: FakeLanguageClient,
+    PrepareRenameRequest: { type: 'textDocument/prepareRename' },
+    State,
+    TransportKind: { ipc: 1 },
+  },
 });
 
 const { activate, deactivate } = await import('../../src/client/extension.ts');
@@ -143,12 +195,18 @@ beforeEach(() => {
   resetMockState(state);
 });
 
-// The extension host's order: deactivate() first, then the subscriptions.
+// The extension host's order: deactivate() first, then the subscriptions. deactivate() waits
+// for a start still under way before it stops the client, so a test that left the server
+// starting has it come up here.
 afterEach(async () => {
+  const client = FakeLanguageClient.last;
   FakeLanguageClient.last = undefined;
   const stopping = deactivate();
   for (const d of subscriptions.splice(0)) {
     d.dispose();
+  }
+  if (client?.state === State.Starting) {
+    client.run();
   }
   await stopping;
 });
@@ -287,12 +345,93 @@ test('each start sends the seeded snapshot once, then lists the books (the serve
   assert.deepEqual(client.sent.slice(2), [LintConfigChangedNotification, ListBooksRequest]);
 });
 
-test('the listeners send nothing while the server starts', () => {
+test('the lint and folder listeners send nothing while the server starts', () => {
   const client = start();
   for (const change of CHANGES) {
     change.apply();
   }
   assert.deepEqual(client.sent, []);
+});
+
+/** Starts with the novel document in an active editor and the preview open beside it (its first render requested). */
+async function startWithPreview(): Promise<FakeLanguageClient> {
+  state.workspaceFolders = [folder(A, 0)];
+  const d = doc(`${A}/one.jpnov`, 'jpnov', '本文');
+  state.textDocuments.push(d);
+  state.activeEditor = editorAt(d);
+  activateHost();
+  const client = FakeLanguageClient.last;
+  assert.ok(client);
+  await state.registeredCommands.get('jpnov.previewToSide')?.();
+  await tick();
+  assert.equal(client.renders.length, 1);
+  return client;
+}
+
+test('a layout change while the server starts re-renders the preview with the new value, and the start adds no render (#163)', async () => {
+  const client = await startWithPreview();
+  state.config['jpnov.layout.charsPerLine'] = 30;
+  configChanged('jpnov.layout.charsPerLine');
+  await tick();
+  client.run();
+  await tick();
+  assert.equal(client.renders.length, 2);
+  assert.equal(client.renders[1]?.settings.charsPerLine, 30);
+});
+
+test('a render that failed while the server was down is repainted once it runs (#163)', async () => {
+  const client = await startWithPreview();
+  client.run();
+  await tick();
+  const [panel] = state.panels;
+  assert.ok(panel);
+
+  client.crash();
+  client.renderError = new Error('Pending response rejected since connection got disposed');
+  configChanged('jpnov.layout.charsPerLine');
+  await tick();
+  assert.equal(client.renders.length, 2);
+  assert.match(panel.webview.html, /Preview failed/);
+
+  client.renderError = undefined;
+  client.run();
+  await tick();
+  assert.equal(client.renders.length, 3);
+  assert.doesNotMatch(panel.webview.html, /Preview failed/);
+});
+
+test('a crash before the server ran ends the start without a restart; afterwards the library policy decides (#163)', () => {
+  const client = start();
+  const { errorHandler, initializationFailedHandler } = client.options;
+  assert.equal(initializationFailedHandler(new Error('x')), false);
+  assert.deepEqual(errorHandler.closed(), { action: CloseAction.DoNotRestart, handled: true });
+  client.run();
+  assert.deepEqual(errorHandler.closed(), DEFAULT_CLOSED);
+  assert.deepEqual(errorHandler.error(new Error('x'), undefined, 1), DEFAULT_ERROR);
+});
+
+test('deactivate() while the server starts waits for the start, then stops the client (#163)', async () => {
+  const client = start();
+  const stopping = deactivate();
+  assert.equal(client.stops, 0);
+  client.run();
+  await stopping;
+  assert.equal(client.stops, 1);
+});
+
+test('deactivate() stops a running client at once', async () => {
+  const client = start();
+  client.run();
+  await deactivate();
+  assert.equal(client.stops, 1);
+});
+
+test('deactivate() after the server is down for good stops nothing (the library rejects that too)', async () => {
+  const client = start();
+  client.run();
+  client.halt();
+  await deactivate();
+  assert.equal(client.stops, 0);
 });
 
 test('nothing is sent once the server is down for good', () => {

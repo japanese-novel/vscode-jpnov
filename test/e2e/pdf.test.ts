@@ -70,10 +70,11 @@ before(async () => {
 });
 
 after(async () => {
-  if (client) {
-    await client.dispose();
+  try {
+    await client?.dispose(); // fails the suite on errors the server logged
+  } finally {
+    await removeCleanups();
   }
-  await removeCleanups();
 });
 
 /** Builds the fixture book with `settings` and returns the HTML artifact text. */

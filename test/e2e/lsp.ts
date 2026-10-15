@@ -10,8 +10,10 @@ import { readFile } from 'node:fs/promises';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
+import { MessageType, type LogMessageParams } from 'vscode-languageserver/node';
+
 import { errorText } from '../../src/shared/errors.ts';
-import type { ReadTextParams, ReadTextResult } from '../../src/shared/protocol.ts';
+import { ServerErrorNotification, type ReadTextParams, type ReadTextResult, type ServerErrorParams } from '../../src/shared/protocol.ts';
 
 interface RpcError {
   readonly code: number;
@@ -50,6 +52,8 @@ const RESPONDERS: Readonly<Partial<Record<string, (params: unknown) => Promise<u
 export class LspClient {
   private readonly child: ChildProcessByStdio<Writable, Readable, null>;
   private readonly pending = new Map<number, Pending>();
+  /** The errors the server reported without a reply to carry them: error-level `window/logMessage` (a handler that threw) and `jpnov/serverError`. */
+  private readonly serverErrors: string[] = [];
   private buffer = Buffer.alloc(0);
   private nextId = 1;
 
@@ -83,20 +87,26 @@ export class LspClient {
     this.send({ jsonrpc: '2.0', method, params });
   }
 
-  /** `shutdown` + `exit` per the LSP lifecycle, with a SIGKILL fallback so the suite never hangs. */
+  /**
+   * `shutdown` + `exit` per the LSP lifecycle, with a SIGKILL fallback so the suite never hangs.
+   * Then fails on every error the server reported meanwhile: the suite's requests all succeeded,
+   * but a handler that threw, or reported, never shows in a reply.
+   */
   async dispose(): Promise<void> {
-    if (this.child.exitCode !== null || this.child.signalCode !== null) {
-      return;
+    if (this.child.exitCode === null && this.child.signalCode === null) {
+      try {
+        await this.request('shutdown', null);
+        this.notify('exit');
+      } catch {
+        // Server already gone or unresponsive; the kill below still reaps it.
+      }
+      const killer = setTimeout(() => this.child.kill('SIGKILL'), 2000);
+      await once(this.child, 'exit');
+      clearTimeout(killer);
     }
-    try {
-      await this.request('shutdown', null);
-      this.notify('exit');
-    } catch {
-      // Server already gone or unresponsive; the kill below still reaps it.
+    if (this.serverErrors.length > 0) {
+      throw new Error(`the server reported ${String(this.serverErrors.length)} error(s):\n${this.serverErrors.join('\n')}`);
     }
-    const killer = setTimeout(() => this.child.kill('SIGKILL'), 2000);
-    await once(this.child, 'exit');
-    clearTimeout(killer);
   }
 
   private send(message: object): void {
@@ -131,6 +141,13 @@ export class LspClient {
     if (message.method !== undefined) {
       if (message.id !== undefined) {
         void this.answer(message.id, message.method, message.params);
+      } else if (message.method === 'window/logMessage') {
+        const { type, message: text } = message.params as LogMessageParams;
+        if (type === MessageType.Error) {
+          this.serverErrors.push(text);
+        }
+      } else if (message.method === ServerErrorNotification) {
+        this.serverErrors.push(JSON.stringify((message.params as ServerErrorParams).message));
       }
       return;
     }

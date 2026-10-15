@@ -24,12 +24,11 @@ import {
   createFakePanel,
   createMockState,
   doc,
+  editorAt,
   resetMockState,
   tick,
   Uri,
   ViewColumn,
-  type FakeTextDocument,
-  type FakeTextEditor,
   type FakeWebviewPanel,
 } from './_vscodeMock.ts';
 
@@ -65,16 +64,18 @@ function firstPanel() {
   return panel;
 }
 
-/** A fake client that keeps every renderFile request's params (its length = the render count). */
+/** A fake client that keeps every renderFile request's params (its length = the render count); set `fail` and every request rejects with it. */
 function capturingClient(html: string): {
   params: RenderFileParams[];
+  fail: Error | undefined;
   sendRequest: (type: unknown, params: unknown) => Promise<{ html: string }>;
 } {
   const client = {
     params: [] as RenderFileParams[],
+    fail: undefined as Error | undefined,
     sendRequest: (_type: unknown, params: unknown): Promise<{ html: string }> => {
       client.params.push(params as RenderFileParams);
-      return Promise.resolve({ html });
+      return client.fail === undefined ? Promise.resolve({ html }) : Promise.reject(client.fail);
     },
   };
   return client;
@@ -117,11 +118,6 @@ function gatedClient(html: string, immediate = 1): {
     },
   };
   return client;
-}
-
-/** A fake editor showing `document` with one cursor, for the active/visible editors and the editor events. */
-function editorAt(document: FakeTextDocument, line = 0, character = 0, viewColumn = 1): FakeTextEditor {
-  return { document, selections: [{ active: { line, character } }], viewColumn };
 }
 
 async function openPreviewWith(html: string) {
@@ -208,9 +204,8 @@ test('the original document body survives hardening', async () => {
 });
 
 test('a server render error is surfaced inside a hardened shell, not thrown', async () => {
-  const failing = {
-    sendRequest: () => Promise.reject(new Error('compiler exploded')),
-  };
+  const failing = capturingClient(SERVER_HTML);
+  failing.fail = new Error('compiler exploded');
   const preview = new Preview(failing as never);
 
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
@@ -507,6 +502,36 @@ test('adopt() with persisted state renders that document and bakes its cursor', 
   assert.match(panel.webview.html, /本文/);
   // No editor is visible, so the persisted cursor drives the initial scroll.
   assert.deepEqual(bakedCursor(panel), [5, 3]);
+});
+
+test('a re-render of a restored document keeps the restored cursor while no editor shows it (#163)', async () => {
+  state.textDocuments.push(doc('file:///proj/src/a.jpnov', 'jpnov', '本文です。'));
+  const client = countingClient(SERVER_HTML);
+  const { preview, panel } = adoptWith(client, { uri: 'file:///proj/src/a.jpnov', line: 5, character: 3 });
+  await tick();
+  assert.equal(client.renders, 1);
+
+  preview.refresh(); // a setting changed while the server started, or the server came back
+  await tick();
+  assert.equal(client.renders, 2);
+  assert.deepEqual(bakedCursor(panel), [5, 3]);
+});
+
+test('retry() re-renders after a failed render, and nothing after a successful one (#163)', async () => {
+  const client = capturingClient(SERVER_HTML);
+  client.fail = new Error('Pending response rejected since connection got disposed');
+  const { preview, panel } = await openWith(client);
+  assert.match(panel.webview.html, /Preview failed/);
+
+  client.fail = undefined;
+  preview.retry();
+  await tick();
+  assert.equal(client.params.length, 2);
+  assert.doesNotMatch(panel.webview.html, /Preview failed/);
+
+  preview.retry();
+  await tick();
+  assert.equal(client.params.length, 2, 'a successful render leaves nothing to retry');
 });
 
 test('adopt() parks an older session\'s state, or an unusable character, at the head of its line', async () => {
