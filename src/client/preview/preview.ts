@@ -97,6 +97,8 @@ export class Preview {
   /** Pending debounced re-render (see {@link RENDER_DEBOUNCE_MS}) and the widget input it re-focuses; cleared by teardown(). */
   private renderDebounce: ReturnType<typeof setTimeout> | undefined;
   private scheduledFocus: PreviewLayoutKey | undefined;
+  /** Renders awaiting the server; the debounce re-arms while one is, so edits that outran a render pay one more. */
+  private inFlight = 0;
   /**
    * Preview-only values for charsPerLine / linesPerPage from the layout widget, replacing the
    * settings in every render. Panel-scoped: kept across document switches, dropped by teardown().
@@ -370,6 +372,10 @@ export class Preview {
       this.renderDebounce = undefined;
       const landing = this.scheduledFocus;
       this.scheduledFocus = undefined;
+      if (this.inFlight > 0) {
+        this.scheduleRender(landing);
+        return;
+      }
       const doc = this.openPreviewable(this.currentDocUri);
       if (doc !== undefined) {
         void this.renderDocument(doc, landing);
@@ -504,6 +510,8 @@ export class Preview {
     if (panel === undefined) {
       return;
     }
+    // This render reads the document as it is now, so a render the debounce still owes is covered.
+    this.cancelScheduledRender();
     const uri = doc.uri.toString();
     this.currentDocUri = uri;
     this.lastDocUri = uri;
@@ -523,6 +531,7 @@ export class Preview {
     const layout = this.layoutInit(base, resolvePreviewSettings(settings), this.layoutOverride.size > 0, focus);
 
     let result: RenderFileResult;
+    this.inFlight += 1;
     try {
       result = await this.client.sendRequest<RenderFileResult>(
         RenderFileRequest,
@@ -538,6 +547,8 @@ export class Preview {
         );
       }
       return;
+    } finally {
+      this.inFlight -= 1;
     }
 
     // Drop stale responses: a newer edit already kicked off a later render.
@@ -574,9 +585,9 @@ export class Preview {
   }
 
   /**
-   * Inject a strict CSP `<meta>`, a nonce on the inline `<style>`, the widget's nonce'd stylesheet
-   * and the nonce'd bundle `<script>` (cursor follow + widget) into the server's standalone
-   * document, so only those may run inside the webview.
+   * Inject a strict CSP `<meta>`, a nonce on the inline `<style>` and the 傍点 probe `<script>`,
+   * the widget's nonce'd stylesheet and the nonce'd bundle `<script>` (cursor follow + widget)
+   * into the server's standalone document, so only those may run inside the webview.
    */
   private harden(
     html: string,
@@ -588,33 +599,26 @@ export class Preview {
     const nonce = makeNonce();
     const meta = cspMeta(nonce, webview, true);
 
-    let out = html;
-    // Nonce the compiler's own inline <style>/<script> (the stylesheet and the 傍点 probe):
-    // document text is HTML-escaped upstream, so these tags are always the server's own.
-    for (const tag of ['style', 'script'] as const) {
-      out = out.replace(
-        new RegExp(`<${tag}(\\s[^>]*)?>`, 'gi'),
-        (_m, attrs: string | undefined) => `<${tag}${attrs ?? ''} nonce="${nonce}">`,
-      );
-    }
-
-    // If for some reason there is no <head>, fall back to wrapping in our own shell.
-    if (!/<head(\s[^>]*)?>/i.test(out)) {
+    // The compiler's document has one shape (shared/compiler/preview.ts) and its body text is
+    // HTML-escaped, so the head's <style> and the 傍点 probe <script> are found by index; no
+    // pattern walks the multi-megabyte document. Any other shape gets the shell.
+    const head = html.indexOf('<head>');
+    const style = html.indexOf('<style>', head);
+    const headEnd = html.indexOf('</head>', style);
+    const bodyEnd = html.lastIndexOf('</body>');
+    if (head < 0 || style < 0 || headEnd < 0 || bodyEnd < headEnd) {
       return this.shell(html, webview);
     }
-    out = out.replace(/<head(\s[^>]*)?>/i, (m) => `${m}${meta}`);
-    // The widget's stylesheet after the compiler's own <style> (its selectors are namespaced `jw-`).
-    // Replacer functions throughout: a `$` sequence inside the bundle must never act as a pattern.
-    out = out.replace(/<\/head>/i, () => `<style nonce="${nonce}">${WIDGET_CSS}</style></head>`);
-
-    // Inject the bundle at the end of <body> (DOM is ready): the `__INIT` bootstrap, then the
-    // scroller + widget — see bootScript for the escaping / script-split constraints.
+    const probe = html.lastIndexOf('<script>', bodyEnd);
     const init: PreviewInit = { uri: docUri, line: active.line, character: active.character, layout };
+    // The bundle at the end of <body> (DOM is ready): the `__INIT` bootstrap, then the scroller +
+    // widget — see bootScript for the escaping / script-split constraints.
     const script = `${bootScript(nonce, init)}<script nonce="${nonce}">${PREVIEW_JS}</script>`;
-    if (/<\/body>/i.test(out)) {
-      return out.replace(/<\/body>/i, () => `${script}</body>`);
-    }
-    return out.replace(/<\/html>/i, () => `${script}</html>`);
+    const body = probe > headEnd
+      ? `${html.slice(headEnd, probe)}<script nonce="${nonce}">${html.slice(probe + '<script>'.length, bodyEnd)}`
+      : html.slice(headEnd, bodyEnd);
+    return `${html.slice(0, head + '<head>'.length)}${meta}${html.slice(head + '<head>'.length, style)}<style nonce="${nonce}">` +
+      `${html.slice(style + '<style>'.length, headEnd)}<style nonce="${nonce}">${WIDGET_CSS}</style>${body}${script}${html.slice(bodyEnd)}`;
   }
 
   /** Minimal hardened standalone document for fallback / placeholder content. */

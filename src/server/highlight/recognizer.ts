@@ -13,12 +13,41 @@
  * document and decides where (narration vs dialogue) a span may apply.
  */
 
+/**
+ * The entries by their first UTF-16 unit, each bucket longest-first, so a greedy match prefers
+ * 山田太郎 over 山田 and 彼女 over 彼 and the text's own unit picks the few entries to try.
+ */
+type Index = ReadonlyMap<number, readonly string[]>;
+
+function indexOf(entries: Iterable<string>): Index {
+  const index = new Map<number, string[]>();
+  for (const s of [...entries].sort((a, b) => b.length - a.length)) {
+    const bucket = index.get(s.charCodeAt(0));
+    if (bucket === undefined) {
+      index.set(s.charCodeAt(0), [s]);
+    } else {
+      bucket.push(s);
+    }
+  }
+  return index;
+}
+
+/** The longest entry of `index` that `text` starts with at `pos`, else ''. */
+function matchAt(index: Index, text: string, pos: number): string {
+  for (const s of index.get(text.charCodeAt(pos)) ?? []) {
+    if (text.startsWith(s, pos)) {
+      return s;
+    }
+  }
+  return '';
+}
+
 /** Honorifics that may sit between a name and its subject particle; coloured together with the name. */
-const HONORIFICS = ['先生', 'ちゃん', 'さま', 'たん', 'さん', '様', '君', '殿'];
+export const HONORIFICS = ['先生', 'ちゃん', 'さま', 'たん', 'さん', '様', '君', '殿'];
 /** Built-in pronoun subjects, recognised like a listed name. */
-const PRONOUNS = ['彼女', '私', '僕', '彼', '俺', 'あたし', 'わたくし', 'わし', '少年', '少女'];
+export const PRONOUNS = ['彼女', '私', '僕', '彼', '俺', 'あたし', 'わたくし', 'わし', '少年', '少女'];
 /** Subject-marking particles that must immediately follow a name(+honorific) for it to highlight. */
-const PARTICLES = ['は', 'が'];
+export const PARTICLES = ['は', 'が'];
 
 export interface RecognizerSpan {
   /** Start index into the run text passed to {@link Recognizer.recognize} (UTF-16 units). */
@@ -32,26 +61,14 @@ export interface Recognizer {
   recognize(runText: string): readonly RecognizerSpan[];
 }
 
-/** Longest-first, so a greedy match prefers 山田太郎 over 山田 and 彼女 over 彼. */
-const byLengthDesc = (xs: readonly string[]): string[] => [...xs].sort((a, b) => b.length - a.length);
-
-/** The longest entry of `sorted` (already length-desc) that `text` starts with at `pos`, else ''. */
-function matchAt(sorted: readonly string[], text: string, pos: number): string {
-  for (const s of sorted) {
-    if (text.startsWith(s, pos)) {
-      return s;
-    }
-  }
-  return '';
-}
-
 export function createRecognizer(
   surfaces: readonly string[],
   keywords: readonly string[],
 ): Recognizer {
-  const subjects = byLengthDesc([...new Set(surfaces), ...PRONOUNS]);
-  const honorifics = byLengthDesc(HONORIFICS);
-  const keys = byLengthDesc([...new Set(keywords)]);
+  const subjects = indexOf(new Set([...surfaces, ...PRONOUNS]));
+  const honorifics = indexOf(HONORIFICS);
+  const particles = indexOf(PARTICLES);
+  const keys = indexOf(new Set(keywords));
 
   return {
     recognize(runText: string): readonly RecognizerSpan[] {
@@ -63,7 +80,7 @@ export function createRecognizer(
         const name = matchAt(subjects, runText, i);
         if (name !== '') {
           const afterHonorific = i + name.length + matchAt(honorifics, runText, i + name.length).length;
-          const particle = matchAt(PARTICLES, runText, afterHonorific);
+          const particle = matchAt(particles, runText, afterHonorific);
           if (particle !== '') {
             out.push({ start: i, len: afterHonorific - i + particle.length, kind: 'character' }); // name + honorific + particle
             i = afterHonorific + particle.length;

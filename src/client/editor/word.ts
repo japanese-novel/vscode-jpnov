@@ -121,18 +121,39 @@ export function groupStops(line: string, segments: Iterable<WordSegment>): numbe
 }
 
 let segmenter: Intl.Segmenter | undefined;
-let cached: { readonly line: string; readonly stops: readonly number[] } | undefined;
 
-/**
- * {@link groupStops} of `line`. The segmenter is built on first use (loading its dictionary is
- * the one slow step), and the last line's stops are kept for a key held along that line.
- */
-export function lineStops(line: string): readonly number[] {
-  if (cached?.line !== line) {
-    segmenter ??= new Intl.Segmenter('ja', { granularity: 'word' });
-    cached = { line, stops: groupStops(line, segmenter.segment(line)) };
+function segmentsOf(line: string): Intl.Segments {
+  segmenter ??= new Intl.Segmenter('ja', { granularity: 'word' });
+  return segmenter.segment(line);
+}
+
+/** The last stop before `offset`: the start of the group holding the character before it. Only
+ *  the segments walked are read (`containing` cuts one at a time, and ICU bounds its dictionary
+ *  work at punctuation), so a held ⌥⌫ on a long line costs the group, not the line. */
+export function stopBefore(text: string, offset: number): number {
+  const segments = segmentsOf(text);
+  for (let seg = segments.containing(offset - 1); seg !== undefined;) {
+    const prev = segments.containing(seg.index - 1);
+    if (prev === undefined || !joins(prev, seg)) {
+      return seg.index;
+    }
+    seg = prev;
   }
-  return cached.stops;
+  return 0;
+}
+
+/** The first stop after `offset`: the end of the group holding the character at it. */
+export function stopAfter(text: string, offset: number): number {
+  const segments = segmentsOf(text);
+  for (let seg = segments.containing(offset); seg !== undefined;) {
+    const end = seg.index + seg.segment.length;
+    const next = segments.containing(end);
+    if (next === undefined || !joins(seg, next)) {
+      return end;
+    }
+    seg = next;
+  }
+  return text.length;
 }
 
 /** A position in the shape of `vscode.Position`. */
@@ -150,14 +171,6 @@ export interface Span {
 export interface Lines {
   readonly lineCount: number;
   lineAt(line: number): { readonly text: string };
-}
-
-function stopBefore(text: string, offset: number): number {
-  return lineStops(text).findLast((stop) => stop < offset) ?? 0;
-}
-
-function stopAfter(text: string, offset: number): number {
-  return lineStops(text).find((stop) => stop > offset) ?? text.length;
 }
 
 /**

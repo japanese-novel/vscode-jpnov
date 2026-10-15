@@ -29,10 +29,17 @@ export const CORNERS = '「『」』';
 
 /** Combining 濁点 (U+3099) and 半濁点 (U+309A): what a decomposed (NFD) kana carries after its base. */
 const COMBINING_KANA_MARK = /[\u3099\u309A]/;
+/** The same class as a scan over a text, for the lint rule that reports each mark. */
+export const COMBINING_KANA_MARKS = new RegExp(COMBINING_KANA_MARK.source, 'g');
 
 /** Whether `cp` is a combining 濁点/半濁点 (the second code point of an NFD kana). */
 export function isCombiningKanaMark(cp: number): boolean {
   return cp === 0x3099 || cp === 0x309a;
+}
+
+/** `chars` as the body of a regex character class, the class metacharacters escaped. */
+export function charClass(chars: Iterable<string>): string {
+  return [...chars].map((c) => c.replace(/[\\\]^-]/g, '\\$&')).join('');
 }
 
 /**
@@ -105,6 +112,14 @@ export function graphemes(text: string): string[] {
   return SINGLETONS.test(text) ? Array.from(text) : Array.from(GRAPHEMES.segment(text), (s) => s.segment);
 }
 
+/** How many clusters `text` holds: the squares it takes on the grid, without listing them. */
+export function graphemeCount(text: string): number {
+  if (SINGLETONS.test(text)) {
+    return text.length;
+  }
+  return Iterator.from(GRAPHEMES.segment(text)).reduce((n) => n + 1, 0);
+}
+
 /**
  * True iff `at` falls between two clusters of `text`: never at its ends. Two singletons always
  * part (a cluster joins across a non-singleton on one of its sides); anything else asks the
@@ -126,7 +141,7 @@ export function headChar(text: string): string {
  * The characters no output can carry: what XML 1.0 leaves out of Char below U+10000, surrogates
  * aside (https://www.w3.org/TR/xml/#charsets). Tab, LF and CR are Char.
  */
-const UNSHOWN = /[\0-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g;
+export const UNSHOWN = /[\0-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g;
 
 /** Whether `cp` is a character no output can carry: the class {@link dropUnshown} removes. */
 export function isUnshown(cp: number): boolean {

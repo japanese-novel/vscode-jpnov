@@ -7,6 +7,7 @@
  */
 import type { Span } from '../../../shared/ast/nodes.ts';
 import { tcyAnnotation } from '../../../shared/ast/notation.ts';
+import { charClass } from '../../../shared/chars.ts';
 import { DASH_CHARS } from '../../../shared/dash.ts';
 import { modeOf } from '../../../shared/lint/select.ts';
 
@@ -34,6 +35,9 @@ const AFTER_MARKS = new Set([
 
 /** The marks exclamationRun counts; {@link SENTENCE_MARKS} adds the characters that hold two. */
 const EXCLAMATIONS = new Set(['！', '？', '!', '?']);
+/** The maximal runs of either mark set, as {@link eachMarkRun} scans them (each mark one UTF-16 unit). */
+const SENTENCE_MARK_RUNS = new RegExp(`[${charClass(SENTENCE_MARKS)}]+`, 'g');
+const EXCLAMATION_RUNS = new RegExp(`[${charClass(EXCLAMATIONS)}]+`, 'g');
 const FULL_TO_HALF: Record<string, string> = { '！': '!', '？': '?' };
 const HALF_TO_FULL: Record<string, string> = { '!': '！', '?': '？' };
 
@@ -157,22 +161,11 @@ export function closingPunctRule(ctx: RuleContext): LineRule {
  *  it is full-width. */
 function eachMarkRun(
   view: ProseView,
-  marks: ReadonlySet<string>,
+  runs: RegExp,
   visit: (a: number, b: number, anyFull: boolean) => void,
 ): void {
-  let i = 0;
-  while (i < view.text.length) {
-    if (!marks.has(view.text.charAt(i))) {
-      i += 1;
-      continue;
-    }
-    const a = i;
-    let anyFull = false;
-    while (i < view.text.length && marks.has(view.text.charAt(i))) {
-      anyFull ||= view.text.charAt(i) !== '!' && view.text.charAt(i) !== '?';
-      i += 1;
-    }
-    visit(a, i, anyFull);
+  for (const m of view.text.matchAll(runs)) {
+    visit(m.index, m.index + m[0].length, /[^!?]/.test(m[0]));
   }
 }
 
@@ -183,7 +176,7 @@ export function exclamationSpaceRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
       const v = line.prose();
-      eachMarkRun(v, SENTENCE_MARKS, (a, b, anyFull) => {
+      eachMarkRun(v, SENTENCE_MARK_RUNS, (a, b, anyFull) => {
         if (!anyFull && b - a < 2) {
           return; // a lone half-width mark is not the sentence-ender form
         }
@@ -213,7 +206,7 @@ export function exclamationRunRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
       const v = line.prose();
-      eachMarkRun(v, EXCLAMATIONS, (a, b, anyFull) => {
+      eachMarkRun(v, EXCLAMATION_RUNS, (a, b, anyFull) => {
         const len = b - a;
         if (len >= 3) {
           ctx.report(viewSpan(v, a, b), { message: { code: 'lint.common.exclamationRun.long' } });

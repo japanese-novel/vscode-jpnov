@@ -7,12 +7,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  COMBINING_KANA_MARKS,
   SINGLETONS,
+  charClass,
   composeKana,
   composedChars,
   displayChars,
   displayText,
   dropUnshown,
+  graphemeCount,
   graphemes,
   headChar,
   isClusterBoundary,
@@ -76,6 +79,18 @@ test('isCombiningKanaMark: the two combining marks only — not the spacing or h
   assert.ok(isCombiningKanaMark(0x3099) && isCombiningKanaMark(0x309a));
   for (const cp of [0x309b, 0x309c, 0xff9e, 0xff9f, 0x0301, 0x3098, 0x304b]) {
     assert.equal(isCombiningKanaMark(cp), false, cp.toString(16));
+  }
+  assert.deepEqual(`か${MARKS[0]}き${MARKS[1]}`.match(COMBINING_KANA_MARKS), [...MARKS]);
+});
+
+test('charClass escapes the class metacharacters, so any table of characters makes a class', () => {
+  const re = new RegExp(`[${charClass(['a', '-', ']', '\\', '^', '。'])}]`, 'g');
+  assert.deepEqual('xa-]\\^。z'.match(re), ['a', '-', ']', '\\', '^', '。']);
+});
+
+test('graphemeCount is the length of graphemes, on both of its paths', () => {
+  for (const text of ['', 'あいう', '王都、聖剣。', ...CLUSTERS, CLUSTERS.join(''), `あ${CLUSTERS.join('い')}う`]) {
+    assert.equal(graphemeCount(text), graphemes(text).length, text);
   }
 });
 

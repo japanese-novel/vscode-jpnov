@@ -18,7 +18,7 @@ import type { Ast, Issue, Span } from '../shared/ast/nodes.ts';
 import { INDENT_MAX, fullWidthDigits } from '../shared/ast/notation.ts';
 import { paintsNothing } from '../shared/ast/resolve.ts';
 import { bySource } from '../shared/ast/span.ts';
-import { displayText, graphemes } from '../shared/chars.ts';
+import { displayText, graphemeCount } from '../shared/chars.ts';
 import type { LocalizableMessage } from '../shared/protocol.ts';
 
 import { diagnostic, finding } from './diagnostics.ts';
@@ -35,7 +35,7 @@ interface Found {
 }
 
 function tooLong(text: string): boolean {
-  return graphemes(text).length > TCY_MAX;
+  return graphemeCount(text) > TCY_MAX;
 }
 
 /** The message of a 字下げ above {@link INDENT_MAX}: it names the limit in the digits the count is written in. */

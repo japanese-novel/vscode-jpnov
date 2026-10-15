@@ -21,7 +21,7 @@
 import type { Ast, HeadingLevel, Inline, Line, Mark, Marks, ValueLookup } from '../ast/nodes.ts';
 import { paintsNothing } from '../ast/resolve.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
-import { graphemes, headChar } from '../chars.ts';
+import { graphemeCount, graphemes, headChar } from '../chars.ts';
 import { DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../dash.ts';
 import type { BuildChrome } from './chrome.ts';
 import { markClass } from './emphasis.ts';
@@ -160,7 +160,7 @@ function rubyCells(r: RubyText, overhang = 0): number {
     }
     return Math.ceil(Math.max(0, quarters - overhang) / 4);
   };
-  return Math.max(graphemes(r.base).length, advance(r.right), advance(r.left));
+  return Math.max(graphemeCount(r.base), advance(r.right), advance(r.left));
 }
 
 /** The lane markup for a run: its {@link readingUnits}, HTML-escaped, one `<span>` each. */
@@ -188,7 +188,7 @@ function rubyHtml(r: RubyText, cells: number): string {
  * pass so class attribute, used-sink and cell accounting never drift apart.
  */
 function rubyLane(r: RubyText, cells: number): string {
-  const stretch = cells > graphemes(r.base).length ? ` rh-${String(cells)}` : '';
+  const stretch = cells > graphemeCount(r.base) ? ` rh-${String(cells)}` : '';
   const side = r.left === undefined ? 'rr' : r.right === undefined ? 'lr' : 'br';
   return side + stretch;
 }
