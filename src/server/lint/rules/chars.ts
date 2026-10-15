@@ -8,7 +8,7 @@
  *
  * Relative imports only (native test loader); vscode-free.
  */
-import { composeKana, isCjkIdeograph, isCombiningKanaMark, isUnshown } from '../../../shared/chars.ts';
+import { COMBINING_KANA_MARKS, UNSHOWN, composeKana, isCjkIdeograph } from '../../../shared/chars.ts';
 
 import { rubyKanaScan } from '../prescan.ts';
 import type { PreScan } from '../prescan.ts';
@@ -46,10 +46,8 @@ export function nfdRule(ctx: RuleContext): LineRule {
     line(line: LintLine): void {
       for (const slice of line.source) {
         const { text, srcStart } = slice;
-        for (let i = 0; i < text.length; i += 1) {
-          if (!isCombiningKanaMark(text.charCodeAt(i))) {
-            continue;
-          }
+        for (const m of text.matchAll(COMBINING_KANA_MARKS)) {
+          const i = m.index;
           const composed = i > 0 ? composeKana(text.slice(i - 1, i + 1)) : '';
           ctx.report(
             { start: srcStart + i, end: srcStart + i + 1 },
@@ -79,9 +77,13 @@ const zeroWidthScan: PreScan = (text) => {
   return out;
 };
 
-/** A character noControlChar reports: C0 except tab, U+007F–009F, U+FFFE and U+FFFF. */
+/** What noControlChar reports: C0 except tab, U+007F–009F, and the characters no output can
+ *  carry ({@link UNSHOWN}); one class, read as a predicate and as a scan. */
+const CONTROL_CHAR = new RegExp(String.raw`[\0-\x08\x0A-\x1F\x7F-\x9F${UNSHOWN.source.slice(1, -1)}]`);
+const CONTROL_CHARS = new RegExp(CONTROL_CHAR.source, 'g');
+
 export function isControlChar(cp: number): boolean {
-  return cp !== 0x09 && (cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f) || isUnshown(cp));
+  return CONTROL_CHAR.test(String.fromCharCode(cp));
 }
 
 /** True when `slice` holds nothing but control characters and U+200B, so deleting them leaves
@@ -106,10 +108,8 @@ export function controlCharRule(ctx: RuleContext): LineRule {
       let emptied: SourceSlice[] | undefined;
       for (const slice of line.source) {
         const { text, srcStart } = slice;
-        for (let i = 0; i < text.length; i += 1) {
-          if (!isControlChar(text.charCodeAt(i))) {
-            continue;
-          }
+        for (const m of text.matchAll(CONTROL_CHARS)) {
+          const i = m.index;
           const at = srcStart + i;
           emptied ??= [...line.pieces.filter((p) => p.rubyBase), ...line.rubies].filter(wouldEmpty);
           const withheld = emptied.some((s) => s.srcStart <= at && at < s.srcStart + s.text.length);

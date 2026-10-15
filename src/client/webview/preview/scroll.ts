@@ -55,20 +55,43 @@ function dst(t: Element): [number, number] {
   ];
 }
 
+/** A column's anchor: its source line and, once the line wraps, where in the line it starts. */
+interface Column {
+  readonly line: number;
+  readonly ch: number;
+  readonly el: Element;
+}
+
+/** The anchored columns in document order, which is cursor order; read once, the document never
+ *  changes after parse (a render swaps the whole page). */
+const columns: Column[] = [];
+for (const el of document.querySelectorAll('[data-line]')) {
+  const line = parseInt(el.getAttribute('data-line') ?? '', 10);
+  const ch = parseInt(el.getAttribute('data-ch') ?? '0', 10);
+  if (!Number.isNaN(line) && !Number.isNaN(ch)) {
+    columns.push({ line, ch, el });
+  }
+}
+
+/** The last column at or before the cursor, by a binary search over {@link columns}. */
+function columnAt(at: Cursor): Element | null {
+  let lo = 0;
+  let hi = columns.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const c = columns[mid];
+    if (c === undefined || c.line < at.line || (c.line === at.line && c.ch <= at.character)) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return columns[lo - 1]?.el ?? null;
+}
+
 function reveal(at: Cursor, glide?: boolean): void {
   cur = at;
-  let t: Element | null = null;
-  for (const n of document.querySelectorAll('[data-line]')) {
-    const line = parseInt(n.getAttribute('data-line') ?? '', 10);
-    const ch = parseInt(n.getAttribute('data-ch') ?? '0', 10);
-    if (Number.isNaN(line) || Number.isNaN(ch)) {
-      continue;
-    }
-    if (line > at.line || (line === at.line && ch > at.character)) {
-      break;
-    }
-    t = n;
-  }
+  const t = columnAt(at);
   cancelAnimationFrame(anim);
   if (t === null) {
     return;

@@ -14,6 +14,7 @@ import { computeLintFindings } from '../../../src/server/lint/engine.ts';
 import { INDENT_MAX, indentAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { displayText } from '../../../src/shared/chars.ts';
+import { CLUSTERS, TSUJI } from '../../shared/_kana.ts';
 import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
 import { selectRules } from '../../../src/shared/lint/select.ts';
 import type { RawLintConfigWire } from '../../../src/shared/protocol.ts';
@@ -91,6 +92,13 @@ test('common maxTen also counts within a dialogue utterance', () => {
   assert.deepEqual(lint('「あ、い、う、え、お」', { 'jpnov.lint.common.maxTen': 3 }), [
     { code: 'lint.common.maxTen', text: '、' },
   ]);
+});
+
+test('sentenceLength counts the squares a sentence takes, not its UTF-16 units (#183)', () => {
+  const raw: RawLintConfigWire = { 'jpnov.lint.common.sentenceLength': 4 };
+  const four = `${TSUJI}${CLUSTERS[1]}𠮷。`; // 4 clusters in 7 units
+  assert.deepEqual(lint(four, raw), []);
+  assert.deepEqual(lint(`あ${four}`, raw), [{ code: 'lint.common.sentenceLength', text: `あ${four}` }]);
 });
 
 test('common sentenceLength fires on an over-long sentence', () => {
@@ -724,6 +732,13 @@ test('noUnmatchedPair: dangling closers over a deep open stack take linear time 
   const hits = inLinearTime('dangling closers', () => lint(`${'（あ\n'.repeat(n)}${'あ」\n'.repeat(n)}`, PAIRS));
   assert.equal(hits.filter((h) => h.text === '」').length, n); // every closer dangles
   assert.equal(hits.filter((h) => h.text === '（').length, n); // every opener stays open to EOF
+});
+
+test('noUnmatchedPair pairs across the markup between pieces; a corner inside a span reads at its own offset', () => {
+  assert.deepEqual(lint('「山田《やまだ》」', PAIRS), []);
+  assert.deepEqual(lint('「あ［＃傍点］い」', PAIRS), []);
+  assert.deepEqual(lint('［＃傍点］「あ［＃傍点終わり］', PAIRS), [{ code: 'lint.common.noUnmatchedPair', text: '「' }]);
+  assert.deepEqual(lint('あ［＃「（」に傍点］', PAIRS), []);
 });
 
 test('noUnmatchedPair flags a lone prose 《 — a broken ruby, in practice', () => {

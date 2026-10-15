@@ -11,6 +11,8 @@
  *
  * Relative imports only (native test loader); vscode-free.
  */
+import { charClass } from '../../../shared/chars.ts';
+
 import type { LineRule, LintLine, RuleContext } from '../types.ts';
 
 const PAIRS: Readonly<Record<string, string>> = {
@@ -24,6 +26,8 @@ const PAIRS: Readonly<Record<string, string>> = {
   '［': '］',
 };
 const CLOSERS = new Set(Object.values(PAIRS));
+/** Every opener and closer (each one UTF-16 unit): the one scan over a line's prose. */
+const BRACKETS = new RegExp(`[${charClass([...Object.keys(PAIRS), ...CLOSERS])}]`, 'g');
 
 export function noUnmatchedPairRule(ctx: RuleContext): LineRule {
   const open: { readonly expected: string; readonly src: number }[] = [];
@@ -36,13 +40,12 @@ export function noUnmatchedPairRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
       const v = line.prose();
-      for (let k = 0; k < v.text.length; k += 1) {
-        const unit = v.units[k];
-        const src = unit?.piece === null ? undefined : unit?.src;
+      for (const m of v.text.matchAll(BRACKETS)) {
+        const src = v.units[m.index]?.src;
         if (src === undefined) {
-          continue; // a synthetic unit (〇 sentinel / separator) is never a bracket
+          continue;
         }
-        const ch = v.text.charAt(k);
+        const ch = m[0];
         const expected = PAIRS[ch];
         if (expected !== undefined) {
           open.push({ expected, src });

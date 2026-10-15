@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { splitSentences } from '../../../src/server/lint/sentences.ts';
+import { CLOSERS, SENTENCE_MARKS, TERMINATORS, splitSentences } from '../../../src/server/lint/sentences.ts';
 import { walkLines } from '../../../src/server/lint/walker.ts';
 import type { ProseView } from '../../../src/server/lint/types.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
@@ -55,4 +55,20 @@ test("the dialogue view's separator is a hard boundary", () => {
 
 test('an empty view has no sentences', () => {
   assert.deepEqual(sentencesOf(''), []);
+});
+
+test('whitespace is outside every sentence: leading, between, and trailing (where the split ends)', () => {
+  assert.deepEqual(sentencesOf('あ。　'), ['あ。']);
+  assert.deepEqual(splitSentences(narrationOf('　あ。')), [{ start: 1, end: 3 }]);
+  assert.deepEqual(sentencesOf('。　」'), ['。', '」']);
+  assert.deepEqual(sentencesOf('！」。'), ['！」', '。']);
+  assert.deepEqual(sentencesOf('」」」'), ['」」」']);
+  assert.deepEqual(sentencesOf('……。'), ['……。']);
+  assert.deepEqual(sentencesOf('　　'), []);
+});
+
+test('every mark, terminator and closer is one UTF-16 unit, as the classes without the u flag assume', () => {
+  for (const ch of [...SENTENCE_MARKS, ...TERMINATORS, ...CLOSERS]) {
+    assert.equal(ch.length, 1, ch);
+  }
 });

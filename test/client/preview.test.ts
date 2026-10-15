@@ -256,6 +256,37 @@ test('a nonce-matched cursor-follow script is injected before </body>', async ()
   assert.doesNotMatch(html, /scrollIntoView/);
 });
 
+test('the 傍点 probe <script> at the body\'s end gets the nonce; escaped tags in the body stay text', async () => {
+  const served =
+    '<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>b{}</style></head><body><p>&lt;script&gt;本文&lt;/style&gt;</p><script>probe()</script></body></html>';
+  const { panel } = await openPreviewWith(served);
+  const html = panel.webview.html;
+  const nonce = /script-src 'nonce-([^']+)'/.exec(html)?.[1];
+  assert.ok(nonce, 'CSP names a script nonce');
+  assert.ok(html.includes(`<style nonce="${nonce}">b{}</style>`), 'the stylesheet is nonced');
+  assert.ok(html.includes(`<p>&lt;script&gt;本文&lt;/style&gt;</p><script nonce="${nonce}">probe()</script>`), 'the probe is nonced in place');
+  assert.doesNotMatch(html, /<script>|<style>/, 'no tag is left without its nonce');
+});
+
+test('a debounced render that fires while one is in flight waits, and goes out once after that one lands (#183)', async () => {
+  const client = gatedClient(SERVER_HTML); // the opening render resolves at once; the rest wait
+  const { panel, document } = await openWith(client);
+  state.onDidChangeDoc.fire({ document });
+  await settle(); // render 2 is in flight
+  state.onDidChangeDoc.fire({ document });
+  await settle();
+  state.onDidChangeDoc.fire({ document });
+  await settle();
+  assert.equal(client.params.length, 2, 'the edits made meanwhile wait behind the render in flight');
+  client.release();
+  await settle();
+  assert.equal(client.params.length, 3, 'one render for every edit made meanwhile, within a debounce of the earlier one landing');
+  client.release();
+  await settle();
+  assert.equal(client.params.length, 3, 'nothing else is pending');
+  assert.match(panel.webview.html, /<p>本文<\/p>/);
+});
+
 test('render bakes the followed editor\'s earliest cursor into the __INIT bootstrap', async () => {
   const d = doc('file:///proj/src/a.jpnov', 'jpnov', 'x');
   state.textDocuments.push(d);

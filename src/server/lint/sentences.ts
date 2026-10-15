@@ -11,6 +11,8 @@
  *
  * Relative imports only (native test loader); vscode-free.
  */
+import { charClass } from '../../shared/chars.ts';
+
 import type { ProseView } from './types.ts';
 
 /** Half-open `[start, end)` index range into the view this sentence covers. */
@@ -30,28 +32,24 @@ export const TERMINATORS = new Set(['。', ...SENTENCE_MARKS]);
 export const CLOSERS = new Set(['」', '』', '）', ')', '】', '〉', '》', '］', '”', '’']);
 const WHITESPACE = new Set([' ', '　', '\t', '\n']);
 
+/** One sentence after any whitespace: the body up to a terminator or '\n', the terminator run, the
+ *  closers. Every member is one UTF-16 unit, so without the `u` flag the classes step like `charAt`. */
+const SENTENCE = new RegExp(
+  `[${charClass(WHITESPACE)}]*([^\n${charClass(TERMINATORS)}]*[${charClass(TERMINATORS)}]*[${charClass(CLOSERS)}]*)`,
+  'y',
+);
+
 export function splitSentences(view: ProseView): readonly SentenceSpan[] {
   const text = view.text;
   const out: SentenceSpan[] = [];
-  let i = 0;
-  while (i < text.length) {
-    while (i < text.length && WHITESPACE.has(text.charAt(i))) {
-      i += 1; // skip inter-sentence whitespace and the dialogue '\n' separator
-    }
-    if (i >= text.length) {
+  SENTENCE.lastIndex = 0;
+  while (SENTENCE.lastIndex < text.length) {
+    const sentence = SENTENCE.exec(text)?.[1];
+    // Only trailing whitespace leaves the sentence empty, and an empty match never advances.
+    if (sentence === undefined || sentence.length === 0) {
       break;
     }
-    const start = i;
-    while (i < text.length && text.charAt(i) !== '\n' && !TERMINATORS.has(text.charAt(i))) {
-      i += 1;
-    }
-    while (i < text.length && TERMINATORS.has(text.charAt(i))) {
-      i += 1; // the terminator run (！？, ？？ …) belongs to the sentence
-    }
-    while (i < text.length && CLOSERS.has(text.charAt(i))) {
-      i += 1; // 〜。」 — the closer stays inside
-    }
-    out.push({ start, end: i });
+    out.push({ start: SENTENCE.lastIndex - sentence.length, end: SENTENCE.lastIndex });
   }
   return out;
 }

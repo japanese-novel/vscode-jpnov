@@ -13,8 +13,9 @@ import {
   deleteLeft,
   deleteRight,
   groupStops,
-  lineStops,
   mergeSpans,
+  stopAfter,
+  stopBefore,
   wordLeft,
   wordRight,
   type Lines,
@@ -26,6 +27,11 @@ import { D } from '../shared/_kana.ts';
 import { REPO_ROOT } from '../shared/repo.ts';
 
 const VARIATION_SELECTOR = String.fromCodePoint(0xe0100);
+
+/** The stops of the whole line through the real segmenter: what the caret functions must agree with. */
+function lineStops(line: string): readonly number[] {
+  return groupStops(line, new Intl.Segmenter('ja', { granularity: 'word' }).segment(line));
+}
 
 /** Segments spelled `a / b / ~c`: `~` marks a segment that is not word-like. */
 function segments(spec: string): WordSegment[] {
@@ -146,6 +152,41 @@ test('real segmenter: lines whose stops depend on character classes alone', () =
     ['', []],
   ] as const) {
     assert.deepEqual(cut(line, lineStops(line)), expected, line);
+  }
+});
+
+// Lines the caret walk must cut like the whole line: space runs, ー and marks right after
+// punctuation, selectors and joiners, Latin with its mid-word punctuation, half-width kana, long
+// groups, a line with no punctuation at all.
+const WALKED = [
+  '　聖剣を抜いたのは山田　太郎だった。',
+  '王都へ、なに！？　王都へ',
+  '「王都へ」「聖剣を」',
+  '山田　　太郎　　　だ。　　',
+  '。ーい。ーい',
+  `が、${D}く　${D}あ`,
+  `聖${VARIATION_SELECTOR}剣を抜いた。${VARIATION_SELECTOR}剣`,
+  '👨\u200d👩\u200d👧　👨「🙂\u200d🙂」',
+  'John’s book, isn’t it? 3.5、12,345。',
+  'ｶﾀｶﾅ　ｶﾅﾞだ',
+  '東京，京都３．５Ａ：Ｂ',
+  'ははは「は」を',
+  `${D}あ`,
+  '、。！？「」',
+  '',
+  `${'あ'.repeat(100)}。${'ア'.repeat(100)}、${'漢'.repeat(100)}`,
+  `${'！'.repeat(80)}あ${'…'.repeat(80)}`,
+  `${'　'.repeat(50)}あ${'　'.repeat(50)}`,
+  '聖剣を抜いた'.repeat(40),
+];
+
+test('the caret walk agrees with the whole line at every offset (#183)', () => {
+  for (const line of WALKED) {
+    const stops = lineStops(line);
+    for (let offset = 0; offset <= line.length; offset += 1) {
+      assert.equal(stopBefore(line, offset), stops.findLast((s) => s < offset) ?? 0, `${line} ← ${String(offset)}`);
+      assert.equal(stopAfter(line, offset), stops.find((s) => s > offset) ?? line.length, `${line} → ${String(offset)}`);
+    }
   }
 });
 

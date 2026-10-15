@@ -39,7 +39,7 @@ const BROKEN = ['［＃', '［＃こわれ', '［＃「未', '［＃あ［＃い
 const DEGENERATE = ['｜', '｜｜', '｜《よみ》', '《》', '｜漢字《》', '《よみ》', '。《よみ》', '《a《b》', '》《ab》', '《', '》', 'a｜b｜c《r》', '。《!?》'];
 
 /** mulberry32: `next()` in [0, 1). */
-function prng(seed: number): { int(n: number): number; pick<T>(xs: readonly T[]): T; chance(p: number): boolean } {
+export function prng(seed: number): { int(n: number): number; pick<T>(xs: readonly T[]): T; chance(p: number): boolean } {
   let a = seed >>> 0;
   const next = (): number => {
     a = (a + 0x6d2b79f5) >>> 0;

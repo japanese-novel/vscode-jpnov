@@ -1,12 +1,14 @@
 /**
- * Threshold ("how much is too much") rules. All counts are in UTF-16 units of the VIEW text
- * except maxKanjiRun, which counts code points (an astral kanji is one kanji, not two).
+ * Threshold ("how much is too much") rules. sentenceLength counts grapheme clusters of the VIEW
+ * text (the squares a sentence takes: an astral kanji, a kanji with its variation selector or an
+ * emoji sequence is one each), maxKanjiRun code points (an astral kanji is one kanji, not two),
+ * maxTen its 、 marks and arabicDigits its digits (every one a single UTF-16 unit).
  * Sentence rules measure the narration and dialogue views separately, so an utterance is one
- * sentence of its own and its 〇 sentinel costs the surrounding 地の文 exactly one unit.
+ * sentence of its own and its 〇 sentinel costs the surrounding 地の文 exactly one square.
  *
  * Relative imports only (native test loader); vscode-free.
  */
-import { isCjkIdeograph } from '../../../shared/chars.ts';
+import { graphemeCount, isCjkIdeograph } from '../../../shared/chars.ts';
 
 import { splitSentences } from '../sentences.ts';
 import type { LineRule, LintLine, ProseView, RuleContext } from '../types.ts';
@@ -27,13 +29,14 @@ function eachSentence(
   }
 }
 
-/** 一文の長さ: a sentence longer than `max` view units. */
+/** 一文の長さ: a sentence of more than `max` clusters. The unit count bounds the cluster count
+ *  from above, so only a sentence already over it in units is segmented. */
 export function sentenceLengthRule(ctx: RuleContext): LineRule {
   const max = maxOf(ctx);
   return {
     line(line: LintLine): void {
       eachSentence(line, (v, start, end) => {
-        if (end - start > max) {
+        if (end - start > max && graphemeCount(v.text.slice(start, end)) > max) {
           ctx.report(viewSpan(v, start, end));
         }
       });
