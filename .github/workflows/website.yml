@@ -8,10 +8,19 @@ on:
       - website/**
       - src/shared/**
       - src/server/**
+      - src/client/webview/probe/**
+      - src/client/webview/book/main.ts
       - l10n/**
+      - docs/specimens/**
       - resources/icon.svg
+      - scripts/gen*.ts
+      - scripts/write.ts
       - package.json
       - package-lock.json
+      - package.nls.ja.json
+      - eslint.house.mjs
+      - tsconfig.base.json
+      - .nvmrc
       - .github/workflows/website.yml
   workflow_dispatch:
 
