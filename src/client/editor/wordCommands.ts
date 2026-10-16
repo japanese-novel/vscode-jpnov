@@ -13,14 +13,14 @@ import {
   mergeSpans,
   wordLeft,
   wordRight,
-  type Pos,
   type Span,
   type WordCommand,
 } from './word.ts';
+import type { Position } from '#/shared/utils/position.ts';
 
 const LANG_ID = 'jpnov';
 
-function toPosition(p: Pos): vscode.Position {
+function toPosition(p: Position): vscode.Position {
   return new vscode.Position(p.line, p.character);
 }
 

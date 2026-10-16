@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
-import { encodePathSegment, encodeRelPath, pathSegments } from '../../src/shared/uri.ts';
+import { encodePathSegment, encodeRelPath, pathSegments } from '../../../src/shared/utils/uri.ts';
 
 test('encodePathSegment escapes everything outside RFC 3986 unreserved, with uppercase hex', () => {
   // VS Code's own table (gen-delims, sub-delims, space), then whatever encodeURIComponent escapes.

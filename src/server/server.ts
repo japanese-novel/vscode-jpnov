@@ -74,12 +74,13 @@ import { buildSemanticTokens, SEMANTIC_LEGEND } from './semanticTokens.ts';
 import { syntaxFindings } from './syntax.ts';
 import { completeJpbook, diagnoseJpbook, documentLinksForJpbook } from './jpbook.ts';
 import { parseJpbook } from '#/shared/book/jpbook.ts';
+import { isRecord } from '#/shared/utils/guards.ts';
 
 const connection = createConnection(ProposedFeatures.all);
 
 /** A reply outside the wire shape is a read failure, never a crash. */
 function isReadTextResult(value: unknown): value is ReadTextResult {
-  return typeof value === 'object' && value !== null && typeof (value as { ok?: unknown }).ok === 'boolean';
+  return isRecord(value) && typeof value.ok === 'boolean';
 }
 
 /**

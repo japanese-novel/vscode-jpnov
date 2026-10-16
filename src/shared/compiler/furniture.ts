@@ -6,7 +6,7 @@ import type { ValueLookup } from '../ast/nodes.ts';
 import { VALUE_NAMES, valueOf } from '../ast/notation.ts';
 import { scan } from '../ast/scan.ts';
 import type { BuildChrome, FurnitureAlign } from './chrome.ts';
-import { escapeHtml } from './escape.ts';
+import { escapeHtml } from '../utils/escape.ts';
 
 /** The side class (`r` / `l` / `c`) of a header or footer on page `pi` (0-based). */
 function furnitureSide(align: FurnitureAlign, pi: number): 'r' | 'l' | 'c' {

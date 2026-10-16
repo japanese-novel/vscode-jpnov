@@ -17,6 +17,7 @@ import type { EpubMember } from './compiler/epub.ts';
 import type { PaperOrientation, PaperSize } from './compiler/geometry.ts';
 import type { LayoutSettings } from './config/types.ts';
 import type { LintCode } from './lint/catalog.ts';
+import type { Position } from './utils/position.ts';
 
 // initialize (C->S)
 
@@ -144,11 +145,8 @@ export interface ServerErrorParams {
 
 export const HoverRequest = 'jpnov/hover';
 
-/** An LSP position: 0-based line, UTF-16 column. Spelled here so the wire types stay dependency-free. */
-export interface Position {
-  readonly line: number;
-  readonly character: number;
-}
+/** An LSP position: 0-based line, UTF-16 column. */
+export type { Position };
 
 /** An LSP range, half-open. */
 export interface Range {

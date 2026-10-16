@@ -5,7 +5,7 @@
  */
 import { BUILD_CHROME_DEFAULT } from '../config/settings.ts';
 import { isAbsoluteLocation } from '../config/validate.ts';
-import { pathSegments } from '../uri.ts';
+import { pathSegments } from '../utils/uri.ts';
 import { FENCE, HEADER, META_KEYS, metaLine, type MetaKey } from './jpbook.ts';
 
 /**

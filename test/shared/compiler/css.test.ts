@@ -7,6 +7,7 @@ import type { PaperOrientation, PaperSize } from '../../../src/shared/compiler/g
 import { EDGE_INSET, FOOTER_BAND, HEADER_BAND, LINENUM_BAND, PREVIEW_MARGIN_LINES, SIDE_PAD, fitPaper } from '../../../src/shared/compiler/geometry.ts';
 import type { LinePitch } from '../../../src/shared/config/types.ts';
 import { LINE_PITCHES } from '../../../src/shared/config/types.ts';
+import { escapeRegExp } from '../../../src/shared/utils/regex.ts';
 
 /**
  * The single 80%-alpha edge recipe (base-INDEPENDENT — the base colour rides the `--edge`
@@ -14,7 +15,7 @@ import { LINE_PITCHES } from '../../../src/shared/config/types.ts';
  */
 const EDGE_MIX = 'color-mix(in srgb,var(--edge) 80%,transparent)';
 /** A match pattern: raw regex source with the escaped recipe appended. */
-const edgeMixRe = (raw: string): RegExp => new RegExp(raw + EDGE_MIX.replace(/[()]/g, '\\$&'));
+const edgeMixRe = (raw: string): RegExp => new RegExp(raw + escapeRegExp(EDGE_MIX));
 /** A 罫線's phase: the 1px line's right edge `k` columns in from the frame's right edge. ONE
  *  template for both media, so the line's side of the boundary cannot drift between them. */
 const boundary = (k = ''): string => `right calc(${k}var(--pitch)*1em - 1px) top`;

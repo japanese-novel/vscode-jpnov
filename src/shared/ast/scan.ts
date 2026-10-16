@@ -18,7 +18,7 @@
 import { graphemes, isCjkIdeograph, isHiragana, isKatakana, isUnshown } from '../chars.ts';
 
 import { classifyAnnotation, gaijiNode } from './classify.ts';
-import { append } from './lists.ts';
+import { append } from '../utils/lists.ts';
 import type { Eol, RubyReadingNode, ScanIssue, Span, Syntax, SyntaxLine, SyntaxNode, TextNode } from './nodes.ts';
 import { ANNOTATION_CLOSE, ANNOTATION_OPEN, BASE_MARK, GAIJI_MARK, RUBY_CLOSE, RUBY_OPEN, gaijiChar } from './notation.ts';
 import { Cutter } from './parts.ts';

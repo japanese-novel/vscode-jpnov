@@ -105,16 +105,14 @@ async function copyCodicons(): Promise<void> {
   );
 }
 
-/** Every source file whose change should re-trigger codegen (for esbuild watch). */
+/** Every source file whose change should re-trigger codegen (for esbuild watch): the browser
+ *  programs and the utils leaf they may import. */
 export async function webviewSourcePaths(): Promise<string[]> {
-  const dir = join(ROOT, 'src/client/webview');
-  const paths: string[] = [];
-  for (const name of await readdir(dir, { recursive: true })) {
-    if (name.endsWith('.ts') || name.endsWith('.css')) {
-      paths.push(join(dir, name));
-    }
-  }
-  return paths.sort();
+  const dirs = ['src/client/webview', 'src/shared/utils'].map((d) => join(ROOT, d));
+  const names = await Promise.all(dirs.map((dir) => readdir(dir, { recursive: true })));
+  return dirs
+    .flatMap((dir, i) => (names[i] ?? []).filter((name) => name.endsWith('.ts') || name.endsWith('.css')).map((name) => join(dir, name)))
+    .sort();
 }
 
 let inFlight: Promise<boolean> | null = null;

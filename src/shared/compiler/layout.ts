@@ -25,7 +25,7 @@ import { graphemeCount, graphemes, headChar } from '../chars.ts';
 import { DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../dash.ts';
 import type { BuildChrome } from './chrome.ts';
 import { markClass } from './emphasis.ts';
-import { escapeComment, escapeHtml } from './escape.ts';
+import { escapeComment, escapeHtml } from '../utils/escape.ts';
 import { cutFurniture, pageFurniture } from './furniture.ts';
 
 /** The strings of a ruby unit: its base and the reading on either side. */

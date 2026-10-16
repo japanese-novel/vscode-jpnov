@@ -5,7 +5,7 @@
  */
 import type * as vscode from 'vscode';
 
-import { errorText } from '#/shared/errors.ts';
+import { errorText } from '#/shared/utils/errors.ts';
 
 /**
  * Settles with `request`, or rejects when `token` cancels or `timeoutMs` passes first.

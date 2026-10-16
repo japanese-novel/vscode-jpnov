@@ -5,6 +5,8 @@
  * file directly; `wordCommands.ts` owns the editor wiring.
  */
 import { isCjkIdeograph, isHiragana, isKatakana } from '#/shared/chars.ts';
+import { comparePositions } from '#/shared/utils/position.ts';
+import type { Position } from '#/shared/utils/position.ts';
 
 export interface WordCommand {
   /** `jpnov.` + {@link builtin}. */
@@ -156,15 +158,9 @@ export function stopAfter(text: string, offset: number): number {
   return text.length;
 }
 
-/** A position in the shape of `vscode.Position`. */
-export interface Pos {
-  readonly line: number;
-  readonly character: number;
-}
-
 export interface Span {
-  readonly start: Pos;
-  readonly end: Pos;
+  readonly start: Position;
+  readonly end: Position;
 }
 
 /** The part of `vscode.TextDocument` the commands read. */
@@ -177,7 +173,7 @@ export interface Lines {
  * Where ⌥← goes: the start of the group before `at`. From a line's start it goes to the start
  * of the last group on the line above, as VS Code's own command does.
  */
-export function wordLeft(doc: Lines, at: Pos): Pos {
+export function wordLeft(doc: Lines, at: Position): Position {
   if (at.character > 0) {
     return { line: at.line, character: stopBefore(doc.lineAt(at.line).text, at.character) };
   }
@@ -192,7 +188,7 @@ export function wordLeft(doc: Lines, at: Pos): Pos {
  * Where ⌥→ goes: the end of the group after `at`. From a line's end it goes to the end of the
  * first group on the line below, as VS Code's own command does.
  */
-export function wordRight(doc: Lines, at: Pos): Pos {
+export function wordRight(doc: Lines, at: Position): Position {
   const text = doc.lineAt(at.line).text;
   if (at.character < text.length) {
     return { line: at.line, character: stopAfter(text, at.character) };
@@ -204,7 +200,7 @@ export function wordRight(doc: Lines, at: Pos): Pos {
 }
 
 /** What ⌥⌫ deletes from a caret: back to where ⌥← goes, but only the line break at a line's start. */
-export function deleteLeft(doc: Lines, at: Pos): Span | null {
+export function deleteLeft(doc: Lines, at: Position): Span | null {
   if (at.character > 0) {
     return { start: wordLeft(doc, at), end: at };
   }
@@ -215,7 +211,7 @@ export function deleteLeft(doc: Lines, at: Pos): Span | null {
 }
 
 /** What ⌥⌦ deletes from a caret: up to where ⌥→ goes, but only the line break at a line's end. */
-export function deleteRight(doc: Lines, at: Pos): Span | null {
+export function deleteRight(doc: Lines, at: Position): Span | null {
   if (at.character < doc.lineAt(at.line).text.length) {
     return { start: at, end: wordRight(doc, at) };
   }
@@ -225,17 +221,13 @@ export function deleteRight(doc: Lines, at: Pos): Span | null {
   return { start: at, end: { line: at.line + 1, character: 0 } };
 }
 
-function compare(a: Pos, b: Pos): number {
-  return a.line - b.line || a.character - b.character;
-}
-
 /** `spans` in order, with overlapping or touching ones merged: an edit rejects overlapping ranges. */
 export function mergeSpans(spans: readonly Span[]): Span[] {
   const out: Span[] = [];
-  for (const span of spans.toSorted((a, b) => compare(a.start, b.start))) {
+  for (const span of spans.toSorted((a, b) => comparePositions(a.start, b.start))) {
     const prev = out.at(-1);
-    if (prev !== undefined && compare(span.start, prev.end) <= 0) {
-      out[out.length - 1] = { start: prev.start, end: compare(span.end, prev.end) > 0 ? span.end : prev.end };
+    if (prev !== undefined && comparePositions(span.start, prev.end) <= 0) {
+      out[out.length - 1] = { start: prev.start, end: comparePositions(span.end, prev.end) > 0 ? span.end : prev.end };
     } else {
       out.push(span);
     }

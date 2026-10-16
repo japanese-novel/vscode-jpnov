@@ -8,6 +8,7 @@
  * on Node's native test loader). The rule MODULE join happens later, keyed by {@link ActiveRule.id}.
  */
 import type { RawLintConfigWire } from '../protocol.ts';
+import { clampInt } from '../utils/numbers.ts';
 
 import { RULES, diagCode, settingKey } from './catalog.ts';
 import type { CatalogId, LintCode } from './catalog.ts';
@@ -34,11 +35,6 @@ export function modeOf(options: ActiveRule['options']): string | undefined {
 /** The enabled rules, in catalog order. */
 export type RuleSelection = readonly ActiveRule[];
 
-/** Clamp `n` (rounded to an integer) into `[min, max]`. */
-function clamp(n: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(n)));
-}
-
 /**
  * Filters {@link RULES} to the rules the user has enabled in `raw`, producing one
  * {@link ActiveRule} per enabled row. A boolean rule is enabled iff its key is exactly `true`; a
@@ -58,7 +54,7 @@ export function selectRules(raw: RawLintConfigWire): RuleSelection {
     } else if (rule.kind === 'threshold') {
       if (typeof value === 'number' && Number.isFinite(value)) {
         // A threshold rule always carries min/max in the catalog (enforced by `as const satisfies`).
-        options = { max: clamp(value, rule.min, rule.max) };
+        options = { max: clampInt(value, rule.min, rule.max) };
       }
     } else {
       // enum: enabled on any member other than 'off' — the spelling client/lintConfig.ts also drops.

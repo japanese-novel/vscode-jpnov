@@ -4,6 +4,7 @@ import { EDGE_INSET } from '../../../src/shared/compiler/geometry.ts';
 import { renderPreview } from '../../../src/shared/compiler/preview.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { VALUE_DEFAULTS } from '../../../src/shared/ast/notation.ts';
+import { escapeRegExp } from '../../../src/shared/utils/regex.ts';
 
 /**
  * The single 80%-alpha edge recipe (base-INDEPENDENT — the base colour rides the `--edge`
@@ -11,7 +12,7 @@ import { VALUE_DEFAULTS } from '../../../src/shared/ast/notation.ts';
  */
 const EDGE_MIX = 'color-mix(in srgb,var(--edge) 80%,transparent)';
 /** A match pattern: raw regex source with the escaped recipe for `base` appended. */
-const edgeMixRe = (raw: string): RegExp => new RegExp(raw + EDGE_MIX.replace(/[()]/g, '\\$&'));
+const edgeMixRe = (raw: string): RegExp => new RegExp(raw + escapeRegExp(EDGE_MIX));
 // Full recipe pinned by css.test.ts / styles-codegen.test.ts; here only a shipped-rule probe
 // (preview.edge.css: the one-column tile on the .segment::before frame rule).
 const EDGE_GRAD_PROBE = /\.segment::before\{[^}]*background-image:linear-gradient\(/;

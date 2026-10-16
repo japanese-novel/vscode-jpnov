@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { isRecord } from '../../../src/shared/utils/guards.ts';
 import { readRepoFile, REPO_ROOT } from '../repo.ts';
 
 /** Files the runtime loads by path (not discoverable from the manifest). */
@@ -27,10 +28,6 @@ const PACKAGING_METADATA = ['package.json', 'package.nls.json', 'package.nls.ja.
 
 type Json = Record<string, unknown>;
 
-function isObject(value: unknown): value is Json {
-  return typeof value === 'object' && value !== null;
-}
-
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? (value as unknown[]) : [];
 }
@@ -44,13 +41,13 @@ function push(out: string[], value: unknown): void {
 
 /** A walkthrough step's `media` is {markdown|image|svg: path-or-theme-map}; collect every path in it. */
 function pushMedia(out: string[], media: unknown): void {
-  if (!isObject(media)) {
+  if (!isRecord(media)) {
     return;
   }
   for (const value of Object.values(media)) {
     if (typeof value === 'string') {
       push(out, value);
-    } else if (isObject(value)) {
+    } else if (isRecord(value)) {
       for (const themed of Object.values(value)) {
         push(out, themed); // {light,dark,highContrast,…} theme map
       }
@@ -68,44 +65,44 @@ function manifestAssets(): string[] {
     // `l10n` names a directory; the JA bundle inside it is what must actually ship.
     out.push(`${pkg.l10n.replace(/^\.\//, '')}/bundle.l10n.ja.json`);
   }
-  const c: Json = isObject(pkg.contributes) ? pkg.contributes : {};
+  const c: Json = isRecord(pkg.contributes) ? pkg.contributes : {};
   for (const lang of asArray(c.languages)) {
-    if (isObject(lang)) {
+    if (isRecord(lang)) {
       push(out, lang.configuration);
     }
   }
   for (const grammar of asArray(c.grammars)) {
-    if (isObject(grammar)) {
+    if (isRecord(grammar)) {
       push(out, grammar.path);
     }
   }
-  const containerGroups: Json = isObject(c.viewsContainers) ? c.viewsContainers : {};
+  const containerGroups: Json = isRecord(c.viewsContainers) ? c.viewsContainers : {};
   for (const containers of Object.values(containerGroups)) {
     for (const container of asArray(containers)) {
-      if (isObject(container)) {
+      if (isRecord(container)) {
         push(out, container.icon);
       }
     }
   }
-  const viewGroups: Json = isObject(c.views) ? c.views : {};
+  const viewGroups: Json = isRecord(c.views) ? c.views : {};
   for (const views of Object.values(viewGroups)) {
     for (const view of asArray(views)) {
-      if (isObject(view)) {
+      if (isRecord(view)) {
         push(out, view.icon);
       }
     }
   }
   for (const command of asArray(c.commands)) {
-    if (isObject(command)) {
+    if (isRecord(command)) {
       push(out, command.icon); // ours are codicons today; guards a future image icon
     }
   }
   for (const walkthrough of asArray(c.walkthroughs)) {
-    if (!isObject(walkthrough)) {
+    if (!isRecord(walkthrough)) {
       continue;
     }
     for (const step of asArray(walkthrough.steps)) {
-      if (isObject(step)) {
+      if (isRecord(step)) {
         pushMedia(out, step.media);
       }
     }

@@ -28,7 +28,7 @@ import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.
 import { concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { TitledBook } from '#/shared/compiler/document.ts';
 import { epubMembers } from '#/shared/compiler/epub.ts';
-import { errorText } from '#/shared/errors.ts';
+import { errorText } from '#/shared/utils/errors.ts';
 import { LocalizedError } from '#/shared/messages.ts';
 import { resolveHtmlSettings } from '#/shared/config/settings.ts';
 import { OUT_DIR_DEFAULT, outDirSubpath, type OutDir } from '#/shared/config/validate.ts';

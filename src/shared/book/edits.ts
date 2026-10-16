@@ -27,11 +27,12 @@ import {
   type ParsedJpbook,
   type ParsedLine,
 } from './jpbook.ts';
+import type { Position } from '../utils/position.ts';
 
 /** One replacement (LSP coordinates; `end` exclusive; insertion = zero-width range). */
 export interface TextReplace {
-  readonly start: { readonly line: number; readonly character: number };
-  readonly end: { readonly line: number; readonly character: number };
+  readonly start: Position;
+  readonly end: Position;
   readonly newText: string;
 }
 

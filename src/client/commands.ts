@@ -5,7 +5,7 @@
  */
 import * as vscode from 'vscode';
 
-import { errorText } from '#/shared/errors.ts';
+import { errorText } from '#/shared/utils/errors.ts';
 
 /** Registers `id` with a body shielded by one try/catch; command arguments flow through untouched. */
 export function command(id: string, run: (...args: unknown[]) => Promise<void> | void): vscode.Disposable {

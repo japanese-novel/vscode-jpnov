@@ -1,4 +1,4 @@
-import { encodeRelPath, pathSegments } from '../uri.ts';
+import { encodeRelPath, pathSegments } from '../utils/uri.ts';
 
 /**
  * True when the value names an absolute location a relative field must reject:

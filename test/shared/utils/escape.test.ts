@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeComment, escapeHtml } from '../../../src/shared/compiler/escape.ts';
+import { escapeComment, escapeHtml } from '../../../src/shared/utils/escape.ts';
 
 test('escapeHtml escapes & < > " (ampersand first, no double-escape)', () => {
   assert.equal(escapeHtml('a & b'), 'a &amp; b');

@@ -11,7 +11,7 @@
  *
  * Relative imports only (native test loader); vscode-free.
  */
-import { charClass } from '../../shared/chars.ts';
+import { charClass } from '../../shared/utils/regex.ts';
 
 import type { ProseView } from './types.ts';
 

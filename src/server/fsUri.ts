@@ -1,6 +1,6 @@
 /**
  * Tiny URI string helpers for the server's filesystem seams (build, jpbook, the vocabulary
- * store, server.ts). PURE string ops over `#/shared/uri.ts`: no `node:fs`, no
+ * store, server.ts). PURE string ops over `#/shared/utils/uri.ts`: no `node:fs`, no
  * `vscode-languageserver`, so any server module can pull it in.
  *
  * Scheme handling is deliberately a prefix test, not URL parsing: the server only ever
@@ -9,7 +9,7 @@
  * names this module appends to them are raw (dirents, `.jpbook` entries, output paths) and get
  * that same encoding.
  */
-import { encodeRelPath } from '#/shared/uri.ts';
+import { encodeRelPath } from '#/shared/utils/uri.ts';
 
 /** True iff `uri` is on the `file:` scheme (the only scheme the server reads via `node:fs`). */
 export function isFileScheme(uri: string): boolean {

@@ -46,7 +46,8 @@ import { nameIdentity, readName } from '#/shared/book/names.ts';
 import { FURNITURE_ALIGNS, type FurnitureAlign } from '#/shared/compiler/chrome.ts';
 import { BUILD_CHROME_DEFAULT } from '#/shared/config/settings.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
-import { errorText } from '#/shared/errors.ts';
+import { errorText } from '#/shared/utils/errors.ts';
+import { isRecord } from '#/shared/utils/guards.ts';
 import type { BookEntry } from '#/shared/protocol.ts';
 
 import { command } from '../commands.ts';
@@ -141,7 +142,7 @@ function rowLine(node: EntryNode, lines: readonly ParsedLine[], version: number)
 }
 
 function nodeOf(arg: unknown): BookNode | null {
-  return typeof arg === 'object' && arg !== null && 'kind' in arg ? (arg as BookNode) : null;
+  return isRecord(arg) && 'kind' in arg ? (arg as BookNode) : null;
 }
 
 async function fileExists(uri: vscode.Uri): Promise<boolean> {

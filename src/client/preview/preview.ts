@@ -15,8 +15,10 @@ import * as vscode from 'vscode';
 
 import type { LanguageClient } from 'vscode-languageclient/node';
 
-import { errorText } from '#/shared/errors.ts';
-import { escapeHtml } from '#/shared/compiler/escape.ts';
+import { errorText } from '#/shared/utils/errors.ts';
+import { escapeHtml } from '#/shared/utils/escape.ts';
+import { isRecord } from '#/shared/utils/guards.ts';
+import { comparePositions } from '#/shared/utils/position.ts';
 import { resolvePreviewSettings } from '#/shared/config/settings.ts';
 import { CHARS_MAX, CHARS_MIN } from '#/shared/config/types.ts';
 import {
@@ -385,12 +387,11 @@ export class Preview {
 
   /** Handles the layout widget's verbs; the payload is untrusted, so anything malformed is dropped. */
   private onWebviewMessage(message: unknown): void {
-    if (typeof message !== 'object' || message === null) {
+    if (!isRecord(message)) {
       return;
     }
-    const m = message as { type?: unknown; key?: unknown; value?: unknown };
-    if (m.type === 'layout') {
-      const { key, value } = m;
+    if (message.type === 'layout') {
+      const { key, value } = message;
       if (isLayoutKey(key) && typeof value === 'number' && Number.isSafeInteger(value) && value >= CHARS_MIN && value <= CHARS_MAX) {
         const base = resolvePreviewSettings(buildPreviewSettings())[key];
         if (value === base) {
@@ -401,9 +402,9 @@ export class Preview {
         this.syncContext();
         this.scheduleRender(key);
       }
-    } else if (m.type === 'reset') {
+    } else if (message.type === 'reset') {
       this.resetLayout();
-    } else if (m.type === 'save') {
+    } else if (message.type === 'save') {
       // Through the command, so its popup boundary covers the webview path too.
       void vscode.commands.executeCommand('jpnov.preview.saveLayout');
     }
@@ -674,7 +675,7 @@ export class Preview {
 function minCursor(selections: readonly vscode.Selection[]): Cursor {
   let min: Cursor | undefined;
   for (const { active } of selections) {
-    if (min === undefined || active.line < min.line || (active.line === min.line && active.character < min.character)) {
+    if (min === undefined || comparePositions(active, min) < 0) {
       min = active;
     }
   }
@@ -691,10 +692,10 @@ function parsePanelState(state: unknown): {
   uri: string | undefined;
   cursor: Cursor | undefined;
 } {
-  if (typeof state !== 'object' || state === null) {
+  if (!isRecord(state)) {
     return { uri: undefined, cursor: undefined };
   }
-  const { uri, line, character } = state as { uri?: unknown; line?: unknown; character?: unknown };
+  const { uri, line, character } = state;
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   return {
     uri: typeof uri === 'string' ? uri : undefined,

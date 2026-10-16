@@ -19,10 +19,11 @@ import {
   wordLeft,
   wordRight,
   type Lines,
-  type Pos,
   type Span,
   type WordSegment,
 } from '../../src/client/editor/word.ts';
+import { comparePositions } from '../../src/shared/utils/position.ts';
+import type { Position } from '../../src/shared/utils/position.ts';
 import { D } from '../shared/_kana.ts';
 import { REPO_ROOT } from '../shared/repo.ts';
 
@@ -194,20 +195,20 @@ test('the caret walk agrees with the whole line at every offset (#183)', () => {
 const LINES = ['　聖剣を抜いたのは山田　太郎だった。', '', '王都へ、なに！？'];
 const DOC: Lines = { lineCount: LINES.length, lineAt: (line) => ({ text: LINES[line] ?? '' }) };
 
-function at(line: number, character: number): Pos {
+function at(line: number, character: number): Position {
   return { line, character };
 }
 
-function span(start: Pos, end: Pos): Span {
+function span(start: Position, end: Position): Span {
   return { start, end };
 }
 
 /** Every position `step` reaches from `from`, until it stops moving. */
-function walk(step: (doc: Lines, from: Pos) => Pos, from: Pos): Pos[] {
-  const out: Pos[] = [];
+function walk(step: (doc: Lines, from: Position) => Position, from: Position): Position[] {
+  const out: Position[] = [];
   for (let pos = from; ;) {
     const next = step(DOC, pos);
-    if (next.line === pos.line && next.character === pos.character) {
+    if (comparePositions(next, pos) === 0) {
       return out;
     }
     out.push(next);
