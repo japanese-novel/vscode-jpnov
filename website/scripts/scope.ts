@@ -207,7 +207,7 @@ export function scopeFragment(html: string, opts: BookScopeOptions): BookScoped;
 export function scopeFragment(html: string, opts: PreviewScopeOptions | BookScopeOptions): PreviewScoped | BookScoped {
   const { scope } = opts;
   const stripped = stripPrintRules(between(html, '<style>', '</style>'));
-  const body = between(html, '<body>', '</body>').replace(/<script>[\s\S]*?<\/script>/g, '');
+  const body = between(html, '<body>', '</body>').replace(/<script>.*?<\/script>/gis, '');
   if (opts.kind === 'preview') {
     const fitted = swap(stripped.css, FIT_FORMULA, 'font-size:var(--jp-em);', 'preview fit formula (and the band derivation)');
     const css = finishCss(swap(fitted, PREVIEW_MARGIN, 'padding-block:0 20px;', 'preview margin'), scope, 'preview');

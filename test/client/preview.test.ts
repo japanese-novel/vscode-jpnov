@@ -266,7 +266,7 @@ test('the 傍点 probe <script> at the body\'s end gets the nonce; escaped tags 
   assert.ok(nonce, 'CSP names a script nonce');
   assert.ok(html.includes(`<style nonce="${nonce}">b{}</style>`), 'the stylesheet is nonced');
   assert.ok(html.includes(`<p>&lt;script&gt;本文&lt;/style&gt;</p><script nonce="${nonce}">probe()</script>`), 'the probe is nonced in place');
-  assert.doesNotMatch(html, /<script>|<style>/, 'no tag is left without its nonce');
+  assert.doesNotMatch(html, /<script>|<style>/i, 'no tag is left without its nonce');
 });
 
 test('a debounced render that fires while one is in flight waits, and goes out once after that one lands (#183)', async () => {
