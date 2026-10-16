@@ -18,20 +18,26 @@
   html.jp-js .jp-stage-motion { display: block; }
   html.jp-js .jp-stage-static { display: none; }
 }
-.jp-stage-motion { height: 100vh; }
-/* Up to 85rem the captions sit right above the window and the pair is centred in the viewport:
-   the view is the 16:10 box of the available width, shrinking only when the height runs out.
-   From 85rem the captions sit beside the window and the view fills the free space. Either way
-   the window sizes from the view (a size container), so the 16:10 box always fits. */
+/* The clip box of the camera: the window scales past its own box toward the viewport. */
+.jp-stage-motion { height: 100vh; overflow: hidden; }
+/* Stacked (captions above the window, the pair centred): the view is the 16:10 box of the
+   available width, shrinking only when the height runs out. Side by side (captions beside the
+   window, the view fills the free space) from 85rem, and at any motion width once the viewport
+   is at least 16:10: there the captions' height costs the window more than their width would.
+   Either way the window sizes from the view (a size container), so the 16:10 box always fits. */
 .jp-stage-grid { height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 1.5rem; padding-block: 2.5rem; box-sizing: border-box; }
-@media (min-width: 85rem) { .jp-stage-grid { display: grid; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: center; column-gap: 4rem; padding-block: 3rem; padding-inline: clamp(3rem, 4vw, 4rem); } }
 .jp-caps { display: grid; flex: 0 0 auto; }
 .jp-caps > .jp-capwrap { grid-area: 1 / 1; }
+/* Width-keyed: the side-by-side column below 85rem is 16-20rem wide and takes the small type too. */
 @media (max-width: 84.99rem) { .jp-caps { max-width: 48rem; } .jp-caps h3 { font-size: 1.5rem; margin-bottom: 0.5rem; } .jp-caps p { font-size: 0.9375rem; line-height: 1.8; } }
-@media (min-width: 85rem) { .jp-caps { align-self: center; } }
-.jp-motion-view { position: relative; container-type: size; min-height: 0; flex: 0 1 auto; aspect-ratio: 16 / 10; display: grid; align-items: center; justify-items: center; }
-@media (min-width: 85rem) { .jp-motion-view { height: 100%; aspect-ratio: auto; } }
+/* z-index: the zoomed window paints over the captions. */
+.jp-motion-view { position: relative; z-index: 1; container-type: size; min-height: 0; flex: 0 1 auto; aspect-ratio: 16 / 10; display: grid; align-items: center; justify-items: center; }
 .jp-motion-view > * { grid-area: 1 / 1; }
+@media (min-width: 85rem), (min-aspect-ratio: 8 / 5) {
+  .jp-stage-grid { display: grid; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: center; column-gap: 4rem; padding-block: clamp(2rem, 4vh, 3rem); padding-inline: clamp(3rem, 4vw, 4rem); }
+  .jp-caps { align-self: center; }
+  .jp-motion-view { height: 100%; aspect-ratio: auto; }
+}
 .jp-win-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); }
 .jp-page-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); height: min(100cqh, calc(100cqw / 1.6), 50rem); container-type: size; }
 .jp-page-wrap .jp-page { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
