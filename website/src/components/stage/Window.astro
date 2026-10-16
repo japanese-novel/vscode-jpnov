@@ -78,6 +78,8 @@ const bodies = motion
         fixing={snapshot === 'fix'}
         typed={typed}
         fixLine={motion ? BAIT_LINE : undefined}
+        annotation={motion || snapshot === 'check' ? emphasised.annotation : undefined}
+        annotating={snapshot === 'check'}
       />
       {showPreview && <PreviewGroup fragment={emphasised.preview} bodies={bodies} hidden={motion} />}
     </div>

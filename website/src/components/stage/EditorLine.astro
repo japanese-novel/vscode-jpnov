@@ -5,7 +5,7 @@
  * keystroke order (see stage/typedLine.ts).
  */
 import { lineText } from '../../../scripts/contract.ts';
-import type { EditorLine } from '../../../scripts/contract.ts';
+import type { EditorLine, LineSpan } from '../../../scripts/contract.ts';
 import type { TypedSpec } from '../../stage/typedLine.ts';
 
 interface Props {
@@ -18,21 +18,26 @@ interface Props {
   typed?: TypedSpec | undefined;
   /** Motion: character 0 is the fix-all's inserted space (hidden until the fix beat). */
   fixSpace?: boolean;
+  /** Ranges painted with the word-highlight background (shown while the window sets `--hl`). */
+  highlights?: readonly LineSpan[] | undefined;
 }
 
-const { number, runs, current = false, squiggleAt, typed, fixSpace = false } = Astro.props;
+const { number, runs, current = false, squiggleAt, typed, fixSpace = false, highlights = [] } = Astro.props;
 const kindAt = runs.flatMap((run) => Array.from(run.text, () => run.kind));
 const chars = Array.from(lineText(runs));
 const plan = typed?.plan;
 const typedAt = new Map(plan?.chars.map((c) => [c.index, c]) ?? []);
 
-/** Consecutive plain characters of one kind become one span; typed, fix and squiggle characters stand alone. */
+/** Consecutive plain characters of one kind and highlight become one span; typed, fix and squiggle characters stand alone. */
 interface Piece {
   readonly kind: string;
   text: string;
   readonly typed: { readonly k: number; readonly show: number } | undefined;
   readonly fix: boolean;
   readonly squiggle: boolean;
+  readonly hl: boolean;
+  /** Typed, fix or squiggle: never merged with a neighbour. */
+  readonly solo: boolean;
 }
 const pieces: Piece[] = [];
 chars.forEach((ch, i) => {
@@ -40,18 +45,20 @@ chars.forEach((ch, i) => {
   const t = typedAt.get(i);
   const fix = fixSpace && i === 0;
   const squiggle = squiggleAt === i;
+  const hl = highlights.some((h) => h.from <= i && i < h.to);
+  const solo = t !== undefined || fix || squiggle;
   const last = pieces.at(-1);
-  if (t === undefined && !fix && !squiggle && last !== undefined && last.typed === undefined && !last.fix && !last.squiggle && last.kind === kind) {
+  if (!solo && last !== undefined && !last.solo && last.kind === kind && last.hl === hl) {
     last.text += ch;
   } else {
-    pieces.push({ kind, text: ch, typed: t === undefined ? undefined : { k: t.k, show: t.show }, fix, squiggle });
+    pieces.push({ kind, text: ch, typed: t === undefined ? undefined : { k: t.k, show: t.show }, fix, squiggle, hl, solo });
   }
 });
 ---
 
 <div class:list={['jp-ln', { 'jp-cur': current, 'jp-st-none': plan?.rowShow !== undefined }]} data-line={number} data-show={plan?.rowShow} data-run={typed?.run}><span class="jp-g">{number}</span><span class="jp-t">{plan?.phantom !== undefined && <span class="jp-ch jp-st-none" data-k={plan.phantom.show} data-show={plan.phantom.show} data-drop={plan.phantom.drop} data-run={typed?.run}>　</span>}{pieces.map((p) => {
   if (p.typed !== undefined) {
-    return <span class={`jp-ch jp-st-none jp-tk-${p.kind}`} data-k={p.typed.k} data-show={p.typed.show} data-run={typed?.run}>{p.text}</span>;
+    return <span class:list={['jp-ch jp-st-none', `jp-tk-${p.kind}`, { 'jp-hl': p.hl }]} data-k={p.typed.k} data-show={p.typed.show} data-run={typed?.run}>{p.text}</span>;
   }
   if (p.fix) {
     return <span class={`jp-ch jp-st-none jp-tk-${p.kind}`} data-t="fix-space">{p.text}</span>;
@@ -59,5 +66,5 @@ chars.forEach((ch, i) => {
   if (p.squiggle) {
     return <span class={`jp-sq jp-tk-${p.kind}`} data-t="sq">{p.text}</span>;
   }
-  return <span class={`jp-tk jp-tk-${p.kind}`}>{p.text}</span>;
+  return <span class:list={['jp-tk', `jp-tk-${p.kind}`, { 'jp-hl': p.hl }]}>{p.text}</span>;
 })}</span></div>

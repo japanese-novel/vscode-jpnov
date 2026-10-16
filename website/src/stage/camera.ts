@@ -57,9 +57,18 @@ function axis(rootStart: number, rootSize: number, winStart: number, winSize: nu
   return clamp((0.5 - centre) * s * winSize + shift * clamp((s - 1) / (MAX_SCALE - 1), 0, 1), shift - half, shift + half);
 }
 
-/** Scales the window so `region` fills FIT of the clip box, at most MAX_SCALE, never below 1. */
+/** The scale at which `region` fills FIT of the clip box. */
+function fit(root: Box, win: Box, region: Frac): number {
+  return Math.min(root.w / (region.w * win.w), root.h / (region.h * win.h)) * FIT;
+}
+
+/**
+ * Scales the window so `region` fills FIT of the clip box, never below 1, at most MAX_SCALE. In a
+ * clip box roomy enough to fit the whole window above scale 1, the scale is taken relative to that
+ * fit, so the whole window is the identity however large the clip box.
+ */
 export function frame(root: Box, win: Box, region: Frac): Frame {
-  const s = clamp(Math.min(root.w / (region.w * win.w), root.h / (region.h * win.h)) * FIT, 1, MAX_SCALE);
+  const s = clamp(fit(root, win, region) / Math.max(1, fit(root, win, WHOLE)), 1, MAX_SCALE);
   return {
     s,
     x: axis(root.x, root.w, win.x, win.w, region.x + region.w / 2, s),

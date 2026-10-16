@@ -10,6 +10,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { buildCodeActions } from '../../src/server/lint/codeActions.ts';
 import { computeLintFindings } from '../../src/server/lint/engine.ts';
 import { syntaxFindings } from '../../src/server/syntax.ts';
+import type { Ast } from '../../src/shared/ast/nodes.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
 import { allSettingKeys } from '../../src/shared/lint/catalog.ts';
 import { selectRules } from '../../src/shared/lint/select.ts';
@@ -20,6 +21,11 @@ import type { DiagnosticOut, Range } from './contract.ts';
 import { readRootText } from './root.ts';
 
 const URI = 'file:///sample.jpnov';
+
+/** A sample as the server holds it: the document and the editor's parse of it. */
+export function sampleDocument(src: string): { doc: TextDocument; ast: Ast } {
+  return { doc: TextDocument.create(URI, 'jpnov', 1, src), ast: parse(src) };
+}
 
 /** The syntax diagnostics of `document` over the editor's parse of it. */
 const annotationDiagnostics = (document: TextDocument): Diagnostic[] => syntaxFindings(document, parse(document.getText())).map((f) => f.diagnostic);
@@ -79,8 +85,7 @@ export interface LintResult {
 }
 
 export function lintSource(src: string): LintResult {
-  const doc = TextDocument.create(URI, 'jpnov', 1, src);
-  const ast = parse(src);
+  const { doc, ast } = sampleDocument(src);
   const findings = computeLintFindings(doc, ast, RULES);
   const out: DiagnosticOut[] = [];
   const push = (diag: Diagnostic, fix?: { range: Range; newText: string }): void => {

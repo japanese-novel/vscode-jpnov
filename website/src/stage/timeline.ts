@@ -26,8 +26,11 @@ function q(root: HTMLElement, key: string): HTMLElement {
   return el;
 }
 
-/** Each beat's caption crossfades in around its label, the previous one out; the first shows from the start. */
-function captions(tl: gsap.core.Timeline, root: HTMLElement, labels: readonly { id: BeatId; at: number }[]): void {
+/**
+ * Each beat's caption crossfades in around its label, the previous one out; the first shows from
+ * the start. Returns how a beat fades its second paragraph in later (shown at once otherwise).
+ */
+function captions(tl: gsap.core.Timeline, root: HTMLElement, labels: readonly { id: BeatId; at: number }[]): (id: BeatId, at: number) => void {
   let prev: HTMLElement | undefined;
   for (const l of labels) {
     const cap = q(root, `cap-${l.id}`);
@@ -37,6 +40,13 @@ function captions(tl: gsap.core.Timeline, root: HTMLElement, labels: readonly { 
     }
     prev = cap;
   }
+  return (id, at) => {
+    const second = q(root, `cap-${id}`).querySelector<HTMLElement>('p + p');
+    if (second === null) {
+      throw new Error(`stage: the ${id} caption has no second paragraph`);
+    }
+    tl.fromTo(second, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3 }, at);
+  };
 }
 
 export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
@@ -84,7 +94,7 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
     tl.addLabel(l.id, l.at);
   }
   tl.set({}, {}, total); // holds the timeline open to the last beat's end
-  captions(tl, root, labels);
+  const revealSecond = captions(tl, root, labels);
   const cam = camera(tl, root, win);
 
   // 書く: the author types three lines; Enter indents, 「 un-indents, brackets auto-close.
@@ -112,7 +122,14 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
   cam.to(() => around(win, emph, 4), t + 1.85, 0.3);
   tl.to(q(root, 'pv-A'), { autoAlpha: 0, duration: 0.2 }, t + 1.95);
   tl.to(q(root, 'pv-B'), { autoAlpha: 1, duration: 0.2 }, t + 1.95);
-  cam.back(t + 2.6);
+  // …and the pointer rests on it: the product's hover, its target and the body lit.
+  const annHover = q(root, 'ann-hover');
+  cam.to(of(annHover, ...rows(EMPH_LINE + 1, EMPH_LINE + 1)), t + 2.4, 0.3);
+  tl.fromTo(annHover, { autoAlpha: 0, y: -4 }, { autoAlpha: 1, y: 0, duration: 0.25 }, t + 2.6);
+  tl.set(code, { '--hl': 'var(--word-hl)' }, t + 2.6);
+  tl.to(annHover, { autoAlpha: 0, duration: 0.15 }, t + 3.7);
+  cam.back(t + 3.8);
+  revealSecond('check', t + 3.8); // the zoomed window covers the caption until now
 
   // まとめる: 章を追加… picks 第二章, the row appears at the end and moves up.
   t = at('collect');
@@ -137,7 +154,7 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
   const bulb = q(root, 'bulb');
   const menu = q(root, 'menu');
   cam.to(of(hover, bulb, ...rows(BAIT_LINE + 1, BAIT_LINE + 1), menu), t, 0.35);
-  tl.set(code, { '--cur': BAIT_LINE }, t);
+  tl.set(code, { '--cur': BAIT_LINE, '--hl': 'transparent' }, t);
   if (caret !== null) {
     tl.set(caret, { '--c': 0 }, t);
   }
@@ -159,10 +176,6 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
   tl.to(q(root, 'btn-print'), { scale: 0.97, duration: 0.1, yoyo: true, repeat: 1, transformOrigin: '50% 50%' }, t);
   tl.to(win, { scale: 0.96, autoAlpha: 0, duration: 0.65, ease: 'power2.in', transformOrigin: '50% 50%' }, t + 0.25);
   tl.fromTo(page, { autoAlpha: 0, y: 40, scale: 0.98 }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.65, ease: 'power3.out', transformOrigin: '50% 50%' }, t + 0.35);
-  const second = q(root, 'cap-book').querySelector<HTMLElement>('p + p');
-  if (second !== null) {
-    tl.fromTo(second, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3 }, t + 1.5);
-  }
-
+  revealSecond('book', t + 1.5);
   return tl;
 }
