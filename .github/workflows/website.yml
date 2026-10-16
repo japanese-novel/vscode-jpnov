@@ -9,6 +9,7 @@ on:
       - src/shared/**
       - src/server/**
       - l10n/**
+      - resources/icon.svg
       - package.json
       - package-lock.json
       - .github/workflows/website.yml

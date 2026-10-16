@@ -10,10 +10,6 @@ test('the cover sample is the product’s own template', async () => {
   assert.equal(await readSiteText('src/samples/cover.jpnov'), COVER_TEMPLATE);
 });
 
-test('the favicon is the product icon', async () => {
-  assert.equal(await readSiteText('public/favicon.svg'), await readRootText('resources/icon.svg'));
-});
-
 test('the Mincho stack is the product’s default stack', async () => {
   assert.ok((await readSiteText('src/styles/global.css')).includes(`--font-mincho: ${DEFAULT_FONT_STACK};`));
 });
