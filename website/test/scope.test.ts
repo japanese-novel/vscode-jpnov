@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { parse } from '../../src/shared/ast/parse.ts';
 import { renderBook } from '../../src/shared/compiler/document.ts';
-import { EDGE_INSET, fitPaper, HEADER_BAND, LINENUM_BAND } from '../../src/shared/compiler/geometry.ts';
+import { EDGE_INSET, fitPaper, HEADER_BAND, LINENUM_BAND, PREVIEW_MARGIN_LINES } from '../../src/shared/compiler/geometry.ts';
 import { renderPreview } from '../../src/shared/compiler/preview.ts';
 import { BUILD_CHROME_DEFAULT } from '../../src/shared/config/settings.ts';
 import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
@@ -35,6 +35,8 @@ test('a preview fragment keeps every rule under its scope and no root or viewpor
   assert.equal(fragment.css.split('@property --emr{').length, 2, 'the --emr registration is kept once, unscoped');
   assert.ok(fragment.css.includes(`--jp-em:calc(var(--jp-band) / (var(--cpl) + ${String(2 * EDGE_INSET)}))`));
   assert.ok(fragment.css.includes('.jp-r-t .line{position:relative;}'));
+  assert.ok(fragment.css.includes('padding-block:0 20px;'), 'the preview margin (#123) is dropped in an embed (#213)');
+  assert.ok(!fragment.css.includes(`calc(${String(PREVIEW_MARGIN_LINES)}*var(--pitch)`), 'no em-scaled margin survives');
   assert.ok(fragment.css.includes('calc(0.35 * var(--jp-em))'));
   assert.ok(fragment.body.startsWith('<div class="book"><div class="segment">'));
   assert.equal(fragment.body.split('　').length, SRC.split('　').length, 'full-width spaces survive');

@@ -14,6 +14,8 @@ export const UI = {
   footer: 'フッター',
   footerAlign: 'フッターの配置',
   divider: '章区切り',
+  characters: '登場人物',
+  keywords: '造語',
   covers: '表紙',
   addCovers: '表紙を追加…',
   chapters: '目次',

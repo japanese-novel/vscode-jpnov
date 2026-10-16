@@ -20,12 +20,13 @@ const rows = pending === undefined ? chapters : [...chapters, pending];
   <div class="jp-vhead"><span>{PRODUCT.viewTitle(NAMES.bookTitle)}</span><Icon name="refresh" /></div>
   <div class="jp-scroll">
     <div class="jp-dhdr"><span class="jp-iconbtn"><Icon name="chevron-left" /></span><div class="jp-dtitle">{NAMES.bookTitle}</div></div>
-    <div class="jp-section">
-      <div class="jp-shead"><span class="jp-sectoggle"><Icon name="chevron-right" class="jp-caret" /><span class="jp-stitle">{UI.bookInfo}</span></span></div>
-    </div>
-    <div class="jp-section">
-      <div class="jp-shead"><span class="jp-sectoggle"><Icon name="chevron-right" class="jp-caret" /><span class="jp-stitle">{UI.covers}</span></span></div>
-    </div>
+    {/* The product's detail view: the info section, then its FOLDING lists (src/client/webview/book/main.ts,
+        not exported), each collapsed, then the chapters below. */}
+    {[UI.bookInfo, UI.characters, UI.keywords, UI.covers].map((title) => (
+      <div class="jp-section">
+        <div class="jp-shead"><span class="jp-sectoggle"><Icon name="chevron-right" class="jp-caret" /><span class="jp-stitle">{title}</span></span></div>
+      </div>
+    ))}
     <div class="jp-section jp-toc" data-t="toc">
       <div class="jp-shead"><span class="jp-stitle">{UI.chapters}</span></div>
       {rows.map((name, i) => (
