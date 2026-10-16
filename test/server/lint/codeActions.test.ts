@@ -6,7 +6,7 @@ import { CodeActionKind } from 'vscode-languageserver/node';
 import type { CodeAction, Diagnostic, Range, TextEdit } from 'vscode-languageserver/node';
 
 import type { Finding } from '../../../src/server/diagnostics.ts';
-import { buildCodeActions } from '../../../src/server/lint/codeActions.ts';
+import { buildCodeActions, fixAllEdits } from '../../../src/server/lint/codeActions.ts';
 import type { SyncedTarget } from '../../../src/server/targets.ts';
 import { inLinearTime } from '../../shared/_timing.ts';
 
@@ -91,6 +91,22 @@ test('fix-all bundles every fixable edit and drops overlaps', () => {
 // なに!?だ!?［＃「なに!?だ!?」に傍点］: the 「…」 sits at 12..18, each pair is 2..4 and 5..7 of it.
 const TARGET = range(0, 12, 0, 18);
 const within = (start: number, end: number, newText: string): SyncedTarget => ({ range: TARGET, text: 'なに!?だ!?', start, end, newText });
+
+test('fixAllEdits: the fix-all edits, and `fixed` counts the fixes kept, not the 「…」 rewrites nor the overlaps dropped', () => {
+  const a = finding(range(0, 3, 0, 5), 'lint.common.questionExclamationMarks', '⁉', [within(2, 4, '⁉')]);
+  const b = finding(range(0, 6, 0, 8), 'lint.common.questionExclamationMarks', '⁉', [within(5, 7, '⁉')]);
+  const overlap = finding(range(0, 3, 0, 5), 'lint.dialogue.noHankakuKana', 'イ');
+  const unfixable = finding(range(0, 0, 0, 1), 'lint.narration.indent');
+  const findings = [unfixable, overlap, b, a];
+  const { edits, fixed } = fixAllEdits(findings);
+  assert.equal(fixed, 2);
+  // Two fixes inside one 「…」: three edits, the 「…」 rewritten once.
+  assert.equal(edits.length, 3);
+  const [action] = buildCodeActions(URI, findings, range(0, 0, 0, 0), [CodeActionKind.SourceFixAll]);
+  assert.ok(action);
+  assert.deepEqual(edits, editsOf(action));
+  assert.deepEqual(fixAllEdits([unfixable]), { edits: [], fixed: 0 });
+});
 
 test('a quick-fix carries the edit of the 「…」 its fix lands inside', () => {
   const f = finding(range(0, 3, 0, 5), 'lint.common.questionExclamationMarks', '⁉', [within(2, 4, '⁉')]);

@@ -16,12 +16,15 @@ import type { LanguageClient } from 'vscode-languageclient/node';
 
 import {
   BuildRequest,
+  FixAllRequest,
   ListBooksRequest,
   type BookEntry,
   type BuildError,
   type BuildFormat,
   type BuildParams,
   type BuildResult,
+  type FixAllParams,
+  type FixAllResult,
   type ListBooksParams,
   type ListBooksResult,
 } from '#/shared/protocol.ts';
@@ -687,6 +690,75 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         return { line, path, name, folder: dir, fileUri: target.toString(), missing };
       }),
     );
+  }
+
+  /**
+   * `jpbook.fixAll` (the detail screen's title bar): the editor's "fix all" over every chapter of
+   * the open book, one request per chapter, each on the text the editor holds. A chapter that was
+   * clean is saved after its edit; one that was already dirty keeps the fixes unsaved, as its own
+   * edits are. A missing chapter, a refused edit or a failed save is toasted and skipped; one
+   * toast at the end counts the fixes and the chapters they landed in.
+   */
+  async fixAllChapters(): Promise<void> {
+    const entry = this.entryOf(this.openDetailUri);
+    if (entry === undefined) {
+      return;
+    }
+    let lines: readonly ParsedLine[];
+    try {
+      lines = parseJpbook((await vscode.workspace.openTextDocument(vscode.Uri.parse(entry.uri))).getText()).lines;
+    } catch (err) {
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("Japanese Novel: couldn't load the books. {0}", errorText(err)),
+      );
+      return;
+    }
+    // A chapter listed twice is fixed once; a missing one is skipped (the panel already marks it).
+    const chapters = [...new Set(
+      (await this.entryVMs(entry, lines, 'chapters')).flatMap((vm) => (vm.missing || vm.fileUri === null ? [] : [vm.fileUri])),
+    )];
+    let fixed = 0;
+    let touched = 0;
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: vscode.l10n.t('Japanese Novel: fixing {0} chapter(s)…', String(chapters.length)),
+      },
+      async () => {
+        for (const uri of chapters) {
+          const n = await this.fixChapter(uri);
+          if (n !== undefined) {
+            fixed += n;
+            touched += 1;
+          }
+        }
+      },
+    );
+    void vscode.window.showInformationMessage(
+      fixed > 0
+        ? vscode.l10n.t('Japanese Novel: fixed {0} problem(s) in {1} chapter(s).', String(fixed), String(touched))
+        : vscode.l10n.t('Japanese Novel: no auto-fixable problems in this book.'),
+    );
+  }
+
+  /** Fix-all over one chapter: the number of fixes that landed, or undefined when none did (nothing to fix, or a failure, toasted). */
+  private async fixChapter(uri: string): Promise<number | undefined> {
+    let doc: vscode.TextDocument;
+    let result: FixAllResult;
+    try {
+      doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(uri));
+      result = await this.client.sendRequest<FixAllResult>(FixAllRequest, { uri, text: doc.getText() } satisfies FixAllParams);
+    } catch (err) {
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("Japanese Novel: couldn't edit {0}. {1}", lastPathSegment(uri), errorText(err)),
+      );
+      return undefined;
+    }
+    if (result.edits.length === 0) {
+      return undefined;
+    }
+    const replaces = result.edits.map((e) => ({ start: e.range.start, end: e.range.end, newText: e.newText }));
+    return (await applyBookEdits(doc.uri, replaces, !doc.isDirty)) ? result.fixed : undefined;
   }
 
   /**

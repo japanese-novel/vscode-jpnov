@@ -11,7 +11,7 @@
  * from the fixes it kept. Relative imports (native test loader).
  */
 import { CodeActionKind } from 'vscode-languageserver/node';
-import type { CodeAction, Position, Range } from 'vscode-languageserver/node';
+import type { CodeAction, Position, Range, TextEdit } from 'vscode-languageserver/node';
 
 import type { Finding, Fix } from '../diagnostics.ts';
 import { comparePositions } from '../../shared/utils/position.ts';
@@ -51,14 +51,14 @@ function quickFix(uri: string, f: FixableFinding): CodeAction {
   };
 }
 
-function fixAll(uri: string, fixable: readonly FixableFinding[]): CodeAction {
-  // The 「…」 edits come from the fixes kept, so a 「…」 two fixes land inside is rewritten once.
-  const edits = nonOverlapping(mergedEdits(nonOverlapping(fixable.map((f) => f.fix))));
-  return {
-    title: FIX_ALL_TITLE,
-    kind: CodeActionKind.SourceFixAll,
-    edit: { changes: { [uri]: edits } },
-  };
+/**
+ * The edits of "fix all" over `findings`, and `fixed`, the number of fixes they carry: a 「…」
+ * rewrite rides a fix (`Fix.within`) and is not a fix of its own. The 「…」 edits come from the
+ * fixes kept, so a 「…」 two fixes land inside is rewritten once.
+ */
+export function fixAllEdits(findings: readonly Finding[]): { edits: TextEdit[]; fixed: number } {
+  const kept = nonOverlapping(findings.filter((f): f is FixableFinding => f.fix !== undefined).map((f) => f.fix));
+  return { edits: nonOverlapping(mergedEdits(kept)), fixed: kept.length };
 }
 
 /** True when the client's `only` filter (empty/undefined = all) admits an action of `kind`. */
@@ -90,7 +90,7 @@ export function buildCodeActions(
     }
   }
   if (wants(only, CodeActionKind.SourceFixAll)) {
-    actions.push(fixAll(uri, fixable));
+    actions.push({ title: FIX_ALL_TITLE, kind: CodeActionKind.SourceFixAll, edit: { changes: { [uri]: fixAllEdits(fixable).edits } } });
   }
   return actions;
 }

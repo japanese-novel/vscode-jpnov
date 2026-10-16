@@ -364,6 +364,22 @@ export interface RenderFileResult {
   readonly html: string;
 }
 
+// jpnov/fixAll (C->S request)
+
+export const FixAllRequest = 'jpnov/fixAll';
+
+/** One manuscript as the editor holds it: the client sends the text itself, so the request owes nothing to a `didOpen`. */
+export interface FixAllParams {
+  readonly uri: string;
+  readonly text: string;
+}
+
+/** The edits of the editor's "fix all" over `text`, and the number of fixes they carry (a 「…」 rewrite rides a fix, it is not counted). */
+export interface FixAllResult {
+  readonly edits: readonly { readonly range: Range; readonly newText: string }[];
+  readonly fixed: number;
+}
+
 // jpnov/readText (S->C request)
 
 export const ReadTextRequest = 'jpnov/readText';
