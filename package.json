@@ -609,6 +609,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "jpbook.fixAll",
+        "category": "%command.category%",
+        "title": "%command.books.fixAll.title%",
+        "icon": "$(lightbulb-autofix)"
+      },
+      {
         "command": "jpnov.openGuide",
         "category": "%command.category%",
         "title": "%command.openGuide.title%"
@@ -723,6 +729,11 @@
           "when": "view == jpnov.books && !jpnov.booksDetail"
         },
         {
+          "command": "jpbook.fixAll",
+          "group": "navigation@0",
+          "when": "view == jpnov.books && jpnov.booksDetail"
+        },
+        {
           "command": "jpbook.refresh",
           "group": "navigation@1",
           "when": "view == jpnov.books"
@@ -755,6 +766,10 @@
         {
           "command": "jpbook.refresh",
           "when": "false"
+        },
+        {
+          "command": "jpbook.fixAll",
+          "when": "jpnov.booksDetail"
         },
         {
           "command": "jpnov.cursorWordLeft",

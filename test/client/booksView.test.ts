@@ -31,7 +31,7 @@ mock.module('vscode', { namedExports: buildVscode(state) });
 
 const { BooksViewProvider } = await import('../../src/client/book/view.ts');
 const { raceRequest } = await import('../../src/client/requests.ts');
-const { ListBooksRequest, BuildRequest } = await import('../../src/shared/protocol.ts');
+const { ListBooksRequest, BuildRequest, FixAllRequest } = await import('../../src/shared/protocol.ts');
 
 /** A stand-in extension root (the provider asWebviewUri-serves the codicon assets under it). */
 const EXT = Uri.parse('file:///ext');
@@ -50,17 +50,24 @@ function openEntry(uri: string, title?: string) {
   return { uri, rootUri: null, fileRel: uri.slice(uri.lastIndexOf('/') + 1), title };
 }
 
-/** A fake LanguageClient: answers listBooks with `books`, records the build params + token. */
-function fakeClient(books: unknown[], buildResult?: unknown) {
+/** A fake LanguageClient: answers listBooks with `books`, records the build params + token;
+ *  `fixAll` answers jpnov/fixAll from the text sent (and records what was sent). */
+function fakeClient(books: unknown[], buildResult?: unknown, fixAll?: (text: string) => unknown) {
   const calls: {
     build: { books?: string[]; format?: string } | null;
     buildToken: unknown;
-  } = { build: null, buildToken: undefined };
+    fixAll: { uri: string; text: string }[];
+  } = { build: null, buildToken: undefined, fixAll: [] };
   return {
     calls,
     sendRequest(type: string, params: unknown, token?: unknown): Promise<unknown> {
       if (type === ListBooksRequest) {
         return Promise.resolve({ books });
+      }
+      if (type === FixAllRequest) {
+        const p = params as { uri: string; text: string };
+        calls.fixAll.push(p);
+        return Promise.resolve(fixAll === undefined ? { edits: [], fixed: 0 } : fixAll(p.text));
       }
       if (type === BuildRequest) {
         calls.build = params as { books?: string[]; format?: string };
@@ -90,8 +97,12 @@ function firstDetail(view: { webview: { posted: unknown[] } }): { type?: string;
 }
 
 /** Construct + refresh + resolve + ready. Sets one workspace folder when the first book has a root. */
-async function setup(books: (ReturnType<typeof entry> | ReturnType<typeof openEntry>)[], buildResult?: unknown) {
-  const client = fakeClient(books, buildResult);
+async function setup(
+  books: (ReturnType<typeof entry> | ReturnType<typeof openEntry>)[],
+  buildResult?: unknown,
+  fixAll?: (text: string) => unknown,
+) {
+  const client = fakeClient(books, buildResult, fixAll);
   const provider = new BooksViewProvider(client as never, EXT as never);
   await provider.refresh(); // populate books, default-checked
   const first = books[0];
@@ -650,6 +661,95 @@ test('openDetail posts covers and chapters (missing flagged) and the metadata ro
   assert.ok(dividerRow);
   assert.equal(dividerRow.value, '');
   assert.equal(dividerRow.note, '(none)');
+});
+
+// --- fix all chapters ---------------------------------------------------------
+
+/**
+ * A book listing `listing` under file:///ws/src, its chapters registered as documents (`dirty` as
+ * given, saves recorded in `saved`) and present on disk, opened to its detail. `fixAll` answers
+ * jpnov/fixAll from the text sent.
+ */
+async function openBookWithChapters(
+  listing: string,
+  chapters: { uri: string; text: string; dirty: boolean }[],
+  fixAll?: (text: string) => unknown,
+) {
+  const bookUri = 'file:///ws/src/a.jpbook';
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}title: A\n---\n${listing}`));
+  const saved: string[] = [];
+  for (const ch of chapters) {
+    state.fsEntries.set(ch.uri, FileType.File);
+    const d = doc(ch.uri, 'jpnov', ch.text);
+    d.isDirty = ch.dirty;
+    d.save = () => {
+      saved.push(ch.uri);
+      return Promise.resolve(true);
+    };
+    state.textDocuments.push(d);
+  }
+  const { provider, view, client } = await setup([entry('file:///ws', 'a', 'A')], undefined, fixAll);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  return { provider, client, saved };
+}
+
+test('fixAllChapters fixes every listed chapter once: a dirty one stays unsaved, a clean one is saved, a missing one is skipped', async () => {
+  // ch1 is listed twice (fixed once), ch2 is missing on disk, up sits above the book's folder.
+  const { provider, client, saved } = await openBookWithChapters(
+    'ch1.jpnov\nsub/ch2.jpnov\nch1.jpnov\n../up.jpnov\n',
+    [
+      { uri: 'file:///ws/src/ch1.jpnov', text: 'なに!?\n', dirty: true },
+      { uri: 'file:///ws/up.jpnov', text: 'だ!?\n', dirty: false },
+    ],
+    // One edit and one fix per chapter, placed by the text the client sent (its live buffer).
+    (text) => ({
+      edits: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: text.length - 1 } }, newText: text.trim() + '［＃「!?」は縦中横］' }],
+      fixed: text === 'なに!?\n' ? 2 : 1,
+    }),
+  );
+  await provider.fixAllChapters();
+  assert.deepEqual(client.calls.fixAll.map((p) => p.uri), ['file:///ws/src/ch1.jpnov', 'file:///ws/up.jpnov']);
+  assert.deepEqual(client.calls.fixAll.map((p) => p.text), ['なに!?\n', 'だ!?\n']);
+  assert.deepEqual(state.appliedEdits, [
+    { uri: 'file:///ws/src/ch1.jpnov', range: [0, 0, 0, 4], newText: 'なに!?［＃「!?」は縦中横］' },
+    { uri: 'file:///ws/up.jpnov', range: [0, 0, 0, 3], newText: 'だ!?［＃「!?」は縦中横］' },
+  ]);
+  assert.deepEqual(saved, ['file:///ws/up.jpnov']); // the dirty ch1 keeps its fixes unsaved
+  assert.deepEqual(state.errorMessages, []);
+  assert.deepEqual(state.infoMessages, ['Japanese Novel: fixed 3 problem(s) in 2 chapter(s).']);
+  assert.equal((state.progressOptions[0] as { title?: string }).title, 'Japanese Novel: fixing 2 chapter(s)…');
+});
+
+test('fixAllChapters with nothing to fix: no edit, no save, the "no problems" toast', async () => {
+  const { provider, client, saved } = await openBookWithChapters('ch1.jpnov\n', [
+    { uri: 'file:///ws/src/ch1.jpnov', text: '本文。\n', dirty: false },
+  ]);
+  await provider.fixAllChapters();
+  assert.equal(client.calls.fixAll.length, 1);
+  assert.deepEqual(state.appliedEdits, []);
+  assert.deepEqual(saved, []);
+  assert.deepEqual(state.infoMessages, ['Japanese Novel: no auto-fixable problems in this book.']);
+});
+
+test('fixAllChapters: a refused edit is toasted and the chapter is left out of the count', async () => {
+  state.applyEditResult = false;
+  const { provider, saved } = await openBookWithChapters(
+    'ch1.jpnov\n',
+    [{ uri: 'file:///ws/src/ch1.jpnov', text: 'なに!?\n', dirty: false }],
+    () => ({ edits: [{ range: { start: { line: 0, character: 2 }, end: { line: 0, character: 4 } }, newText: '⁉' }], fixed: 1 }),
+  );
+  await provider.fixAllChapters();
+  assert.deepEqual(saved, []);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit ch1.jpnov. "]);
+  assert.deepEqual(state.infoMessages, ['Japanese Novel: no auto-fixable problems in this book.']);
+});
+
+test('fixAllChapters does nothing without an open detail', async () => {
+  const { provider, client } = await setup([entry('file:///ws', 'a', 'A')]);
+  await provider.fixAllChapters();
+  assert.equal(client.calls.fixAll.length, 0);
+  assert.deepEqual(state.infoMessages, []);
 });
 
 test('the metadata rows note an empty or unwritten key: not set (title, author, an alignment), hidden (header, footer), none (divider)', async () => {

@@ -3,6 +3,7 @@
   "command.books.open.title": "本の一覧を開く",
   "command.books.refresh.title": "本の一覧を更新",
   "command.books.createFile.title": "本を作成…",
+  "command.books.fixAll.title": "本のすべての章を自動修正",
   "command.preview.title": "プレビューを開く",
   "command.openGuide.title": "ガイドを開く",
   "command.previewToSide.title": "プレビューを横に開く",

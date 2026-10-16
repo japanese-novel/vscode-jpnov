@@ -110,21 +110,27 @@ export function metaValueParts(key: MetaKey, value: string | undefined): { value
   return { value: '', note };
 }
 
-/** Applies planned replaces and saves — the panel's watcher does the refresh. A refused edit or save is toasted. */
-export async function applyBookEdits(uri: vscode.Uri, replaces: readonly TextReplace[]): Promise<void> {
+/** Applies planned replaces and, unless told not to, saves — the panel's watcher does the refresh. A refused
+ *  edit (false) or save is toasted; `save = false` leaves a buffer that was already dirty to its owner. */
+export async function applyBookEdits(uri: vscode.Uri, replaces: readonly TextReplace[], save = true): Promise<boolean> {
   const edit = new vscode.WorkspaceEdit();
   for (const r of replaces) {
     edit.replace(uri, new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character), r.newText);
   }
   const name = lastPathSegment(uri.toString());
   if (!(await vscode.workspace.applyEdit(edit))) {
-    void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel: couldn't edit {0}.", name));
-    return;
+    void vscode.window.showErrorMessage(
+      vscode.l10n.t("Japanese Novel: couldn't edit {0}. {1}", name, ''),
+    );
+    return false;
   }
-  const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
-  if ((await doc?.save()) === false) {
-    void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel: couldn't save {0}.", name));
+  if (save) {
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
+    if ((await doc?.save()) === false) {
+      void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel: couldn't save {0}.", name));
+    }
   }
+  return true;
 }
 
 /** The book's live text (dirty buffer included) and its version — every planner starts from this. */

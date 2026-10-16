@@ -575,7 +575,7 @@ test('a refused edit or a failed save is toasted (#90)', async () => {
   book(true);
   state.applyEditResult = false;
   await run();
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit book.jpbook."]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit book.jpbook. "]);
   assert.equal(saves, 0);
 
   resetMockState(state);

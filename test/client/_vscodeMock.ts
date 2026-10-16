@@ -189,6 +189,8 @@ export interface FakeTextDocument {
   /** `TextDocument.encoding` ('utf8', 'shiftjis', …); `doc()` defaults it to 'utf8'. */
   encoding?: string;
   getText(): string;
+  /** `TextDocument.isDirty`; `doc()` leaves it unset (clean), the book-wide fix reads it before its edit. */
+  isDirty?: boolean;
   /** Present on `doc()`-built documents (manage.ts saves after `applyEdit`); hand-rolled fakes may omit it. */
   save?(): Promise<boolean>;
 }

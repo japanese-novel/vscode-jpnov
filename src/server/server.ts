@@ -34,12 +34,15 @@ import type {
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
+import type { Ast } from '#/shared/ast/nodes.ts';
+import { parse } from '#/shared/ast/parse.ts';
 import { renderPreview } from '#/shared/compiler/preview.ts';
 import { resolvePreviewSettings } from '#/shared/config/settings.ts';
 import { selectRules } from '#/shared/lint/select.ts';
 import type { InitializationOptions } from '#/shared/protocol.ts';
 import {
   BuildRequest,
+  FixAllRequest,
   HoverRequest,
   LintConfigChangedNotification,
   ListBooksRequest,
@@ -49,6 +52,8 @@ import {
 import type {
   BuildParams,
   BuildResult,
+  FixAllParams,
+  FixAllResult,
   HoverParams,
   HoverResult,
   LintConfigChangedParams,
@@ -64,7 +69,7 @@ import { highlightsAt, hoverAt, prepareRenameAt, renameAt } from './annotations.
 import { handleBuild, handleListBooks } from './build.ts';
 import type { Finding } from './diagnostics.ts';
 import { parentUri } from './fsUri.ts';
-import { buildCodeActions } from './lint/codeActions.ts';
+import { buildCodeActions, fixAllEdits } from './lint/codeActions.ts';
 import { computeLintFindings } from './lint/engine.ts';
 import { createParseCache } from './parsed.ts';
 import { reportError } from './report.ts';
@@ -331,8 +336,7 @@ const findingsCache = new Map<string, { version: number; findings: Finding[] }>(
 
 /** Everything `doc` publishes: the syntax findings under every lint configuration, then the lint's.
  *  A lint that throws loses only its own findings: the syntax ones still replace what was published. */
-function findingsOf(doc: TextDocument): Finding[] {
-  const ast = parsed.astOf(doc);
+function findingsOf(doc: TextDocument, ast: Ast): Finding[] {
   const syntax = syntaxFindings(doc, ast);
   try {
     return [...syntax, ...computeLintFindings(doc, ast, context.lintSelection)];
@@ -361,7 +365,7 @@ function scheduleProseDiagnostics(doc: TextDocument): void {
         return;
       }
       try {
-        publishFindings(uri, scheduledVersion, findingsOf(current));
+        publishFindings(uri, scheduledVersion, findingsOf(current, parsed.astOf(current)));
       } catch (err) {
         reportError(context, err);
       }
@@ -383,9 +387,23 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
   if (cached?.version === version) {
     return buildCodeActions(uri, cached.findings, params.range, params.context.only);
   }
-  const findings = findingsOf(doc);
+  const findings = findingsOf(doc, parsed.astOf(doc));
   findingsCache.set(uri, { version, findings });
   return buildCodeActions(uri, findings, params.range, params.context.only);
+});
+
+// "Fix all" over one manuscript as the client holds it (the Books view runs it over every chapter of
+// a book, open or not): the same findings and the same edits as the editor's source.fixAll action.
+// An open document showing that text answers from its parse and its published findings; any other
+// text is parsed on its own, outside the cache of the open ones.
+connection.onRequest(FixAllRequest, (params: FixAllParams): FixAllResult => {
+  const open = documents.get(params.uri);
+  if (open?.languageId === 'jpnov' && open.getText() === params.text) {
+    const cached = findingsCache.get(open.uri);
+    return fixAllEdits(cached?.version === open.version ? cached.findings : findingsOf(open, parsed.astOf(open)));
+  }
+  const doc = TextDocument.create(params.uri, 'jpnov', 0, params.text);
+  return fixAllEdits(findingsOf(doc, parse(params.text)));
 });
 
 /** Re-lint every open .jpnov — used when the lint selection changes (no text edit drives it). */
