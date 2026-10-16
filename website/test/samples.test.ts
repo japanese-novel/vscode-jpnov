@@ -3,11 +3,18 @@ import { readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 
 import { COVER_TEMPLATE } from '../../src/shared/book/create.ts';
+import { checkJpbook, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { DEFAULT_FONT_STACK } from '../../src/shared/compiler/css.ts';
 import { readRootText, readSiteText, rootPath, sitePath } from '../scripts/root.ts';
+import { SUBMISSION_JPBOOK } from '../src/copy/book.ts';
 
 test('the cover sample is the product’s own template', async () => {
   assert.equal(await readSiteText('src/samples/cover.jpnov'), COVER_TEMPLATE);
+});
+
+test('the shown .jpbook is one the product accepts', () => {
+  const verdict = checkJpbook(parseJpbook(SUBMISSION_JPBOOK));
+  assert.ok(verdict.ok, JSON.stringify(verdict));
 });
 
 test('the Mincho stack is the product’s default stack', async () => {
