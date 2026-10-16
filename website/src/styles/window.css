@@ -119,7 +119,7 @@
 .jp-sq { text-decoration: underline wavy var(--warn); text-decoration-skip-ink: none; text-underline-offset: calc(2 * var(--u)); }
 .jp-bulb { position: absolute; left: calc(36 * var(--u)); top: calc(2 * var(--u) + var(--at) * var(--lh)); height: var(--lh); display: flex; align-items: center; color: var(--color-tok-bulb); }
 .jp-bulb .jp-cd { width: calc(14 * var(--u)); height: calc(14 * var(--u)); }
-.jp-hover { position: absolute; left: calc(56 * var(--u)); top: calc(2 * var(--u) + (var(--at) - 3) * var(--lh)); background: var(--hover-bg); border: 1px solid var(--border); border-radius: calc(4 * var(--u)); padding: calc(6 * var(--u)) calc(10 * var(--u)); font-family: var(--font-sans); font-size: calc(12.5 * var(--u)); color: var(--sb-fg); z-index: 2; max-width: calc(300 * var(--u)); line-height: 1.5; }
+.jp-hover { position: absolute; left: calc(56 * var(--u)); bottom: calc(100% - 2 * var(--u) - var(--at) * var(--lh)); background: var(--hover-bg); border: 1px solid var(--border); border-radius: calc(4 * var(--u)); padding: calc(6 * var(--u)) calc(10 * var(--u)); font-family: var(--font-sans); font-size: calc(12.5 * var(--u)); color: var(--sb-fg); z-index: 2; max-width: calc(300 * var(--u)); line-height: 1.5; }
 .jp-hover .jp-src { color: var(--desc); margin-left: calc(6 * var(--u)); font-family: var(--font-mono); }
 .jp-hover .jp-links { color: var(--color-vsc-link); margin-top: calc(6 * var(--u)); }
 .jp-cam { position: absolute; left: calc(64 * var(--u)); top: calc(2 * var(--u) + (var(--at) + 1) * var(--lh)); background: var(--hover-bg); border: 1px solid var(--border); border-radius: calc(4 * var(--u)); padding: calc(4 * var(--u)); font-family: var(--font-sans); font-size: calc(12.5 * var(--u)); z-index: 2; min-width: calc(220 * var(--u)); }
@@ -139,8 +139,8 @@
 .jp-status .jp-cd { width: calc(14 * var(--u)); height: calc(14 * var(--u)); }
 .jp-status .jp-right { margin-left: auto; display: flex; gap: calc(14 * var(--u)); align-items: center; }
 
-/* quick pick */
-.jp-qi { position: absolute; top: calc(34 * var(--u)); left: 50%; transform: translateX(-50%); width: 60%; background: var(--hover-bg); border: 1px solid var(--border); border-radius: calc(6 * var(--u)); padding: calc(6 * var(--u)); z-index: 4; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
+/* quick pick: centred by position, not a transform, since the camera measures layout offsets */
+.jp-qi { position: absolute; top: calc(34 * var(--u)); left: 20%; width: 60%; background: var(--hover-bg); border: 1px solid var(--border); border-radius: calc(6 * var(--u)); padding: calc(6 * var(--u)); z-index: 4; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
 .jp-qi-in { display: flex; align-items: center; gap: calc(8 * var(--u)); background: var(--color-vsc-side); border: 1px solid var(--tab-top); border-radius: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u)); }
 .jp-qi-in .jp-ph { flex: 1 1 auto; color: var(--desc); }
 .jp-qi-ok { background: var(--primary); color: #fff; padding: calc(1 * var(--u)) calc(8 * var(--u)); border-radius: calc(3 * var(--u)); font-size: calc(11 * var(--u)); }

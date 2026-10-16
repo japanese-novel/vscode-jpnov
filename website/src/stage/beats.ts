@@ -14,13 +14,13 @@ export const BEATS: readonly Beat[] = [
     id: 'write',
     heading: '書く',
     paragraphs: ['ふつうに書くだけです。ルビや傍点は、青空文庫の注記で書き添えます。改行すると行頭に全角スペースが入り、「 で書き始めればそのスペースは自動で外れます。'],
-    duration: 3,
+    duration: 3.2,
   },
   {
     id: 'check',
     heading: '確かめる',
     paragraphs: ['「プレビューを横に開く」で、原稿の横に縦書きの組み上がりが表示されます。ルビ・傍点・縦中横も改ページの目印も、入力するたびにすぐ反映されます。カーソルを動かすと、プレビューも同じ場所へ移動します。'],
-    duration: 2.4,
+    duration: 3,
   },
   {
     id: 'collect',
