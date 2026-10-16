@@ -25,7 +25,15 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:locale" content="ja_JP" />
-    <script is:inline>document.documentElement.classList.add('jp-js');</script>
+    <script is:inline>
+      const root = document.documentElement;
+      root.classList.add('jp-js');
+      document.addEventListener('DOMContentLoaded', () => {
+        if (!root.classList.contains('jp-js-ready')) {
+          root.classList.remove('jp-js');
+        }
+      });
+    </script>
   </head>
   <body>
     <slot />

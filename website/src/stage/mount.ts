@@ -1,8 +1,7 @@
 /**
  * Mounts the stage: registers ScrollTrigger, runs the 傍点 probe on each of its refreshes (load,
  * fonts ready, resize), and builds the pinned timeline only where motion and a wide viewport
- * apply (the CSS shows the static sequence otherwise). A failure removes `html.js`, which also
- * reveals the static sequence.
+ * apply (the CSS shows the static sequence otherwise).
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -17,27 +16,22 @@ export function mountStage(): void {
   if (root === null) {
     return;
   }
-  try {
-    gsap.registerPlugin(ScrollTrigger);
-    // A refresh first renders every scrubbed timeline at its start, so the window carries no
-    // camera transform when the probe measures; the event fires with no triggers too.
-    ScrollTrigger.addEventListener('revert', () => {
-      pinEmrShift(document);
-    });
-    const mm = gsap.matchMedia();
-    mm.add(MOTION_QUERY, () => {
-      pinEmrShift(root);
-      const tl = buildTimeline(root);
-      return () => {
-        tl.scrollTrigger?.kill();
-        tl.kill();
-      };
-    });
-    void document.fonts.ready.then(() => {
-      ScrollTrigger.refresh();
-    });
-  } catch (err: unknown) {
-    document.documentElement.classList.remove('jp-js');
-    console.error(err);
-  }
+  gsap.registerPlugin(ScrollTrigger);
+  // A refresh first renders every scrubbed timeline at its start, so the window carries no
+  // camera transform when the probe measures; the event fires with no triggers too.
+  ScrollTrigger.addEventListener('revert', () => {
+    pinEmrShift(document);
+  });
+  const mm = gsap.matchMedia();
+  mm.add(MOTION_QUERY, () => {
+    pinEmrShift(root);
+    const tl = buildTimeline(root);
+    return () => {
+      tl.scrollTrigger?.kill();
+      tl.kill();
+    };
+  });
+  void document.fonts.ready.then(() => {
+    ScrollTrigger.refresh();
+  });
 }
