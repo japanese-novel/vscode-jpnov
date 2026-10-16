@@ -23,7 +23,7 @@ import type { RawLintConfigWire } from '../../src/shared/protocol.ts';
 import { createHighlightStore, type BookNames } from '../../src/server/highlight/vocabulary.ts';
 import { parseJpbook } from '../../src/shared/book/jpbook.ts';
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
-import { errorText } from '../../src/shared/errors.ts';
+import { errorText } from '../../src/shared/utils/errors.ts';
 
 export interface RecordedNotification {
   readonly method: string;

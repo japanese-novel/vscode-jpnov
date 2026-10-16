@@ -7,7 +7,7 @@
  */
 import type { Span } from '../../../shared/ast/nodes.ts';
 import { tcyAnnotation } from '../../../shared/ast/notation.ts';
-import { charClass } from '../../../shared/chars.ts';
+import { charClass } from '../../../shared/utils/regex.ts';
 import { DASH_CHARS } from '../../../shared/dash.ts';
 import { modeOf } from '../../../shared/lint/select.ts';
 

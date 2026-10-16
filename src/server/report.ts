@@ -3,7 +3,7 @@
  * the CLIENT renders (`renderMessage()`) and shows as an error popup — the forked server is
  * vscode-free and reaches the `Connection` only through {@link ServerContext}.
  */
-import { errorText } from '#/shared/errors.ts';
+import { errorText } from '#/shared/utils/errors.ts';
 import { LocalizedError } from '#/shared/messages.ts';
 import { ServerErrorNotification } from '#/shared/protocol.ts';
 import type { LocalizableMessage, ServerErrorParams } from '#/shared/protocol.ts';

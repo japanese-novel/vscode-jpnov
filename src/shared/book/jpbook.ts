@@ -24,7 +24,7 @@ import { scan } from '../ast/scan.ts';
 import { displayText } from '../chars.ts';
 import { nonBlank } from '../compiler/reflow.ts';
 import type { LocalizableMessage } from '../protocol.ts';
-import { pathSegments } from '../uri.ts';
+import { pathSegments } from '../utils/uri.ts';
 import { nameIdentity, readName, type ListedName, type NameEntry } from './names.ts';
 
 /** A column span within a single document line (`endChar` exclusive). */

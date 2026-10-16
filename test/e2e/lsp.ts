@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 import { MessageType, type LogMessageParams } from 'vscode-languageserver/node';
 
-import { errorText } from '../../src/shared/errors.ts';
+import { errorText } from '../../src/shared/utils/errors.ts';
 import { ServerErrorNotification, type ReadTextParams, type ReadTextResult, type ServerErrorParams } from '../../src/shared/protocol.ts';
 
 interface RpcError {

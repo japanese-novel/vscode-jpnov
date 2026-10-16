@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { escapeRegExp } from '../../../src/shared/utils/regex.ts';
+
 import {
   EDGE_INSET,
   FOOTER_BAND,
@@ -28,8 +30,6 @@ function read(file: string): string {
   return readFileSync(fileURLToPath(new URL(file, STYLES)), 'utf8');
 }
 
-const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /**
  * The plain numeric literal of `selector{…prop:<number>…}` in raw fragment CSS, optionally
  * scoped inside an at-rule block (`within`, e.g. '@media print') via balanced-brace extraction.
@@ -37,7 +37,7 @@ const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 function cssValue(css: string, selector: string, prop: string, within?: string): number {
   let hay = css;
   if (within !== undefined) {
-    const open = new RegExp(escapeRe(within) + '\\s*\\{').exec(css);
+    const open = new RegExp(escapeRegExp(within) + '\\s*\\{').exec(css);
     assert.ok(open !== null, `block ${within} not found`);
     let depth = 0;
     let i = open.index + open[0].length - 1; // at the opening '{'
@@ -51,7 +51,7 @@ function cssValue(css: string, selector: string, prop: string, within?: string):
     }
     hay = css.slice(start, i);
   }
-  const m = new RegExp(escapeRe(selector) + '\\{[^}]*?\\b' + escapeRe(prop) + ':(-?[\\d.]+)').exec(
+  const m = new RegExp(escapeRegExp(selector) + '\\{[^}]*?\\b' + escapeRegExp(prop) + ':(-?[\\d.]+)').exec(
     hay,
   );
   const value = m?.[1];

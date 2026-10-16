@@ -9,7 +9,6 @@ import assert from 'node:assert/strict';
 import {
   COMBINING_KANA_MARKS,
   SINGLETONS,
-  charClass,
   composeKana,
   composedChars,
   displayChars,
@@ -81,11 +80,6 @@ test('isCombiningKanaMark: the two combining marks only — not the spacing or h
     assert.equal(isCombiningKanaMark(cp), false, cp.toString(16));
   }
   assert.deepEqual(`か${MARKS[0]}き${MARKS[1]}`.match(COMBINING_KANA_MARKS), [...MARKS]);
-});
-
-test('charClass escapes the class metacharacters, so any table of characters makes a class', () => {
-  const re = new RegExp(`[${charClass(['a', '-', ']', '\\', '^', '。'])}]`, 'g');
-  assert.deepEqual('xa-]\\^。z'.match(re), ['a', '-', ']', '\\', '^', '。']);
 });
 
 test('graphemeCount is the length of graphemes, on both of its paths', () => {

@@ -10,6 +10,7 @@ import type { Channel } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { scan } from '../../../src/shared/ast/scan.ts';
 import { graphemes } from '../../../src/shared/chars.ts';
+import { isRecord } from '../../../src/shared/utils/guards.ts';
 
 /** The variant names of the notation per channel, in table order. */
 export function variantsByChannel(): Record<Channel, readonly string[]> {
@@ -80,7 +81,7 @@ export function facts(node: SyntaxNode): Record<string, unknown> {
     if (key === 'span' || key === 'parts' || key === 'base') {
       continue;
     }
-    out[key] = typeof value === 'object' && value !== null && 'text' in value ? (value as { text: string }).text : value;
+    out[key] = isRecord(value) && 'text' in value ? value.text : value;
   }
   return out;
 }

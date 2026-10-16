@@ -7,6 +7,7 @@
  * caused the render.
  */
 import type { PreviewInit, PreviewLayoutKey, PreviewOutbound } from '../../protocol.ts';
+import { clampInt } from '../../../shared/utils/numbers.ts';
 
 import { svgGlyph } from '../svg.ts';
 import { api } from './api.ts';
@@ -31,10 +32,7 @@ function post(m: PreviewOutbound): void {
 
 /** A typed or stepped value, rounded and clamped to the input's bounds; NaN (cleared, non-numeric) → null. */
 function clamp(n: number): number | null {
-  if (!Number.isFinite(n)) {
-    return null;
-  }
-  return Math.min(layout.max, Math.max(layout.min, Math.round(n)));
+  return Number.isFinite(n) ? clampInt(n, layout.min, layout.max) : null;
 }
 
 /** One grid input with its unit; commits on `change` (spinner, arrow keys, blur) and on Enter; Escape abandons the edit. */

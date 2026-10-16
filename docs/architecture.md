@@ -16,7 +16,12 @@ One repository ships three programs.
 
 `src/shared/` holds what client and server both use: the manuscript pipeline
 (`ast/`, `compiler/`), the settings resolvers (`config/`), the `.jpbook` manifest
-(`book/`), the lint catalog (`lint/`) and the wire shapes (`protocol.ts`).
+(`book/`), the lint catalog (`lint/`) and the wire shapes (`protocol.ts`). Its
+`utils/` holds the helpers that know nothing of the notation, the manifest, the
+settings or the wire: not a stage, the leaf under every stage, it imports nothing
+and every program may read it. The unit is the file: a file enters when it has
+users in two layers, and a helper with one user rides in the file of its kind.
+A helper whose file would have one user stays in that user's layer.
 
 The boundaries:
 
@@ -41,7 +46,8 @@ The boundaries:
 - **The server emits message codes, the client renders text.** Localization needs
   `vscode.l10n`, which the server does not have.
 - **A webview is a program of its own.** Its TypeScript compiles against the DOM
-  alone and reaches its host as a string the host inlines.
+  alone, reads nothing of `src/` but `src/shared/utils/` and the types of its
+  host's contract, and reaches its host as a string the host inlines.
 
 esbuild produces two bundles, `dist/client/extension.js` and
 `dist/server/server.js`. The stylesheet fragments and the webview scripts become
@@ -223,15 +229,16 @@ from the directory of its `.jpbook`.
 ## What keeps this true
 
 - **Import rules** (`eslint.config.mjs`): `src/shared/` and `src/server/` may not
-  import `vscode`; `src/shared/ast/` may import only its own modules and
-  `src/shared/chars.ts`; `chars.ts` imports nothing, and holds the character
-  tables the stages share, the grapheme clusters among them. The AST cannot see the
+  import `vscode`; `src/shared/ast/` may import only its own modules,
+  `src/shared/chars.ts` and `src/shared/utils/`; `chars.ts` imports nothing, and
+  holds the character tables the stages share, the grapheme clusters among them;
+  `src/shared/utils/` imports nothing, its own files included. The AST cannot see the
   settings types, so it cannot take a setting by accident. In `src/server/`,
   only the preview (`server.ts`) and the builds (`build.ts`) may import
   `src/shared/compiler/`: the editor side reads the nodes and the AST.
   `src/shared/compiler/` may not import the manifest (`src/shared/book/`), the
   wire shapes (`protocol.ts`) or a program (`src/server/`, `src/client/`). A
-  webview may import only its own folder and the types of
+  webview may import only its own folder, `src/shared/utils/` and the types of
   `src/client/protocol.ts`.
 - **Properties** (`test/shared/ast/properties.test.ts`), checked over generated
   manuscripts: the nodes print back the source, they tile their line, the

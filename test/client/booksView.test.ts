@@ -14,7 +14,7 @@ import { META_KEYS } from '../../src/shared/book/jpbook.ts';
 import { PROJECT_DEFAULT } from '../../src/shared/config/types.ts';
 import { encodeTxt, type TxtEncoding } from '../../src/shared/encoding.ts';
 import { HEAD, meta } from '../shared/book/_fixture.ts';
-import { encodePathSegment } from '../../src/shared/uri.ts';
+import { encodePathSegment } from '../../src/shared/utils/uri.ts';
 import {
   buildVscode,
   createFakeWebviewView,

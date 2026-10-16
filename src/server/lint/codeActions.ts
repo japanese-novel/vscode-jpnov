@@ -14,7 +14,8 @@ import { CodeActionKind } from 'vscode-languageserver/node';
 import type { CodeAction, Position, Range } from 'vscode-languageserver/node';
 
 import type { Finding, Fix } from '../diagnostics.ts';
-import { comparePositions, mergedEdits, rangesOverlap } from '../targets.ts';
+import { comparePositions } from '../../shared/utils/position.ts';
+import { mergedEdits, rangesOverlap } from '../targets.ts';
 
 type FixableFinding = Finding & { readonly fix: Fix };
 

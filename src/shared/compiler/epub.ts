@@ -18,7 +18,7 @@ import { displayText } from '../chars.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
 import { reflowStylesheet } from './css.ts';
 import type { TitledBook } from './document.ts';
-import { escapeHtml } from './escape.ts';
+import { escapeHtml } from '../utils/escape.ts';
 import { buildRows } from './layout.ts';
 import { nonBlank, reflowDocument, reflowSegments } from './reflow.ts';
 

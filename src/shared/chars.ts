@@ -37,11 +37,6 @@ export function isCombiningKanaMark(cp: number): boolean {
   return cp === 0x3099 || cp === 0x309a;
 }
 
-/** `chars` as the body of a regex character class, the class metacharacters escaped. */
-export function charClass(chars: Iterable<string>): string {
-  return [...chars].map((c) => c.replace(/[\\\]^-]/g, '\\$&')).join('');
-}
-
 /**
  * `text` with every adjacent kana + combining 濁点/半濁点 pair composed (か + U+3099 -> が). NFC is
  * asked about the PAIR alone: whole-text NFC would also fold the CJK compatibility ideographs

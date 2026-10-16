@@ -12,10 +12,12 @@
  *
  * Relative imports only (native test loader); vscode-free.
  */
-import type { Position, Range, TextEdit } from 'vscode-languageserver/node';
+import type { Range, TextEdit } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Ast, PostfixNode, Span, SyntaxNode } from '../shared/ast/nodes.ts';
+import { partitionPoint } from '../shared/utils/lists.ts';
+import { comparePositions } from '../shared/utils/position.ts';
 
 /** A postfix whose 「…」 can be rewritten with the body: `bound` reads as `node.target.text`. */
 export interface EligibleTarget {
@@ -56,10 +58,6 @@ export function rangeOf(doc: TextDocument, span: Span): Range {
 /** A range as a comparable key: two edits over the same characters are of the same thing. */
 export function rangeKey(r: Range): string {
   return [r.start.line, r.start.character, r.end.line, r.end.character].join(':');
-}
-
-export function comparePositions(a: Position, b: Position): number {
-  return a.line - b.line || a.character - b.character;
 }
 
 const byStart = (a: { readonly range: Range }, b: { readonly range: Range }): number =>
@@ -121,21 +119,6 @@ export function syncedTargets(
   return out;
 }
 
-/** The first index of `sorted` whose value is above `value`. */
-function upperBound(sorted: readonly number[], value: number): number {
-  let lo = 0;
-  let hi = sorted.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if ((sorted[mid] ?? Infinity) <= value) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
-}
-
 interface LineIndex {
   /** The eligible targets of the line, by the start of what they bound to. */
   readonly targets: readonly EligibleTarget[];
@@ -173,8 +156,8 @@ export class TargetIndex {
   /** The targets of `line` an edit of `span` to `newText` lands inside ({@link syncedTargets}). */
   within(doc: TextDocument, line: number, span: Span, newText: string): SyncedTarget[] {
     const { targets, starts, reach } = this.lineAt(line);
-    const from = upperBound(starts, span.start - reach - 1);
-    const to = upperBound(starts, span.start);
+    const from = partitionPoint(starts, (start) => start >= span.start - reach);
+    const to = partitionPoint(starts, (start) => start > span.start);
     return syncedTargets(targets.slice(from, to), doc, span, newText);
   }
 }

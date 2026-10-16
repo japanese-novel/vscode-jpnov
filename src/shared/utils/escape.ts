@@ -1,4 +1,4 @@
-/** Pure + vscode-free. */
+/** HTML text and comment escaping. */
 
 const UNSAFE = /[&<>"]/;
 

@@ -11,6 +11,9 @@
  * async-replay the old offset. The uri and the cursor arrive via the host's `__INIT` bootstrap.
  */
 import type { Cursor, PreviewInit } from '../../protocol.ts';
+import { isRecord } from '../../../shared/utils/guards.ts';
+import { partitionPoint } from '../../../shared/utils/lists.ts';
+import { comparePositions } from '../../../shared/utils/position.ts';
 
 import { api } from './api.ts';
 
@@ -56,9 +59,7 @@ function dst(t: Element): [number, number] {
 }
 
 /** A column's anchor: its source line and, once the line wraps, where in the line it starts. */
-interface Column {
-  readonly line: number;
-  readonly ch: number;
+interface Column extends Cursor {
   readonly el: Element;
 }
 
@@ -67,26 +68,15 @@ interface Column {
 const columns: Column[] = [];
 for (const el of document.querySelectorAll('[data-line]')) {
   const line = parseInt(el.getAttribute('data-line') ?? '', 10);
-  const ch = parseInt(el.getAttribute('data-ch') ?? '0', 10);
-  if (!Number.isNaN(line) && !Number.isNaN(ch)) {
-    columns.push({ line, ch, el });
+  const character = parseInt(el.getAttribute('data-ch') ?? '0', 10);
+  if (!Number.isNaN(line) && !Number.isNaN(character)) {
+    columns.push({ line, character, el });
   }
 }
 
-/** The last column at or before the cursor, by a binary search over {@link columns}. */
+/** The last column at or before the cursor: the one before the first past it, in {@link columns}. */
 function columnAt(at: Cursor): Element | null {
-  let lo = 0;
-  let hi = columns.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    const c = columns[mid];
-    if (c === undefined || c.line < at.line || (c.line === at.line && c.ch <= at.character)) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  return columns[lo - 1]?.el ?? null;
+  return columns[partitionPoint(columns, (c) => comparePositions(c, at) > 0) - 1]?.el ?? null;
 }
 
 function reveal(at: Cursor, glide?: boolean): void {
@@ -127,8 +117,8 @@ reveal(cur);
 
 window.addEventListener('message', (e: MessageEvent) => {
   const m: unknown = e.data;
-  if (typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'reveal') {
-    const { uri, line, character } = m as { uri?: unknown; line?: unknown; character?: unknown };
+  if (isRecord(m) && m.type === 'reveal') {
+    const { uri, line, character } = m;
     if (uri === init.uri && typeof line === 'number' && typeof character === 'number') {
       const at = { line, character };
       reveal(at, true);

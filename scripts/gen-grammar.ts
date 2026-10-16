@@ -38,6 +38,7 @@ import {
   hasLeftSide,
 } from '../src/shared/ast/notation.ts';
 import { CORNERS } from '../src/shared/chars.ts';
+import { charClass, escapeRegExp } from '../src/shared/utils/regex.ts';
 import { partHighlight } from '../src/server/semanticTokens.ts';
 
 import { writeIfChanged } from './write.ts';
@@ -74,22 +75,20 @@ interface Pattern {
   readonly captures: Record<string, { readonly name: string }>;
 }
 
-const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /** `vs` as a regex alternation, the longest first so that no spelling hides a longer one. */
-const alt = (vs: readonly string[]): string => [...vs].sort((a, b) => b.length - a.length).map(esc).join('|');
+const alt = (vs: readonly string[]): string => [...vs].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|');
 
-const lit = (role: PartRole, text: string): Segment => ({ role, re: esc(text) });
+const lit = (role: PartRole, text: string): Segment => ({ role, re: escapeRegExp(text) });
 /** The regex of `parts` in a row, without their groups. */
 const seq = (parts: readonly Segment[]): string => parts.map((p) => p.re).join('');
 const kw = (re: string): Segment => ({ role: 'keyword', re });
 /** Anything but the characters of `stop`, non-empty. */
-const upTo = (role: PartRole, stop: string): Segment => ({ role, re: `[^${esc(stop)}]+` });
+const upTo = (role: PartRole, stop: string): Segment => ({ role, re: `[^${charClass(stop)}]+` });
 
 const OPEN = lit('bracket', ANNOTATION_OPEN);
 const CLOSE = lit('bracket', ANNOTATION_CLOSE);
 const END = lit('scaffold', SPAN_END);
-const INNER: Segment = { role: 'inner', re: `[^${esc(ANNOTATION_CLOSE)}]*` };
+const INNER: Segment = { role: 'inner', re: `[^${charClass(ANNOTATION_CLOSE)}]*` };
 /** The left side of a span, 左に. */
 const LEFT: Segment = { ...lit('direction', LEFT_SHORT), optional: true };
 /** 「対象」: the target keeps the default colour; it never holds a 」. */
@@ -114,7 +113,7 @@ const WIDTH = String(INDENT_MAX).length;
 if (INDENT_MAX !== 10 ** WIDTH - 1) {
   throw new Error(`INDENT_MAX ${String(INDENT_MAX)} is not all nines`);
 }
-const INDENT_COUNT = `０*[０-９]{1,${String(WIDTH)}}${esc(INDENT)}`;
+const INDENT_COUNT = `０*[０-９]{1,${String(WIDTH)}}${escapeRegExp(INDENT)}`;
 
 /** The annotation forms the scanner reads, in order: a form whose spelling ends another's precedes it. */
 const ANNOTATION: readonly Rule[] = [
@@ -122,7 +121,7 @@ const ANNOTATION: readonly Rule[] = [
   { comment: '値の表示 ［＃ここに「名前」の値を表示］: any non-empty name; an unknown one shows as itself.', parts: VALUE_PARTS },
   {
     comment: 'Block END ［＃ここで…終わり］, before the block START its 終わり would hide. 傍点／傍線 have no block form.',
-    parts: [OPEN, lit('scaffold', BLOCK_TO), kw(`${esc(INDENT)}|${BLOCK}`), END, CLOSE],
+    parts: [OPEN, lit('scaffold', BLOCK_TO), kw(`${escapeRegExp(INDENT)}|${BLOCK}`), END, CLOSE],
   },
   {
     comment: 'Block START ［＃ここから…］: a 字下げ count in full-width digits up to the maximum; the 折り返して form is a comment.',
@@ -154,11 +153,11 @@ const ANY_ANNOTATION = seq(COMMENT_PARTS);
  * The 縦中横 span annotations. The scanner ends a ｜ base only at a real edge (a start with no
  * span open, an end with one open); the grammar, stateless, cannot tell and treats either as one.
  */
-const TCY_EDGE = `${OPEN.re}${esc(TCY)}(?:${END.re})?${CLOSE.re}`;
+const TCY_EDGE = `${OPEN.re}${escapeRegExp(TCY)}(?:${END.re})?${CLOSE.re}`;
 /** A value field: visible inside a base, as the scanner reads it. */
 const VALUE_FIELD = seq(VALUE_PARTS);
 /** One character of base text: anything but a 《, a ｜ or the ［ of an annotation. */
-const BASE_CHAR = `(?!${OPEN.re})[^${esc(RUBY_OPEN + BASE_MARK)}]`;
+const BASE_CHAR = `(?!${OPEN.re})[^${charClass(RUBY_OPEN + BASE_MARK)}]`;
 /** An annotation that shows nothing inside a base; a 縦中横 edge is not one (it ends the base). */
 const HIDDEN = `(?!${TCY_EDGE}|${VALUE_FIELD})${ANY_ANNOTATION}`;
 const VISIBLE = `${VALUE_FIELD}|${BASE_CHAR}`;

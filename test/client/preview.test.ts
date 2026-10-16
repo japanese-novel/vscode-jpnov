@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 
 import type { PreviewInit, RevealMessage } from '../../src/client/protocol.ts';
 import type { RenderFileParams } from '../../src/shared/protocol.ts';
+import { isRecord } from '../../src/shared/utils/guards.ts';
 
 import {
   buildVscode,
@@ -146,7 +147,7 @@ async function openWith(client: { sendRequest: (...args: unknown[]) => Promise<{
 function findReveal(panel: FakeWebviewPanel): RevealMessage | undefined {
   return panel.webview.posted.find(
     (m): m is RevealMessage =>
-      typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'reveal',
+      isRecord(m) && m.type === 'reveal',
   );
 }
 

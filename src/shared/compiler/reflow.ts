@@ -15,7 +15,7 @@
  */
 import type { DashMode } from '../config/types.ts';
 import { DASH_BY_MODE, DASH_GLYPH } from '../dash.ts';
-import { escapeHtml } from './escape.ts';
+import { escapeHtml } from '../utils/escape.ts';
 import {
   effectiveIndent,
   emitUnits,

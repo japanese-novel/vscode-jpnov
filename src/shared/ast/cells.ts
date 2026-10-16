@@ -5,7 +5,7 @@
 import { displayChars, displayText, isClusterBoundary } from '../chars.ts';
 import type { ComposedChar } from '../chars.ts';
 
-import { upperBound } from './lists.ts';
+import { partitionPoint } from '../utils/lists.ts';
 import type { CharsOrigin, CommentInline, Inline, Mark, Marks, Ruby, Span, SyntaxNode, Tcy } from './nodes.ts';
 import { CHANNELS } from './notation.ts';
 import type { Channel } from './notation.ts';
@@ -195,8 +195,8 @@ export class LineCells {
     }
     const { cells, ends } = this;
     const end = pos + target.length;
-    let first = upperBound(ends, pos); // the cell whose text runs past `pos`
-    let last = upperBound(ends, end - 1);
+    let first = partitionPoint(ends, (cellEnd) => cellEnd > pos); // the cell whose text runs past `pos`
+    let last = partitionPoint(ends, (cellEnd) => cellEnd >= end);
     const headCell = cells[first];
     const tailCell = cells[last];
     if (headCell === undefined || tailCell === undefined) {

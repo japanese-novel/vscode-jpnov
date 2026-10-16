@@ -29,7 +29,8 @@ import {
 import { entryKeyOf, entryLines, metaRows, moveEntryTo, resolveEntry, type EntryRef } from '#/shared/book/edits.ts';
 import { parseJpbook, type EntryList, isEntryList, isNameList, jpbookStem, META_KEYS, type MetaKey, type ParsedLine } from '#/shared/book/jpbook.ts';
 import { encodeTxt, TXT_ENCODING_DEFAULT, TXT_ENCODINGS } from '#/shared/encoding.ts';
-import { errorText } from '#/shared/errors.ts';
+import { errorText } from '#/shared/utils/errors.ts';
+import { isRecord } from '#/shared/utils/guards.ts';
 import { ocfZip } from '#/shared/compiler/ocf.ts';
 
 import type { BookVM, BuildAction, DetailMessage, EntryVM, MetaVM, StateMessage } from '../protocol.ts';
@@ -358,11 +359,10 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   private async onMessage(m: unknown): Promise<void> {
-    if (typeof m !== 'object' || m === null || !('type' in m)) {
+    if (!isRecord(m) || typeof m.type !== 'string') {
       return;
     }
-    const msg = m as { type: string; [k: string]: unknown };
-    switch (msg.type) {
+    switch (m.type) {
       case 'ready':
         this.postState();
         if (this.openDetailUri !== undefined) {
@@ -374,11 +374,11 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         // Optimistic on the webview; here we only record the authoritative selection (no echo,
         // so a per-row toggle never re-renders and drops keyboard focus). A later full `state`
         // push — refresh / select-all — reconciles the checkboxes.
-        if (typeof msg.uri === 'string') {
-          if (msg.checked === true) {
-            this.checked.add(msg.uri);
+        if (typeof m.uri === 'string') {
+          if (m.checked === true) {
+            this.checked.add(m.uri);
           } else {
-            this.checked.delete(msg.uri);
+            this.checked.delete(m.uri);
           }
         }
         break;
@@ -390,28 +390,28 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         break;
       case 'revealOutput':
         // Optimistic on the webview (like `toggle`): record without echoing.
-        this.revealOutput = msg.on === true;
+        this.revealOutput = m.on === true;
         break;
       case 'build':
-        if (msg.format === 'print' || msg.format === 'txt' || msg.format === 'epub') {
-          if (typeof msg.uri === 'string') {
-            if (this.entryOf(msg.uri) !== undefined) {
-              await this.buildSelected(msg.format, [msg.uri]);
+        if (m.format === 'print' || m.format === 'txt' || m.format === 'epub') {
+          if (typeof m.uri === 'string') {
+            if (this.entryOf(m.uri) !== undefined) {
+              await this.buildSelected(m.format, [m.uri]);
             }
           } else {
-            await this.buildSelected(msg.format);
+            await this.buildSelected(m.format);
           }
         }
         break;
       case 'openDetail':
-        if (typeof msg.uri === 'string') {
-          if (this.entryOf(msg.uri) === undefined) {
-            this.failDetail(msg.uri); // the row outlived its book
+        if (typeof m.uri === 'string') {
+          if (this.entryOf(m.uri) === undefined) {
+            this.failDetail(m.uri); // the row outlived its book
             break;
           }
-          this.openDetailUri = msg.uri;
+          this.openDetailUri = m.uri;
           this.applyDetailChrome();
-          await this.postDetail(msg.uri);
+          await this.postDetail(m.uri);
         }
         break;
       case 'closeDetail':
@@ -419,31 +419,31 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         this.applyDetailChrome();
         break;
       case 'openFile':
-        if (typeof msg.uri === 'string') {
-          await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(msg.uri));
+        if (typeof m.uri === 'string') {
+          await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(m.uri));
         }
         break;
       case 'editMeta':
-        await this.dispatchEditMeta(msg.uri, msg.metaKey);
+        await this.dispatchEditMeta(m.uri, m.metaKey);
         break;
       case 'addEntries':
-        await this.dispatchList('jpbook.addEntries', msg.uri, msg.list);
+        await this.dispatchList('jpbook.addEntries', m.uri, m.list);
         break;
       case 'editEntry':
-        await this.runEntryVerb(msg.uri, () => this.dispatchEntry('jpbook.editEntry', msg.uri, msg.list, rowRefOf(msg)));
+        await this.runEntryVerb(m.uri, () => this.dispatchEntry('jpbook.editEntry', m.uri, m.list, rowRefOf(m)));
         break;
       case 'removeEntry':
-        await this.runEntryVerb(msg.uri, () => this.dispatchEntry('jpbook.removeEntry', msg.uri, msg.list, rowRefOf(msg)));
+        await this.runEntryVerb(m.uri, () => this.dispatchEntry('jpbook.removeEntry', m.uri, m.list, rowRefOf(m)));
         break;
       case 'moveEntry':
-        await this.runEntryVerb(msg.uri, () =>
-          this.dispatchEntry(msg.dir === -1 ? 'jpbook.moveEntryUp' : 'jpbook.moveEntryDown', msg.uri, msg.list, rowRefOf(msg)));
+        await this.runEntryVerb(m.uri, () =>
+          this.dispatchEntry(m.dir === -1 ? 'jpbook.moveEntryUp' : 'jpbook.moveEntryDown', m.uri, m.list, rowRefOf(m)));
         break;
       case 'moveEntryTo':
-        await this.runEntryVerb(msg.uri, () => this.dispatchMoveTo(msg.uri, msg.list, rowRefOf(msg), msg.before, msg.beforePath));
+        await this.runEntryVerb(m.uri, () => this.dispatchMoveTo(m.uri, m.list, rowRefOf(m), m.before, m.beforePath));
         break;
       case 'welcome':
-        this.dispatchWelcome(msg.action);
+        this.dispatchWelcome(m.action);
         break;
     }
   }

@@ -5,12 +5,13 @@
  */
 import * as vscode from 'vscode';
 
-import { errorText } from '#/shared/errors.ts';
+import { errorText } from '#/shared/utils/errors.ts';
+import { isRecord } from '#/shared/utils/guards.ts';
 import type { ReadTextParams, ReadTextResult } from '#/shared/protocol.ts';
 
 /** `FileSystemError.code` of a rejection ('FileNotFound', 'NoPermissions', …), '' for anything else. */
 function fsCode(err: unknown): string {
-  const code = typeof err === 'object' && err !== null ? (err as { code?: unknown }).code : undefined;
+  const code = isRecord(err) ? err.code : undefined;
   return typeof code === 'string' ? code : '';
 }
 

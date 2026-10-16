@@ -9,14 +9,11 @@
 import * as vscode from 'vscode';
 
 import type { LocalizableMessage } from '#/shared/protocol.ts';
+import { isRecord } from '#/shared/utils/guards.ts';
 
 /** Runtime guard for an `LSPAny` (a Diagnostic's `data`, or a custom-payload field). */
 export function isLocalizableMessage(value: unknown): value is LocalizableMessage {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { code?: unknown }).code === 'string'
-  );
+  return isRecord(value) && typeof value.code === 'string';
 }
 
 /** Render a server {@link LocalizableMessage} to localized UI text. Exhaustive over `MsgCode`. */

@@ -6,13 +6,13 @@
  */
 import type { Middleware } from 'vscode-languageclient/node';
 
+import { isRecord } from '#/shared/utils/guards.ts';
+
 export type DocumentSync = Required<Pick<Middleware, 'didOpen' | 'didClose' | 'sendRequest'>>;
 
 /** The params of jpnov's own document requests name the document by a top-level `uri`. */
 function documentUri(param: unknown): string | undefined {
-  return typeof param === 'object' && param !== null && 'uri' in param && typeof param.uri === 'string'
-    ? param.uri
-    : undefined;
+  return isRecord(param) && typeof param.uri === 'string' ? param.uri : undefined;
 }
 
 export function documentSync(): DocumentSync {

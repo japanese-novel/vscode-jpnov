@@ -17,6 +17,7 @@ import type { SemanticTokens, SemanticTokensLegend } from 'vscode-languageserver
 import { SemanticTokensBuilder } from 'vscode-languageserver/node';
 
 import type { PartRole, RolePart, Syntax, SyntaxNode } from '../shared/ast/nodes.ts';
+import { partitionPoint } from '../shared/utils/lists.ts';
 
 import { DialogueStack } from './dialogue.ts';
 import type { Recognizer } from './highlight/recognizer.ts';
@@ -122,21 +123,6 @@ function joinedAt(kind: SyntaxNode['kind'], parts: readonly RolePart[], at: numb
   return 1;
 }
 
-/** Index of the first of `ranges` (ascending, disjoint) ending past `at`. */
-function firstPast(ranges: readonly RunRange[], at: number): number {
-  let lo = 0;
-  let hi = ranges.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if ((ranges[mid]?.to ?? 0) <= at) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
-}
-
 export function buildSemanticTokens(syntax: Syntax, recognizer: Recognizer | undefined): SemanticTokens {
   const builder = new SemanticTokensBuilder();
 
@@ -169,14 +155,14 @@ export function buildSemanticTokens(syntax: Syntax, recognizer: Recognizer | und
         spoken.push({ from: spokenFrom, to: runText.length });
       }
       for (const sp of recognizer.recognize(runText)) {
-        const inside = spoken[firstPast(spoken, sp.start)];
+        const inside = spoken[partitionPoint(spoken, (r) => r.to > sp.start)];
         if (inside !== undefined && inside.from <= sp.start) {
           continue; // inside dialogue — body text keeps its default colour
         }
         // One token per stretch that is contiguous in the SOURCE (a hole appears where a ruby
         // reading/markers sat between a base and its okurigana).
         const end = sp.start + sp.len;
-        for (let k = firstPast(stretches, sp.start); k < stretches.length; k += 1) {
+        for (let k = partitionPoint(stretches, (s) => s.to > sp.start); k < stretches.length; k += 1) {
           const stretch = stretches[k];
           if (stretch === undefined || stretch.from >= end) {
             break;
