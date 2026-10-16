@@ -130,8 +130,7 @@
 
 /* the preview pane: the product's own render at the pane's height */
 .jp-pane { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; container-type: size; background: var(--ed-bg); color: var(--fg); --jp-bg: var(--ed-bg); --jp-ln: var(--ln); }
-.jp-scroll { position: absolute; top: 0; right: 0; height: 100%; display: flex; justify-content: flex-end; }
-.jp-scroll .jp-scope { --jp-vh: 100cqh; position: absolute; top: 0; right: 0; }
+.jp-pane > .jp-scope { --jp-vh: 100cqh; position: absolute; top: 0; right: 0; }
 
 /* status bar */
 .jp-status { flex: 0 0 auto; height: calc(22 * var(--u)); display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(10 * var(--u)) 0 0; border-top: 1px solid var(--border); font-size: calc(12 * var(--u)); color: var(--desc); }

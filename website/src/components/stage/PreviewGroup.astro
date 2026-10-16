@@ -20,10 +20,8 @@ const { bodies, fragment, hidden = false } = Astro.props;
     <div class="jp-actions"><span class="jp-iconbtn"><Icon name="ellipsis" /></span></div>
   </div>
   <div class="jp-pane" data-t="pane">
-    <div class="jp-scroll" data-t="pscroll">
-      {bodies.map((b) => (
-        <div class:list={['jp-scope', fragment.scope.slice(1), { 'jp-st-hide': !b.shown }]} data-t={`pv-${b.id}`} set:html={b.body}></div>
-      ))}
-    </div>
+    {bodies.map((b) => (
+      <div class:list={['jp-scope', fragment.scope.slice(1), { 'jp-st-hide': !b.shown }]} data-t={`pv-${b.id}`} set:html={b.body}></div>
+    ))}
   </div>
 </div>

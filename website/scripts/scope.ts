@@ -4,7 +4,7 @@
  * dependencies become custom properties the embed sets, and print-only rules go. Pure and
  * deterministic; the post-conditions throw rather than let a stray root rule leak into the site.
  */
-import { EDGE_INSET } from '../../src/shared/compiler/geometry.ts';
+import { EDGE_INSET, PREVIEW_MARGIN_LINES } from '../../src/shared/compiler/geometry.ts';
 import type { Fragment } from './contract.ts';
 
 export interface PreviewScopeOptions {
@@ -47,6 +47,18 @@ const BOOK_OPEN = '<div class="book">';
 
 /** The preview's fit-to-pane formula, rebuilt from the same constant the product derives it from. */
 const FIT_FORMULA = `font-size:calc((100vh - 32px) / (var(--cpl) + ${String(2 * EDGE_INSET)}));`;
+
+/** The preview body's blank right margin (#123): scroll room for the editor's pane. An embed has
+ *  no pane to scroll, so the margin goes and only the host's 20px at the left stays (#213). */
+const PREVIEW_MARGIN = `padding-block:calc(${String(PREVIEW_MARGIN_LINES)}*var(--pitch)*1rem) 20px;`;
+
+/** Replaces one product literal, throwing when the product no longer writes it. */
+function swap(css: string, from: string, to: string, what: string): string {
+  if (!css.includes(from)) {
+    throw new Error(`scope: the product's ${what} changed; update its literal here`);
+  }
+  return css.replace(from, to);
+}
 
 function between(html: string, open: string, close: string): string {
   const start = html.indexOf(open);
@@ -197,10 +209,8 @@ export function scopeFragment(html: string, opts: PreviewScopeOptions | BookScop
   const stripped = stripPrintRules(between(html, '<style>', '</style>'));
   const body = between(html, '<body>', '</body>').replace(/<script>[\s\S]*?<\/script>/g, '');
   if (opts.kind === 'preview') {
-    if (!stripped.css.includes(FIT_FORMULA)) {
-      throw new Error('scope: the preview fit formula changed; update FIT_FORMULA and the band derivation');
-    }
-    const css = finishCss(stripped.css.replace(FIT_FORMULA, 'font-size:var(--jp-em);'), scope, 'preview');
+    const fitted = swap(stripped.css, FIT_FORMULA, 'font-size:var(--jp-em);', 'preview fit formula (and the band derivation)');
+    const css = finishCss(swap(fitted, PREVIEW_MARGIN, 'padding-block:0 20px;', 'preview margin'), scope, 'preview');
     assertClean(css, body);
     return { fragment: { scope, css, body } };
   }

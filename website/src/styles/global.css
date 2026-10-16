@@ -136,6 +136,7 @@ pre.jp-source {
 /* Vertical specimens sit on a small sheet, like the page renders. Flex, not inline-block:
    WebKit sizes a vertical-rl inline-block's intrinsic width as 0 inside a shrink-to-fit box. */
 .jp-sheet { display: inline-flex; background: #fff; padding: 1.75rem 2.25rem; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.1), 0 10px 28px -14px rgba(38, 33, 28, 0.3); }
+@media (max-width: 40rem) { .jp-sheet { --jp-sheet-pad: 1.25rem; padding: var(--jp-sheet-pad); } }
 /* A window onto the top-right of a printed page (where vertical text begins), at a legible size. */
 .jp-paper-crop { container-type: inline-size; position: relative; overflow: hidden; aspect-ratio: 5 / 4; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
 .jp-paper-crop .jp-scope { --jp-paper-width: calc(100cqw * var(--crop-zoom, 1.9)); position: absolute; top: 0; right: 0; width: var(--jp-paper-width); }
@@ -156,7 +157,8 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
    the right where vertical text begins and set in from the edge. Below 40rem the row is too
    narrow for both, so they stack, title first. */
 .jp-hero-copy { display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: clamp(3rem, 8vw, 8rem); align-items: end; }
-.jp-brand { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; white-space: nowrap; }
+/* The name and the sub line each stay whole; narrower than both, the sub line wraps under the name. */
+.jp-brand { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1rem; margin-bottom: 1.5rem; }
 /* Physical margin: on a vertical-rl box, margin-inline-end would be the bottom. */
 .jp-hero-copy > .jp-hero-title { grid-area: 2 / 2; margin-right: clamp(1.5rem, 10vw, 12rem); }
 .jp-hero-copy > .jp-hero-intro { grid-area: 2 / 1; }
@@ -170,8 +172,8 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
   .jp-hero-copy > .jp-hero-title { grid-area: auto; margin-right: 0; justify-self: start; }
   .jp-hero-copy > .jp-hero-intro { grid-area: auto; margin-top: 1.75rem; }
 }
-.jp-brand-name { font-family: var(--font-mincho); font-size: 1.125rem; letter-spacing: 0.06em; }
-.jp-brand-sub { font-size: 0.8125rem; letter-spacing: 0.1em; color: color-mix(in srgb, var(--color-ink) 72%, transparent); }
+.jp-brand-name { font-family: var(--font-mincho); font-size: 1.125rem; letter-spacing: 0.06em; white-space: nowrap; }
+.jp-brand-sub { font-size: 0.8125rem; letter-spacing: 0.1em; color: color-mix(in srgb, var(--color-ink) 72%, transparent); white-space: nowrap; }
 .jp-hero-title {
   font-family: var(--font-mincho);
   font-weight: 500;
@@ -199,7 +201,13 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
 @media (min-width: 64rem) { .jp-specimen { grid-template-columns: 1fr 1fr; gap: 4rem; } }
 .jp-specimen > * { min-width: 0; }
 .jp-specimen-render { display: flex; flex-direction: column; align-items: center; }
-@media (max-width: 40rem) { .jp-specimen-render { --jp-embed-em: 20px; } }
+/* Below 40rem the em fits the column: the notation specimen is 7 lines at pitch 2 (14 em across)
+   plus the preview's 20px left pad, inside the sheet's padding; it stops at 20px. The embed reads
+   100cqw against this figure. */
+@media (max-width: 40rem) {
+  .jp-specimen-render { container-type: inline-size; }
+  .jp-specimen-render .jp-scope { --jp-embed-em: min(20px, calc((100cqw - 2 * var(--jp-sheet-pad) - 20px) / 14)); }
+}
 @media (min-width: 64rem) { .jp-specimen-render { --jp-embed-em: 34px; } }
 .jp-notation-list { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; margin-top: 3rem; font-size: 0.9375rem; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
 .jp-notation-list li::before { content: '・'; color: var(--color-vermilion); }
