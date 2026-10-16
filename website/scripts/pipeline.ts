@@ -13,9 +13,10 @@ import type { BookInput } from '../../src/shared/compiler/document.ts';
 import { renderPreview } from '../../src/shared/compiler/preview.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT, PREVIEW_CHROME_DEFAULT } from '../../src/shared/config/settings.ts';
 import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
-import { stateEmphasised, stateTyping } from '../src/stage/sample.ts';
+import { EMPH_ANNOTATION, EMPH_LINE, stateEmphasised, stateTyping } from '../src/stage/sample.ts';
 import type { BookRender, PreviewRender, Renders, SampleName, SampleRender } from './contract.ts';
 import { colourLines } from './editor.ts';
+import { annotationHover } from './hover.ts';
 import { lintSource } from './lint.ts';
 import { readRootText, readSiteText, sitePath } from './root.ts';
 import { SAMPLES, SPECIMENS } from './samples.ts';
@@ -112,6 +113,14 @@ function stageSources(texts: Texts): StageSources {
   return { typing: stateTyping(clean), emphasised, fixed: clean, fixAllTitle: lint.fixAll.title };
 }
 
+type StageState = Extract<PreviewSample['source'], { state: string }>['state'];
+
+/** What a stage state carries beyond the common render: the fix-all's title, the annotation hover. */
+const STAGE_EXTRAS: Readonly<Partial<Record<StageState, (src: string, stage: StageSources) => Partial<PreviewRender>>>> = {
+  emphasised: (src) => ({ annotation: annotationHover(src, EMPH_LINE, EMPH_ANNOTATION) }),
+  fixed: (_src, stage) => ({ fixAll: { title: stage.fixAllTitle } }),
+};
+
 function renderPreviewSample(texts: Texts, sample: PreviewSample, stage: StageSources): PreviewRender {
   const src = 'specimen' in sample.source ? texts.specimen(sample.source.specimen) : stage[sample.source.state];
   const layout = { ...LAYOUT_DEFAULT, ...sample.layout };
@@ -126,7 +135,7 @@ function renderPreviewSample(texts: Texts, sample: PreviewSample, stage: StageSo
     diagnostics: sample.vocabulary === undefined ? [] : lintSource(src).diagnostics,
     preview: fragment,
   };
-  return isStage && sample.source.state === 'fixed' ? { ...out, fixAll: { title: stage.fixAllTitle } } : out;
+  return isStage ? { ...out, ...STAGE_EXTRAS[sample.source.state]?.(src, stage) } : out;
 }
 
 export async function buildRenders(): Promise<Renders> {

@@ -68,6 +68,23 @@ export interface PreviewOptions {
   readonly bandCells: number;
 }
 
+/** A character range on one editor line, in code points (the editor slices lines with `Array.from`). */
+export interface LineSpan {
+  readonly from: number;
+  readonly to: number;
+}
+
+/** The product's hover over the stage annotation and the ranges that light up with the caret on it. */
+export interface AnnotationHover {
+  /** 0-based line of the annotation. */
+  readonly line: number;
+  /** Code-point column where the annotation starts. */
+  readonly column: number;
+  /** The hover's lines in Japanese, as the client renders them (the first in bold). */
+  readonly lines: readonly string[];
+  readonly highlights: readonly LineSpan[];
+}
+
 export interface PreviewRender {
   readonly kind: 'preview';
   readonly src: string;
@@ -77,6 +94,8 @@ export interface PreviewRender {
   readonly preview: Fragment;
   /** Present on a sample produced by applying the product's `source.fixAll` action to another. */
   readonly fixAll?: { readonly title: { readonly en: string; readonly ja: string } };
+  /** Present on the stage's emphasised state: the hover beat 2 shows over the annotation it types. */
+  readonly annotation?: AnnotationHover;
 }
 
 export interface BookRender {

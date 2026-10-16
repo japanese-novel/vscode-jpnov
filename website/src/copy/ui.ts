@@ -22,6 +22,7 @@ export const UI = {
   addChapters: '章を追加…',
   pickChapters: '追加する章ファイルを選択するか、新しい章のファイル名を入力',
   previewToSide: 'プレビューを横に開く',
+  annotationGuide: '青空文庫の注記一覧',
   print: '印刷／PDF 保存',
   txt: 'テキスト',
   epub: 'EPUB に出力',

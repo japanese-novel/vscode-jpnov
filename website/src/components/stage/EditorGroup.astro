@@ -1,5 +1,5 @@
 ---
-import type { DiagnosticOut, EditorLine as Runs } from '../../../scripts/contract.ts';
+import type { AnnotationHover, DiagnosticOut, EditorLine as Runs } from '../../../scripts/contract.ts';
 import { NAMES, UI, VSCODE } from '../../stage/strings.ts';
 import type { TypedSpec } from '../../stage/typedLine.ts';
 import EditorLine from './EditorLine.astro';
@@ -14,9 +14,12 @@ interface Props {
   /** Motion: typed ranges by 0-based line, and the line whose first character is the fix space. */
   typed?: ReadonlyMap<number, TypedSpec> | undefined;
   fixLine?: number | undefined;
+  /** The annotation hover and its highlights; `annotating` shows them on a static snapshot. */
+  annotation?: AnnotationHover | undefined;
+  annotating?: boolean;
 }
 
-const { lines, currentLine, diagnostic, fixing = false, typed, fixLine } = Astro.props;
+const { lines, currentLine, diagnostic, fixing = false, typed, fixLine, annotation, annotating = false } = Astro.props;
 const sqLine = diagnostic?.range.start.line;
 const sqChar = diagnostic?.range.start.character ?? 0;
 ---
@@ -32,7 +35,7 @@ const sqChar = diagnostic?.range.start.character ?? 0;
     </div>
   </div>
   <div class="jp-crumbs"><Icon name="files" class="jp-ficon" /><span>{NAMES.chapter1}</span></div>
-  <div class="jp-code" data-t="code" style={`--cur:${String(currentLine)}`}>
+  <div class="jp-code" data-t="code" style={`--cur:${String(currentLine)}${annotating ? ';--hl:var(--word-hl)' : ''}`}>
     <div class="jp-curline" data-t="curline"></div>
     {lines.map((runs, i) => (
       <EditorLine
@@ -42,8 +45,15 @@ const sqChar = diagnostic?.range.start.character ?? 0;
         squiggleAt={i === sqLine ? (fixLine === i ? sqChar + 1 : sqChar) : undefined}
         typed={typed?.get(i)}
         fixSpace={fixLine === i}
+        highlights={i === annotation?.line ? annotation.highlights : undefined}
       />
     ))}
+    {annotation !== undefined && (
+      <div class:list={['jp-hover jp-hover-below', { 'jp-st-hide': !annotating }]} data-t="ann-hover" style={`--at:${String(annotation.line)};--col:${String(annotation.column)}`}>
+        {annotation.lines.map((line, i) => (i === 0 ? <div class="jp-msg"><b>{line}</b></div> : <div class="jp-msg">{line}</div>))}
+        <div class="jp-links">{UI.annotationGuide}</div>
+      </div>
+    )}
     {diagnostic !== undefined && (
       <>
         <div class:list={['jp-bulb', { 'jp-st-hide': !fixing }]} data-t="bulb" style={`--at:${String(sqLine)}`}><Icon name="lightbulb-autofix" /></div>

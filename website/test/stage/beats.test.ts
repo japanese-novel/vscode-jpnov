@@ -22,5 +22,6 @@ test('labels are cumulative and snapping is idempotent on labels', () => {
   for (const l of labels) {
     assert.equal(snap(l.at / total, 0.5), l.at / total);
   }
-  assert.equal(snap(0.5, 0.31), 0.31, 'away from a label the scroll stays put');
+  const between = (labels[1]?.at ?? 0) / 2 / total; // halfway between the first two labels (the first is at 0)
+  assert.equal(snap(between, 0.31), 0.31, 'away from a label the scroll stays put');
 });

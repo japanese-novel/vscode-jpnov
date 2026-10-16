@@ -20,6 +20,8 @@ function covers(s: number, x: number, y: number): void {
 test('the whole window is the identity, wherever the window sits in the clip box', () => {
   assert.deepEqual(frame(root, win, WHOLE), { s: 1, x: 0, y: 0 });
   assert.deepEqual(frame(root, { x: 0, y: 0, w: 1280, h: 800 }, WHOLE), { s: 1, x: 0, y: 0 });
+  // a clip box far larger than the window (a short, wide viewport beside the captions)
+  assert.deepEqual(frame(root, { x: 432, y: 96, w: 528, h: 330 }, WHOLE), { s: 1, x: 0, y: 0 });
 });
 
 test('a centred region scales to fit and stays put', () => {
