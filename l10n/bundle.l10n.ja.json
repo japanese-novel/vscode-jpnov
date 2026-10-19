@@ -226,5 +226,11 @@
   "A folder is optional, but recommended: open your novel's folder and its books are listed here automatically; without one, a book is listed while its .jpbook is open in the editor.": "フォルダーは開かなくても使えますが、小説のフォルダーを開いておくのがおすすめです。開くと、その中の本がここに自動で並びます。開いていない間は、エディターで開いている .jpbook が並びます。",
   "Create a Book…": "本を作成…",
   "Open the Guide": "ガイドを開く",
-  "Open files": "開いているファイル"
+  "Open files": "開いているファイル",
+  "{0} page(s)": "{0} ページ",
+  "{0} sheet(s)": "四百字詰め {0} 枚",
+  "{0} character(s)": "{0} 字",
+  "Body pages": "本文のページ数",
+  "Manuscript sheets (400-character 原稿用紙)": "原稿用紙換算枚数（４００字詰め）",
+  "Characters": "文字数"
 }

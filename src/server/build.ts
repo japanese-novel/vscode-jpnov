@@ -1,5 +1,5 @@
 /**
- * The `jpnov/build` and `jpnov/listBooks` request handlers. Constraints:
+ * The `jpnov/build`, `jpnov/listBooks` and `jpnov/bookCounts` request handlers. Constraints:
  * - the request's `projectDirs` map DEFINES the targeted roots; every `*.jpbook` under a root
  *   is a book (dot-folders, `node_modules` and every other targeted root are never scanned); the
  *   `openBooks` it names are books too;
@@ -25,7 +25,7 @@ import type { CancellationToken } from 'vscode-languageserver/node';
 
 import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, NO_NAMES, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
-import { concatBookText, renderBook } from '#/shared/compiler/document.ts';
+import { bookCounts, concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { TitledBook } from '#/shared/compiler/document.ts';
 import { epubMembers } from '#/shared/compiler/epub.ts';
 import { errorText } from '#/shared/utils/errors.ts';
@@ -33,6 +33,8 @@ import { LocalizedError } from '#/shared/messages.ts';
 import { resolveHtmlSettings } from '#/shared/config/settings.ts';
 import { OUT_DIR_DEFAULT, outDirSubpath, type OutDir } from '#/shared/config/validate.ts';
 import type {
+  BookCountsParams,
+  BookCountsResult,
   BookEntry,
   BuildArtifact,
   BuildError,
@@ -414,6 +416,27 @@ export async function handleBuild(ctx: ServerContext, params: BuildParams, token
 
   // Spread: a Set doesn't survive JSON-RPC serialization; the wire carries a plain array.
   return { ok: errors.length === 0, outDirs: [...outDirs], artifacts, errors };
+}
+
+/**
+ * Handles `jpnov/bookCounts`: one book's body figures for the Books view, read like a build
+ * (the manifest and its chapters through the client) and laid out on the request's settings.
+ * No diagnostics and no `checkJpbook`: the figures are information, not an output, so a book
+ * still missing its title counts, and an Error line only drops that entry. A manifest or a
+ * chapter that cannot be read leaves the figures null.
+ */
+export async function handleBookCounts(ctx: ServerContext, params: BookCountsParams, token?: CancellationToken): Promise<BookCountsResult> {
+  const manifest = await ctx.readText(params.uri, token);
+  if (!manifest.ok) {
+    return { counts: null };
+  }
+  try {
+    const parsed = parseJpbook(manifest.text);
+    const files = await readEntries(ctx, parentUri(params.uri), parsed.lines, 'ok', token);
+    return { counts: bookCounts({ files, divider: parsed.meta.divider }, resolveHtmlSettings(params.settings)) };
+  } catch {
+    return { counts: null };
+  }
 }
 
 /**

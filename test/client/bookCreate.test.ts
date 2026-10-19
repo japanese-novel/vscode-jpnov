@@ -31,11 +31,11 @@ beforeEach(() => {
   resetMockState(state);
 });
 
-/** A fake LanguageClient answering listBooks with `books`. */
+/** A fake LanguageClient answering listBooks with `books`; the detail's count request gets no figures. */
 function fakeClient(books: unknown[]): { sendRequest(type: string): Promise<unknown> } {
   return {
     sendRequest(type: string): Promise<unknown> {
-      return Promise.resolve(type === ListBooksRequest ? { books } : {});
+      return Promise.resolve(type === ListBooksRequest ? { books } : { counts: null });
     },
   };
 }

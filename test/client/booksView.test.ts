@@ -6,7 +6,7 @@
  *
  * Runs in CI via `npm run test:integration`; for direct runs see test/client/README.md.
  */
-import { test, mock, beforeEach } from 'node:test';
+import { test, mock, beforeEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { CancellationTokenSource } from 'vscode-languageserver/node';
 
@@ -31,7 +31,7 @@ mock.module('vscode', { exports: buildVscode(state) });
 
 const { BooksViewProvider } = await import('../../src/client/book/view.ts');
 const { raceRequest } = await import('../../src/client/requests.ts');
-const { ListBooksRequest, BuildRequest, FixAllRequest } = await import('../../src/shared/protocol.ts');
+const { ListBooksRequest, BuildRequest, FixAllRequest, BookCountsRequest } = await import('../../src/shared/protocol.ts');
 
 /** A stand-in extension root (the provider asWebviewUri-serves the codicon assets under it). */
 const EXT = Uri.parse('file:///ext');
@@ -50,17 +50,27 @@ function openEntry(uri: string, title?: string) {
   return { uri, rootUri: null, fileRel: uri.slice(uri.lastIndexOf('/') + 1), title };
 }
 
+/** What the fake server counts for every book unless a test sets `countsReply`. */
+const COUNTS = { pages: 2, sheets: 3, chars: 45 };
+
 /** A fake LanguageClient: answers listBooks with `books`, records the build params + token;
- *  `fixAll` answers jpnov/fixAll from the text sent (and records what was sent). */
+ *  `fixAll` answers jpnov/fixAll from the text sent (and records what was sent); jpnov/bookCounts
+ *  answers `countsReply` (an Error rejects) and records its params. */
 function fakeClient(books: unknown[], buildResult?: unknown, fixAll?: (text: string) => unknown) {
   const calls: {
     build: { books?: string[]; format?: string } | null;
     buildToken: unknown;
     fixAll: { uri: string; text: string }[];
-  } = { build: null, buildToken: undefined, fixAll: [] };
-  return {
+    counts: { uri: string; settings: unknown }[];
+  } = { build: null, buildToken: undefined, fixAll: [], counts: [] };
+  const client = {
     calls,
+    countsReply: { counts: COUNTS } as unknown,
     sendRequest(type: string, params: unknown, token?: unknown): Promise<unknown> {
+      if (type === BookCountsRequest) {
+        calls.counts.push(params as { uri: string; settings: unknown });
+        return client.countsReply instanceof Error ? Promise.reject(client.countsReply) : Promise.resolve(client.countsReply);
+      }
       if (type === ListBooksRequest) {
         return Promise.resolve({ books });
       }
@@ -77,6 +87,7 @@ function fakeClient(books: unknown[], buildResult?: unknown, fixAll?: (text: str
       return Promise.resolve({});
     },
   };
+  return client;
 }
 
 type MsgList = { type?: string; [k: string]: unknown }[];
@@ -808,6 +819,15 @@ function detailCount(view: { webview: { posted: unknown[] } }): number {
   return posts(view).filter((m) => m.type === 'detail').length;
 }
 
+/** Fires `event` under a mocked clock, runs every pending timer, then lets the real work settle (tick() is a real setTimeout). */
+async function afterPause(t: TestContext, event: () => void): Promise<void> {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  event();
+  t.mock.timers.runAll();
+  t.mock.timers.reset();
+  await tick();
+}
+
 test('entry actions dispatch the matching jpbook command naming the row, and re-push the detail', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
@@ -1174,6 +1194,84 @@ test('the open detail follows its buffer: a change to the book re-pushes it, ano
   t.mock.timers.runAll();
   t.mock.timers.reset();
   await tick();
+  assert.equal(detailCount(view), base + 1);
+});
+
+test('openDetail asks the server for the body\'s figures on the build settings and words them for the detail', async () => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\n`));
+  const { view, client } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  assert.deepEqual(firstDetail(view).counts, {
+    pages: { text: '2 page(s)', title: 'Body pages' },
+    sheets: { text: '3 sheet(s)', title: 'Manuscript sheets (400-character 原稿用紙)' },
+    chars: { text: '45 character(s)', title: 'Characters' },
+  });
+  const [request, ...more] = client.calls.counts;
+  assert.ok(request !== undefined && more.length === 0, 'one count request per detail');
+  assert.equal(request.uri, bookUri);
+  assert.ok(typeof request.settings === 'object', 'the build settings snapshot rides the request');
+});
+
+test('the detail shows no figures when the server cannot count or does not answer', async () => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\n`));
+  const { view, client } = await setup([entry(root, 'a')]);
+  client.countsReply = { counts: null };
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  assert.equal(firstDetail(view).counts, null);
+  client.countsReply = new Error('server down');
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  const details = posts(view).filter((m) => m.type === 'detail');
+  assert.equal(details.length, 2);
+  assert.ok(details.every((d) => d.counts === null));
+});
+
+test('a pause after typing in a chapter of the open book re-counts it; another .jpnov and a closed detail do not', async (t) => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\n`));
+  const { view } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  const base = detailCount(view);
+  await afterPause(t, () => {
+    state.onDidChangeDoc.fire({ document: doc(`${root}/other.jpnov`, 'jpnov') });
+  });
+  assert.equal(detailCount(view), base);
+  await afterPause(t, () => {
+    state.onDidChangeDoc.fire({ document: doc(`${root}/src/ch1.jpnov`, 'jpnov') });
+    state.onDidChangeDoc.fire({ document: doc(`${root}/src/ch1.jpnov`, 'jpnov') }); // one pause, one re-count
+  });
+  assert.equal(detailCount(view), base + 1);
+  view.webview.receive({ type: 'closeDetail' });
+  await tick();
+  await afterPause(t, () => {
+    state.onDidChangeDoc.fire({ document: doc(`${root}/src/ch1.jpnov`, 'jpnov') });
+  });
+  assert.equal(detailCount(view), base + 1);
+});
+
+test('a layout setting change re-counts the open detail; an unrelated setting does not', async (t) => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\n`));
+  const { view } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  const base = detailCount(view);
+  await afterPause(t, () => {
+    state.onDidChangeConfig.fire({ affectsConfiguration: (section) => section === 'jpnov.editor' });
+  });
+  assert.equal(detailCount(view), base);
+  await afterPause(t, () => {
+    state.onDidChangeConfig.fire({ affectsConfiguration: (section) => section === 'jpnov.layout' });
+  });
   assert.equal(detailCount(view), base + 1);
 });
 

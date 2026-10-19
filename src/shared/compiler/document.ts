@@ -2,13 +2,13 @@ import type { Ast, Line, SpanChannel, ValueLookup } from '../ast/nodes.ts';
 import { VALUE_NAMES, closingAnnotations, indentAnnotation, spanChannel } from '../ast/notation.ts';
 import { parse } from '../ast/parse.ts';
 import { printLine } from '../ast/print.ts';
-import { dropUnshown } from '../chars.ts';
+import { dropUnshown, graphemeCount } from '../chars.ts';
 import { escapeHtml } from '../utils/escape.ts';
-import type { DashMode, KinsokuMode, LinePitch } from '../config/types.ts';
+import type { DashMode, KinsokuMode, LayoutSettings, LinePitch } from '../config/types.ts';
 import type { BuildChrome } from './chrome.ts';
 import { emrProbe, stylesheet } from './css.ts';
 import type { PaperOrientation, PaperSize } from './geometry.ts';
-import { buildRows, paginate, pagesToHtml, type DisplayLine, type RenderPage, type Row } from './layout.ts';
+import { buildRows, paginate, pagesToHtml, type DisplayLine, type RenderPage, type Row, type Unit } from './layout.ts';
 
 /** 400字詰め原稿用紙 (20 字 × 20 行): the grid ［＃ここに「原稿用紙換算枚数」の値を表示］
  *  re-flows the body on. Tests derive from this, never write 20. */
@@ -75,6 +75,19 @@ function pageBreakAt(ast: Ast, edge: 'first' | 'last'): boolean {
   return line !== null && line.pageBreak && (edge === 'last' || blankContent(line));
 }
 
+/** `measure` summed over every unit of the line rows. */
+function sumUnits(rows: readonly Row[], measure: (u: Unit) => number): number {
+  let n = 0;
+  for (const row of rows) {
+    if (row.kind === 'line') {
+      for (const u of row.units) {
+        n += measure(u);
+      }
+    }
+  }
+  return n;
+}
+
 /**
  * The divider LINE as it appears in the output: a bare mark gains a centring ［＃N字下げ］
  * prefix, N = `floor((charsPerLine − cells) / 2)` with cells measured by the layout itself
@@ -89,14 +102,7 @@ function dividerLine(divider: string, charsPerLine: number | null): string {
   if (charsPerLine === null || ast.lines[0]?.syntax[0]?.kind === 'indent') {
     return divider;
   }
-  let cells = 0;
-  for (const row of buildRows(ast)) {
-    if (row.kind === 'line') {
-      for (const u of row.units) {
-        cells += u.cells;
-      }
-    }
-  }
+  const cells = sumUnits(buildRows(ast), (u) => u.cells);
   const pad = Math.max(0, Math.floor((charsPerLine - cells) / 2));
   return pad > 0 ? indentAnnotation(pad) + divider : divider;
 }
@@ -186,14 +192,72 @@ function glueRows(glue: string, dash: DashMode): Row[] {
 }
 
 /**
+ * One book's body flow: each chapter parsed and laid into rows ONCE, joined by
+ * {@link chapterGlue}. The returned function gives the rows for one line width; a flow differs
+ * only in the glue, whose divider centres on the flow's own line width (`null` = the divider
+ * stays at the line head, as 原稿用紙換算枚数 counts it).
+ */
+function bodyFlow(book: BookInput, dash: DashMode): (charsPerLine: number | null) => Row[] {
+  const chapters = book.files.map((file) => {
+    const ast = parse(file.src);
+    return { ast, rows: buildRows(ast, { dash }) };
+  });
+  return (charsPerLine) => {
+    const divider = book.divider ?? '';
+    return chapters.flatMap(({ ast, rows }, ci, all): Row[] => {
+      const prev = all[ci - 1];
+      const glue = prev === undefined
+        ? []
+        : glueRows(chapterGlue(prev.ast, ast, divider, charsPerLine), dash);
+      return [...glue, ...rows];
+    });
+  };
+}
+
+/** 原稿用紙換算枚数 of one body flow: its rows re-flowed on {@link MANUSCRIPT_SHEET}. */
+function sheetCount(rows: readonly Row[], kinsoku: KinsokuMode): number {
+  return paginate(rows, MANUSCRIPT_SHEET.charsPerLine, MANUSCRIPT_SHEET.linesPerPage, kinsoku).length;
+}
+
+/** The three figures of a book's body the Books view shows beside the title. */
+export interface BookCounts {
+  /** 本文のページ数 on the configured grid: the 総ページ数 the cover and the footer print. */
+  readonly pages: number;
+  /** 原稿用紙換算枚数: the body on {@link MANUSCRIPT_SHEET}. */
+  readonly sheets: number;
+  /** 文字数: the characters a reader sees — ruby readings and annotations excluded, spaces
+   *  included, a 縦中横 run its own length, a blank line none. */
+  readonly chars: number;
+}
+
+/**
+ * The body of one book counted as {@link renderBook} lays it out: same rows, same glue, same
+ * 禁則, so the figures agree with the cover's values. The cover files are never read — they are
+ * not the body. Pure + vscode-free.
+ */
+export function bookCounts(
+  book: BookInput,
+  opts: Pick<LayoutSettings, 'charsPerLine' | 'linesPerPage' | 'kinsoku' | 'dash'>,
+): BookCounts {
+  const flow = bodyFlow(book, opts.dash);
+  const rows = flow(opts.charsPerLine);
+  return {
+    pages: paginate(rows, opts.charsPerLine, opts.linesPerPage, opts.kinsoku).length,
+    sheets: sheetCount(flow(null), opts.kinsoku),
+    chars: sumUnits(rows, (u) => graphemeCount(u.text)),
+  };
+}
+
+/**
  * Renders one or more books into a full, PAGINATED `<html>` document: {@link paginate} flows
  * each book's text into the `.book > .page > .line` skeleton sized by `charsPerLine` x
  * `linesPerPage`; `chrome` adds the page furniture. Each book concatenates its `files[]` with
  * {@link chapterGlue} between chapters and starts on a fresh page. Cover files render BEFORE
  * the body as unnumbered, furniture-free pages and compile AFTER the bodies are paginated, so
  * ［＃ここに「総ページ数」の値を表示］ shows the body page count — the same count the footer's
- * 総ページ数 reports — and ［＃ここに「原稿用紙換算枚数」の値を表示］ the same bodies re-flowed
- * on {@link MANUSCRIPT_SHEET}, computed only when a cover or the page furniture asks for it.
+ * 総ページ数 reports and {@link bookCounts} gives the Books view — and
+ * ［＃ここに「原稿用紙換算枚数」の値を表示］ the same bodies re-flowed on {@link MANUSCRIPT_SHEET},
+ * computed only when a cover or the page furniture asks for it.
  * The header and footer fill from the same values plus the page's own ページ番号. All options
  * are required and pre-resolved (the settings resolver is the only default layer). Pure +
  * vscode-free.
@@ -211,41 +275,19 @@ export function renderBook(opts: {
   fontFamily: string;
   chrome: BuildChrome;
 }): string {
-  // Every chapter is parsed and laid into rows ONCE; a flow differs only in the glue, whose
-  // divider centres on the flow's own line width.
-  const chapters = opts.books.map((book) =>
-    book.files.map((file) => {
-      const ast = parse(file.src);
-      return { ast, rows: buildRows(ast, { dash: opts.dash }) };
-    }),
-  );
-  const bodyRowsOf = (bi: number, charsPerLine: number | null): Row[] => {
-    const divider = opts.books[bi]?.divider ?? '';
-    return (chapters[bi] ?? []).flatMap(({ ast, rows }, ci, all): Row[] => {
-      const prev = all[ci - 1];
-      const glue = prev === undefined
-        ? []
-        : glueRows(chapterGlue(prev.ast, ast, divider, charsPerLine), opts.dash);
-      return [...glue, ...rows];
-    });
-  };
-
   // Bodies paginate FIRST — covers need the count. Per book is output-identical to one run
   // with a pagebreak row at each seam: paginate flushes only non-empty pages.
-  const bodies = opts.books.map((book, bi) => ({
-    book,
-    pages: paginate(bodyRowsOf(bi, opts.charsPerLine), opts.charsPerLine, opts.linesPerPage, opts.kinsoku),
-  }));
+  const bodies = opts.books.map((book) => {
+    const flow = bodyFlow(book, opts.dash);
+    return { book, flow, pages: paginate(flow(opts.charsPerLine), opts.charsPerLine, opts.linesPerPage, opts.kinsoku) };
+  });
   const totalBody = bodies.reduce((n, b) => n + b.pages.length, 0);
 
   // 原稿用紙換算枚数: the bodies re-flowed on MANUSCRIPT_SHEET, the divider uncentred — computed
   // on the first cover (or the furniture) that asks, once per render.
   let sheets: number | undefined;
   const totalSheets = (): number => {
-    sheets ??= opts.books.reduce((n, _book, bi) => {
-      const rows = bodyRowsOf(bi, null);
-      return n + paginate(rows, MANUSCRIPT_SHEET.charsPerLine, MANUSCRIPT_SHEET.linesPerPage, opts.kinsoku).length;
-    }, 0);
+    sheets ??= bodies.reduce((n, b) => n + sheetCount(b.flow(null), opts.kinsoku), 0);
     return sheets;
   };
 

@@ -54,6 +54,22 @@ export interface MetaVM {
   readonly note: string;
 }
 
+/** One figure of the detail's status bar: the short text shown, and the full name its tooltip gives. */
+export interface CountItem {
+  readonly text: string;
+  readonly title: string;
+}
+
+/**
+ * The body's figures in a detail's status bar, each localized and formatted by the host
+ * (number and unit), so the webview prints them as given.
+ */
+export interface CountsVM {
+  readonly pages: CountItem;
+  readonly sheets: CountItem;
+  readonly chars: CountItem;
+}
+
 // Books panel — messages
 
 /** Host → webview: the full book list + selection. The sole authority; every push reconciles the view. */
@@ -80,6 +96,8 @@ export interface DetailMessage {
   readonly characters: readonly EntryVM[];
   readonly keywords: readonly EntryVM[];
   readonly meta: readonly MetaVM[];
+  /** The body's pages, 原稿用紙 sheets and characters; null when a chapter could not be read or the server did not answer. */
+  readonly counts: CountsVM | null;
   /** Host-initiated open (create-book reveal, failed-build hand-off, ready re-hydration): the
    *  webview adopts the intent instead of dropping the push as a stale race, and re-applies its
    *  entry-time fold rule. Refresh re-pushes omit it. */

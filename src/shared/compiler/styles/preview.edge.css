@@ -2,13 +2,14 @@
    (#cc0000 or currentColor); the 80%-alpha color-mix recipe is identical in preview and build
    (here, build.edge.css and css.ts's edgeRules) — rules sit under the text's weight. */
 
-/* With a frame drawn, a segment reserves the full linesPerPage page width — blank columns
-   extend LEFT. In the edge fragment on purpose: edgeLine 'none' keeps the content-hugging flow. */
+/* With a frame drawn, a segment (one page's columns) reserves the full linesPerPage page width —
+   a short last page's blank columns extend LEFT. In the edge fragment on purpose: edgeLine 'none'
+   keeps the content-hugging flow. */
 .segment{min-block-size:calc(var(--lpp)*var(--pitch)*1em);}
 
 /* A real frame per .segment closes the outer edges — the build's per-.page 枠 transplanted, so
-   the frames on either side of a ［＃改ページ］ close independently and the marker rides
-   BETWEEN them, never inside one. Its containing block is the .segment padding box (= the
+   the frames on either side of a page turn (automatic or ［＃改ページ］) close independently and
+   the marker rides BETWEEN them, never inside one. Its containing block is the .segment padding box (= the
    band), so it starts at top:0; border-box keeps the frame's own borders inside the band
    height.
    The 罫線 are this frame's own background: one column-wide tile with a 1px line at its right

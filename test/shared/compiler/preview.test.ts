@@ -84,6 +84,17 @@ test('renderPreview shows ［＃改ページ］ as a labelled marker, not a real
   assert.doesNotMatch(html, /<hr/);
 });
 
+test('renderPreview turns the page every linesPerPage columns with a label-less dotted marker', () => {
+  // The 字数 × 行数 widget's lines value (and the setting) now shows in the flow: the marker
+  // sits between segments like the author's, one step fainter and without the label.
+  const html = preview('一\n二\n三', { linesPerPage: 2 });
+  assert.match(
+    html,
+    /<div class="line" data-line="1">二<\/div><\/div><div class="pagebreak auto"><\/div><div class="segment"><div class="line" data-line="2">三<\/div>/,
+  );
+  assert.doesNotMatch(preview('一\n二\n三'), /pagebreak auto/); // three lines share the 34-line page
+});
+
 test('renderPreview never renders a book title', () => {
   const html = preview('本文');
   assert.doesNotMatch(html, /<h1/);
@@ -194,15 +205,15 @@ test('renderPreview: block 字下げ continuations keep indent-N and anchor wher
   assert.match(out, /\.indent-1\{padding-inline-start:1em\}/);
 });
 
-test('renderPreview line numbers: .ln head spans count display lines, restarting at 改ページ', () => {
-  // JS-numbered spans (not CSS counters: a sibling counter-reset does not reset following
-  // siblings in Chromium).
-  const on = preview('一\n二\n［＃改ページ］\n三', {
+test('renderPreview line numbers: .ln head spans count display lines through 改ページ and page turns', () => {
+  // JS-numbered spans, continuous for the whole file (the build restarts per page).
+  const on = preview('一\n二\n［＃改ページ］\n三\n四', {
+    linesPerPage: 1,
     chrome: { lineNumbers: true, edgeLine: 'none' },
   });
   assert.match(
     on,
-    /<div class="line" data-line="0"><span class="ln">1<\/span>一<\/div><div class="line" data-line="1"><span class="ln">2<\/span>二<\/div><\/div><div class="pagebreak"><span class="pb-label">改ページ<\/span><\/div><div class="segment"><div class="line" data-line="3"><span class="ln">1<\/span>三<\/div>/,
+    /<div class="line" data-line="0"><span class="ln">1<\/span>一<\/div><\/div><div class="pagebreak auto"><\/div><div class="segment"><div class="line" data-line="1"><span class="ln">2<\/span>二<\/div><\/div><div class="pagebreak"><span class="pb-label">改ページ<\/span><\/div><div class="segment"><div class="line" data-line="3"><span class="ln">3<\/span>三<\/div><\/div><div class="pagebreak auto"><\/div><div class="segment"><div class="line" data-line="4"><span class="ln">4<\/span>四<\/div>/,
   );
   assert.match(on, /\.ln\{position:absolute/);
   assert.match(on, /\.ln\{[^}]*font-size:10px/); // fixed px — fill invariant

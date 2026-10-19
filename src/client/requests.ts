@@ -3,9 +3,28 @@
  * the LSP reply still waits on the handler — so a caller that must not hang races the
  * request against its token and a plain-timer cap (never a wire/fs dependency).
  */
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 
 import { errorText } from '#/shared/utils/errors.ts';
+
+/**
+ * A request under its own cap: `send` gets a fresh token, the reply is raced against `timeoutMs`,
+ * and a failure cancels the request on the server too (a timed-out one would otherwise run on).
+ */
+export async function cappedRequest<T>(
+  send: (token: vscode.CancellationToken) => Thenable<T>,
+  timeoutMs: number,
+): Promise<T> {
+  const cancel = new vscode.CancellationTokenSource();
+  try {
+    return await raceRequest(send(cancel.token), cancel.token, timeoutMs);
+  } catch (err) {
+    cancel.cancel();
+    throw err;
+  } finally {
+    cancel.dispose();
+  }
+}
 
 /**
  * Settles with `request`, or rejects when `token` cancels or `timeoutMs` passes first.

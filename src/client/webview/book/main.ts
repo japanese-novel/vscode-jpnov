@@ -22,6 +22,7 @@ import type {
   BooksOutbound,
   BookVM,
   BuildAction,
+  CountsVM,
   DetailMessage,
   EntryList,
   EntryVM,
@@ -547,10 +548,15 @@ function bookRow(bk: BookVM, next: BookVM | undefined, prev: BookVM | undefined)
 }
 
 // Disabled states (list mode only) are applied by applyControls() once the footer is in the DOM.
-function footer(buildUri?: string): HTMLElement {
+function footer(buildUri?: string, counts: CountsVM | null = null): HTMLElement {
   const build = (format: BuildAction): BooksOutbound =>
     buildUri === undefined ? { type: 'build', format } : { type: 'build', format, uri: buildUri };
   return h('div', { class: 'footer' },
+    // The detail's status bar: the body's figures as short items, the full name on hover; read-only
+    // text outside every grid, present only when the host could count.
+    counts !== null &&
+      h('div', { class: 'status' },
+        ...[counts.pages, counts.sheets, counts.chars].map((item) => h('span', { title: item.title }, item.text))),
     // Justified to the two edges: Deselect on the left, Select on the right. Each link's own click
     // disables it (none / all selected), so focus crosses to the other one.
     buildUri === undefined &&
@@ -630,7 +636,7 @@ function renderDetail(): void {
   // Every folding list folds like Book Info; the chapter list is always open.
   app.replaceChildren(
     scrollPane(hdr, info, ...FOLDING.map((list) => listSection(d, list)), listSection(d, 'chapters')),
-    footer(d.uri),
+    footer(d.uri, d.counts),
   );
 }
 

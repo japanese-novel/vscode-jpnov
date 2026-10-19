@@ -272,8 +272,9 @@ keybindings for the **Japanese Novel** word commands in Keyboard Shortcuts.
 Open it from the editor title bar (**Open Preview to the Side**) on any
 `.jpnov`. The preview is a continuous vertical flow re-rendered as you type;
 it follows the editor cursor, wraps and breaks lines with the exact engine the
-builds use, and shows `［＃改ページ］` as a labelled dashed marker. Line numbers
-(on by default, restarting at every page break) and manuscript-paper column rules
+builds use, and shows `［＃改ページ］` as a labelled dashed marker. A faint dotted
+line marks where each page would end at the configured lines per page. Line numbers
+(on by default, running through the whole chapter) and manuscript-paper column rules
 are toggled under **Japanese Novel — Layout & Output**.
 
 A small chip at the preview's top right shows `40 chars × 34 lines`. Click it to
@@ -351,7 +352,9 @@ keys…), and document links — Cmd/Ctrl-click an
 entry to open the chapter.
 
 The Books view edits books, too. Open one to see its **Book Info**,
-**Cover pages** and **Chapters** sections: **Add chapters…** ticks in files
+**Cover pages** and **Chapters** sections, and at the bottom the body's page count,
+manuscript-sheet count and character count (counted as the build lays it out;
+cover pages are not counted): **Add chapters…** ticks in files
 you already have and creates new ones from a typed name, dragging (or the
 arrow buttons) reorders them, and **×** takes an entry
 out of the book while keeping the file. From the keyboard, ↑/↓ move between
@@ -481,7 +484,7 @@ carries a value annotation, a 対象文字列 that fails to match is not reporte
 The manuscript-sheet count is the number of vertical 20 × 20 manuscript sheets
 (400字詰め原稿用紙) the body fills, the unit Japanese literary contests state length in.
 Annotations and kinsoku are handled as in the build; a centred chapter divider is counted as
-if placed at the line head.
+if placed at the line head. The Books view shows the same count when a book is opened.
 
 ## Character & keyword highlighting
 
@@ -590,11 +593,11 @@ are not settings: they live in the `.jpbook` files.
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `jpnov.layout.charsPerLine` | `40` | Characters per line (15–64), preview and builds |
-| `jpnov.layout.linesPerPage` | `34` | Lines per page in builds (15–64) |
+| `jpnov.layout.linesPerPage` | `34` | Lines per page in builds, and the preview's page-end marks (15–64) |
 | `jpnov.layout.linePitch` | `1.5` | Line pitch as a multiple of the character size: `1.5` / `1.75` / `2` / `2.25`; preview and built pages |
 | `jpnov.layout.fontFamily` | `""` | Body font as a CSS font-family list: blank uses the default Mincho stack; preview and built HTML |
 | `jpnov.layout.kinsoku` | `strict` | Line-breaking rules: `none` / `relaxed` / `strict` |
-| `jpnov.layout.preview.lineNumbers` | `true` | Line numbers in the preview, restarting per page break |
+| `jpnov.layout.preview.lineNumbers` | `true` | Line numbers in the preview, continuous through the chapter |
 | `jpnov.layout.preview.edgeLine` | `none` | Column rules in the preview: `none` / `text` / `red` |
 | `jpnov.layout.paper.size` | `a4` | Paper size the built pages print at: `a4` / `a6`; the grid scales to fit it, centred |
 | `jpnov.layout.paper.orientation` | `auto` | Paper orientation: `auto` (follows the page grid) / `landscape` / `portrait` |

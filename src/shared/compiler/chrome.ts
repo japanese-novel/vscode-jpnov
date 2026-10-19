@@ -30,7 +30,7 @@ export const FURNITURE_ALIGNS = [
 export type FurnitureAlign = (typeof FURNITURE_ALIGNS)[number];
 
 export interface PreviewChrome {
-  /** Line-head numbers, restarting at 1 after every ［＃改ページ］ marker. */
+  /** Line-head numbers, continuous through the file (the build's restart per page). */
   readonly lineNumbers: boolean;
   /** Inter-column rules; `text` draws in the text colour (currentColor), all rules at 80% alpha. */
   readonly edgeLine: EdgeLineStyle;

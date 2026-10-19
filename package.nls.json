@@ -76,7 +76,7 @@
   "jpnov.lint.ruby.kana.katakana.description": "Every reading must be katakana only.",
   "jpnov.layout.title": "Japanese Novel — Layout & Output",
   "jpnov.layout.charsPerLine.description": "Characters per line for the preview and the HTML build grid. In the EPUB build, a 字下げ is at most one character fewer than this.",
-  "jpnov.layout.linesPerPage.description": "Lines per page for the HTML build grid. The preview scrolls continuously; with ruled lines turned on, it frames each stretch between page breaks and keeps it at least this many lines wide.",
+  "jpnov.layout.linesPerPage.description": "Lines per page for the HTML build grid. The preview scrolls continuously and marks the end of every page with a dotted line.",
   "jpnov.layout.linePitch.description": "The distance from the center of one line to the center of the next, as a multiple of the character size. Applies to the preview and the built HTML.",
   "jpnov.layout.linePitch.1.5.label": "1.5×",
   "jpnov.layout.linePitch.1.5.description": "The tightest pitch. Ruby readings sit flush against the neighbouring line.",

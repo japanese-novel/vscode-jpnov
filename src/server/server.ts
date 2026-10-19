@@ -6,7 +6,7 @@
  * Responsibilities wired here:
  * - `initialize`: seed the lint selection from `initializationOptions`, reply the negotiated
  *   capabilities.
- * - `jpnov/build`, `jpnov/listBooks`, `jpnov/renderFile` request handlers (per-root state
+ * - `jpnov/build`, `jpnov/listBooks`, `jpnov/bookCounts`, `jpnov/renderFile` request handlers (per-root state
  *   rides each request's `projectDirs`; the narration vocabulary is read from the books a
  *   listing finds, root by root).
  * - `jpnov/readText` (server -> client): the only custom request this side sends; manuscript
@@ -40,6 +40,7 @@ import { resolvePreviewSettings } from '#/shared/config/settings.ts';
 import { selectRules } from '#/shared/lint/select.ts';
 import type { InitializationOptions } from '#/shared/protocol.ts';
 import {
+  BookCountsRequest,
   BuildRequest,
   FixAllRequest,
   HoverRequest,
@@ -49,6 +50,8 @@ import {
   RenderFileRequest,
 } from '#/shared/protocol.ts';
 import type {
+  BookCountsParams,
+  BookCountsResult,
   BuildParams,
   BuildResult,
   FixAllParams,
@@ -65,7 +68,7 @@ import type {
 } from '#/shared/protocol.ts';
 
 import { highlightsAt, hoverAt, prepareRenameAt, renameAt } from './annotations.ts';
-import { handleBuild, handleListBooks } from './build.ts';
+import { handleBookCounts, handleBuild, handleListBooks } from './build.ts';
 import type { Finding } from './diagnostics.ts';
 import { parentUri } from './fsUri.ts';
 import { buildCodeActions, fixAllEdits } from './lint/codeActions.ts';
@@ -184,6 +187,9 @@ connection.onRequest(
     return result;
   },
 );
+
+// Book counts: the open detail's pages / sheets / characters, read and laid out like a build.
+connection.onRequest(BookCountsRequest, (params: BookCountsParams, token: CancellationToken): Promise<BookCountsResult> => handleBookCounts(context, params, token));
 
 // Preview: render the editor's parse of one open .jpnov (its live buffer, synced ahead of this
 // request) to a standalone HTML document. charsPerLine, 禁則, and display chrome all ride the

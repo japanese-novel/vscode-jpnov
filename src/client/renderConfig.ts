@@ -27,6 +27,11 @@ function layoutSnapshot(c: vscode.WorkspaceConfiguration): LayoutSettings {
   };
 }
 
+/** True when a settings change moves either snapshot: `jpnov.layout.*`, or the dash choice (the one lint key the snapshots carry). */
+export function affectsRenderSettings(e: vscode.ConfigurationChangeEvent): boolean {
+  return e.affectsConfiguration('jpnov.layout') || e.affectsConfiguration('jpnov.lint.common.dash');
+}
+
 export function buildPreviewSettings(): PreviewSettings {
   const c = vscode.workspace.getConfiguration();
   return {

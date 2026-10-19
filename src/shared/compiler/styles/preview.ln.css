@@ -1,8 +1,6 @@
 /* Line-head numbers — included when lineNumbers is on. The numbers themselves are
-   <span class="ln"> heads emitted by flowToHtml (JS-computed, restarting after each break
-   marker — a sibling counter-reset does not reset following siblings in Chromium, so CSS
-   counters can't express the page-local numbering here; keep this fragment's inclusion in
-   lockstep with that flag). Fixed px font, absolutely lifted into the 16px pad band — never
+   <span class="ln"> heads emitted by flowToHtml (JS-computed, continuous through the file;
+   keep this fragment's inclusion in lockstep with that flag). Fixed px font, absolutely lifted into the 16px pad band — never
    in-flow, never em-sized (the exact-fill invariant). The lift walks back the .segment text
    inset with the SAME length in rem (rem = the fit em, so the em term cancels and the number
    lands at the same pad-band spot at ANY fit size), then 2px clear of the 枠 stroke.

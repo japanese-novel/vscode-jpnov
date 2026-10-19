@@ -37,7 +37,7 @@ The boundaries:
   and zips the EPUB. The server does list directories, to find books and to
   complete paths.
 - **The client pushes settings; the server never pulls them.** Layout settings
-  ride each render and build request as raw values, and the server resolves them
+  ride each render, build and count request as raw values, and the server resolves them
   (`src/shared/config/settings.ts`), because a payload is untrusted at runtime.
   The lint selection arrives at start and again on every change. The narration
   vocabulary is no setting: the server reads the `characters:` and `keywords:` of
@@ -76,8 +76,7 @@ AST              what the notation means     ──▶  editor: diagnostics, lin
    │  buildRows   src/shared/compiler/layout.ts
    ▼
 rows of units
-   ├─ wrap, 禁則             ──▶  preview
-   ├─ wrap, 禁則, paginate   ──▶  book HTML
+   ├─ wrap, 禁則, paginate   ──▶  preview, book HTML, the book's counts
    └─ reflow                 ──▶  EPUB
 
 The text build prints the nodes.
@@ -101,7 +100,7 @@ The outputs:
 
 | Output | Entry point | From |
 | --- | --- | --- |
-| Preview | `renderPreview` | the rows, as one continuous flow |
+| Preview | `renderPreview` | the rows, as one continuous flow, marked where the build would turn the page |
 | Book HTML | `renderBook` | the rows, paginated in the compiler so the printed page is what the screen showed |
 | EPUB | `epubMembers` | the rows, reflowed: the reading system breaks the lines and the pages; 字下げ keeps the paginated cap |
 | Text | `concatBookText` | the nodes, printed back; the characters no output can carry removed |
@@ -125,7 +124,8 @@ Decide the stage first. The rules:
 
    The values of ［＃ここに「…」の値を表示］ are data of the book, not settings:
    the title and the pen name come from its `.jpbook`, the page count and the
-   sheet count from laying out its chapters. They reach only the AST of a cover
+   sheet count from laying out its chapters (`bookCounts`, which also gives the
+   Books view its figures). They reach only the AST of a cover
    page, and a cover page is resolved after the chapters are laid out. The editor
    resolves without them, so it does not report an annotation that fails to bind
    after a value: the real value is unknown.

@@ -668,6 +668,51 @@ function wrapRow(
   return lines;
 }
 
+/** One cut page: its columns, and whether it opens after an authored ［＃改ページ］ (else the page before merely ran out of lines). */
+interface CutPage {
+  readonly lines: DisplayLine[];
+  readonly forced: boolean;
+}
+
+/**
+ * The ONE page cutter: flows rows into pages of at most `linesPerPage` lines; a pagebreak row
+ * ends the open page. No page is ever empty, so leading, trailing and doubled breaks make none,
+ * and a break written exactly where a page fills makes one page end, the authored one. The
+ * build keeps the pages ({@link paginate}); the preview keeps the seams too ({@link flowToHtml}).
+ */
+function cutPages(
+  rows: readonly Row[],
+  charsPerLine: number,
+  linesPerPage: number,
+  kinsoku: KinsokuMode,
+): CutPage[] {
+  const pages: CutPage[] = [];
+  let lines: DisplayLine[] = [];
+  let forced = false; // how the page being built opened
+  const flush = (): void => {
+    if (lines.length > 0) {
+      pages.push({ lines, forced });
+      lines = [];
+    }
+  };
+  for (const row of rows) {
+    if (row.kind === 'pagebreak') {
+      flush();
+      forced = true;
+      continue;
+    }
+    for (const line of wrapRow(row, charsPerLine, kinsoku)) {
+      if (lines.length >= linesPerPage) {
+        flush();
+        forced = false;
+      }
+      lines.push(line);
+    }
+  }
+  flush();
+  return pages;
+}
+
 /** Flows rows into pages of at most `linesPerPage` lines; a pagebreak forces a new page. */
 export function paginate(
   rows: readonly Row[],
@@ -675,32 +720,7 @@ export function paginate(
   linesPerPage: number,
   kinsoku: KinsokuMode,
 ): DisplayLine[][] {
-  const pages: DisplayLine[][] = [];
-  let page: DisplayLine[] = [];
-
-  const flushPage = (): void => {
-    if (page.length > 0) {
-      pages.push(page);
-      page = [];
-    }
-  };
-
-  for (const row of rows) {
-    if (row.kind === 'pagebreak') {
-      flushPage();
-      continue;
-    }
-    const lines = wrapRow(row, charsPerLine, kinsoku);
-    for (const line of lines) {
-      if (page.length >= linesPerPage) {
-        pages.push(page);
-        page = [];
-      }
-      page.push(line);
-    }
-  }
-  flushPage();
-  return pages;
+  return cutPages(rows, charsPerLine, linesPerPage, kinsoku).map((page) => page.lines);
 }
 
 /**
@@ -856,20 +876,17 @@ export function pagesToHtml(
 }
 
 /**
- * Renders ONE file's rows as a CONTINUOUS line flow for the live preview (no pagination),
- * hard-wrapping each row via {@link wrapRow} — the same line-break + 禁則 + ruby/emphasis
- * engine the book build uses, so the preview agrees with the printed page. Pure + vscode-free.
+ * Renders ONE file's rows as a CONTINUOUS line flow for the live preview (no real pages), cut
+ * by the SAME page cutter the book build uses ({@link cutPages}: wrap, 禁則, page turns), so the
+ * preview agrees with the printed page. Pure + vscode-free.
  *
+ * - Each page is a `<div class="segment">` block, so the edge-rule 枠 closes per page; no page
+ *   is empty, so a leading/trailing/doubled ［＃改ページ］ leaves no empty segment.
+ * - A marker lands BETWEEN segments as a direct `.book` child, outside every frame: the
+ *   labelled `<div class="pagebreak">` where the author wrote ［＃改ページ］, the label-less
+ *   `<div class="pagebreak auto">` where the page merely ran out of lines.
  * - `lineNumbers` opens every column with an out-of-flow `<span class="ln">N</span>` head,
- *   numbered in JS and restarting after each break marker: a counter-reset on a sibling
- *   `.pagebreak` does not reset following siblings in Chromium, so only the build's
- *   ancestor-`.page` CSS counters are reliable — never unify the two.
- * - Columns group into `<div class="segment">` blocks (one per run of lines between breaks,
- *   the build page's preview analogue) so the edge-rule 枠 closes independently on each side
- *   of a break. Segments open lazily on their first line, so a leading/trailing/doubled
- *   ［＃改ページ］ collapses to nothing — mirroring the build's empty-page elision.
- * - The labelled `<div class="pagebreak">` marker lands BETWEEN segments as a direct `.book`
- *   child, outside every frame.
+ *   numbered in JS and running through the whole file — a page turn does not restart it.
  * - Every column carries `data-line`, and a wrapped one `data-ch`: where it starts in its source
  *   line, so the cursor-follow scroller parks the column holding the cursor. The build's pages
  *   carry the same.
@@ -878,51 +895,28 @@ export function pagesToHtml(
 export function flowToHtml(
   rows: readonly Row[],
   charsPerLine: number,
+  linesPerPage: number,
   kinsoku: KinsokuMode,
   used?: Set<string>,
   lineNumbers = false,
 ): string {
   const parts: string[] = [];
-  let pendingBreak = false;
-  let segmentOpen = false;
   let lineNo = 0;
-  for (const row of rows) {
-    if (row.kind === 'pagebreak') {
-      // Defer page breaks: only materialized once a following line exists, so leading /
-      // trailing / consecutive ［＃改ページ］ never leave a dangling marker.
-      if (segmentOpen) {
-        pendingBreak = true;
-      }
-      continue;
+  cutPages(rows, charsPerLine, linesPerPage, kinsoku).forEach((page, i) => {
+    if (i > 0) {
+      parts.push(page.forced
+        ? '<div class="pagebreak"><span class="pb-label">改ページ</span></div>'
+        : '<div class="pagebreak auto"></div>');
     }
-    for (const line of wrapRow(row, charsPerLine, kinsoku)) {
-      if (pendingBreak) {
-        // The seam: close the segment and drop the marker BETWEEN segments — the shared
-        // opener below reopens for this very line, so the marker never sits inside a
-        // frame and the numbering restarts with the segment it opens.
-        parts.push(
-          '</div>',
-          '<div class="pagebreak"><span class="pb-label">改ページ</span></div>',
-        );
-        segmentOpen = false;
-        pendingBreak = false;
-        lineNo = 0;
-      }
-      if (!segmentOpen) {
-        // Segments open lazily on their first line (never on a break), so an empty
-        // segment is structurally impossible.
-        parts.push('<div class="segment">');
-        segmentOpen = true;
-      }
+    parts.push('<div class="segment">');
+    for (const line of page.lines) {
       lineNo += 1;
       // The number span is absolutely positioned (out of the text flow), so it neither
       // consumes cells nor disturbs the pre-formatted column content it precedes.
       const head = lineNumbers ? `<span class="ln">${String(lineNo)}</span>` : '';
       parts.push(emitLine(line, used, head));
     }
-  }
-  if (segmentOpen) {
     parts.push('</div>');
-  }
+  });
   return `<div class="book">${parts.join('')}</div>`;
 }
