@@ -95,7 +95,7 @@ test('tcyAnnotation reads back as the 縦中横 of its target', () => {
   assert.equal(nodeOf(tcyAnnotation('12'), 'tcyPostfix').target.text, '12');
 });
 
-test('the 外字注記 are the six of 外字注記辞書, and each reads back as its character', () => {
+test('the 外字注記 are those of 外字注記辞書, and each reads back as its character', () => {
   // https://www.aozora.gr.jp/gaiji_chuki/sonota.html
   const listed: readonly [annotation: string, char: string][] = [
     ['※［＃感嘆符二つ、1-8-75］', '\u203C'],
@@ -104,6 +104,8 @@ test('the 外字注記 are the six of 外字注記辞書, and each reads back as
     ['※［＃感嘆符疑問符、1-8-78］', '\u2049'],
     ['※［＃逆感嘆符、1-9-3］', '\u00A1'],
     ['※［＃逆疑問符、1-9-22］', '\u00BF'],
+    ['※［＃始め二重山括弧、1-1-52］', '\u300A'],
+    ['※［＃終わり二重山括弧、1-1-53］', '\u300B'],
   ];
   assert.deepEqual(Object.entries(GAIJI).map(([inner, char]) => [gaijiAnnotation(char), gaijiChar(inner)]), listed);
   for (const [annotation, char] of listed) {

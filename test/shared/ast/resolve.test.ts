@@ -205,6 +205,7 @@ test('a 外字注記 is the character it stands for: a cell of its own, named by
   assert.deepEqual(content(`なに${mark}と`), ['chars なに', 'gaiji ⁉', 'chars と']);
   assert.deepEqual(content(`［＃傍点］${mark}［＃傍点終わり］`), ['gaiji ⁉ emph=傍点']);
   assert.deepEqual(content(`［＃縦中横］${mark}${gaijiOf('‼')}［＃縦中横終わり］`), ['tcy ⁉‼']);
+  assert.deepEqual(content(`スキル${gaijiOf('《')}聖剣${gaijiOf('》')}`), ['chars スキル', 'gaiji 《', 'chars 聖剣', 'gaiji 》']);
   assert.deepEqual(content(`なに${mark}［＃「に⁉」に傍点］`), ['chars な', 'chars に emph=傍点', 'gaiji ⁉ emph=傍点']);
   assert.deepEqual(content(`なに${mark}［＃「に⁉」は縦中横］`), ['chars な', 'tcy に⁉']);
   assert.deepEqual(content(`なに${mark}［＃「なに⁉」の左に「よみ」のルビ］`), ['ruby なに⁉〈よみ〉']);
@@ -332,11 +333,17 @@ test('each character of a run maps back to where it was written', () => {
 const state = (src: string): unknown[][] =>
   parse(src).lines.map((l) => [l.indent, l.heading, l.pageBreak, l.blockDirective]);
 
-test('字下げ: the line-head form is its own line, the block form the lines after it', () => {
-  assert.deepEqual(state('［＃３字下げ］本文の行。\n次の行。'), [[3, undefined, false, false], [0, undefined, false, false]]);
+test('字下げ: the single-line form is N spaces of its line, the block form the state of the lines after it', () => {
+  assert.deepEqual(state('［＃３字下げ］本文の行。\n次の行。'), [[0, undefined, false, false], [0, undefined, false, false]]);
+  assert.deepEqual(content('［＃３字下げ］本文の行。'), ['value 　　　', 'chars 本文の行。']);
+  assert.deepEqual(content('本文［＃２字下げ］本文'), ['chars 本文', 'value 　　', 'chars 本文']);
+  assert.deepEqual(content('　［＃１字下げ］本文'), ['chars 　', 'value 　', 'chars 本文']); // the auto-indent space and its own
+  assert.deepEqual(content('［＃０字下げ］本文'), ['chars 本文']);
+  assert.deepEqual(content('［＃縦中横］［＃１字下げ］1［＃縦中横終わり］'), ['tcy 　1']);
+  // A ［＃０字下げ］ inside a block adds nothing: the block's state stands.
   assert.deepEqual(
     state('［＃ここから２字下げ］同じ行。\n中の行。\n［＃０字下げ］ゼロ行。\n［＃ここで字下げ終わり］終端行。\n外の行。').map((s) => s[0]),
-    [0, 2, 0, 2, 0],
+    [0, 2, 2, 2, 0],
   );
   // One slot: a block opened inside a block switches the depth.
   assert.deepEqual(state('［＃ここから２字下げ］\nあ。\n［＃ここから４字下げ］\n四の行。').map((s) => s[0]), [0, 2, 2, 4]);

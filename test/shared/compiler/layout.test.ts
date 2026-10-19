@@ -339,8 +339,9 @@ test('ぶら下げ: row-local only — an author line-head 。 is never borrowed
   assert.deepEqual(klines('あ\n。', 3), ['あ', '。']);
 });
 
-test('ぶら下げ: 字下げ narrows the budget but the hang rides the column foot as usual', () => {
-  assert.deepEqual(klines('［＃２字下げ］文だ。', 4), ['文だ⟪。⟫']);
+test('ぶら下げ: a block 字下げ narrows the budget, a ［＃○字下げ］ fills cells; the hang rides the column foot as usual', () => {
+  assert.deepEqual(klines('［＃ここから２字下げ］\n文だ。', 4), ['文だ⟪。⟫']);
+  assert.deepEqual(klines('［＃２字下げ］文だ。', 4), ['　　文だ⟪。⟫']);
 });
 
 test('ぶら下げ: the cell ledger resets after a hang — later wraps stay on budget', () => {
@@ -376,7 +377,7 @@ test('区切り約物: a line that ends on the mark drops the full-width space a
     ['　一二三？　［＃謎の注記］', 'strict', ['　一二三？']], // nor of a comment alone
     ['　一二三？［＃謎の注記］　六七八', 'strict', ['　一二三？', '六七八']], // read through a comment
     ['　一二三？　　六七', 'strict', ['　一二三？', '　六七']], // the first space only
-    ['［＃１字下げ］一二三？　六七八九', 'strict', ['一二三？', '六七八九']],
+    ['［＃１字下げ］一二三？　六七八九', 'strict', ['　一二三？', '六七八九']],
     [`　一二三${tcy}　六七八`, 'strict', ['　一二三!?', '六七八']],
     ['　一二!?　六七八', 'strict', ['　一二!?', '六七八']], // the bound half-width pair
     ['　一二三⁉　六七八', 'strict', ['　一二三⁉', '六七八']],
@@ -897,13 +898,28 @@ test('block 字下げ: every wrapped continuation column keeps indent-N', () => 
   );
 });
 
-test('N_eff clamp: an indent ≥ charsPerLine clamps to cpl−1 for BOTH class and budget', () => {
+test('N_eff clamp: a block indent ≥ charsPerLine clamps to cpl−1 for BOTH class and budget', () => {
   assert.equal(
-    html('［＃９字下げ］一二', 3),
+    html('［＃ここから９字下げ］\n一二', 3),
     '<div class="book"><div class="page" data-page="0"><div class="grid">' +
-      '<div class="line indent-2" data-line="0">一</div>' +
-      '<div class="line indent-2" data-line="0" data-ch="8">二</div></div></div></div>',
+      '<div class="line indent-2" data-line="1">一</div>' +
+      '<div class="line indent-2" data-line="1" data-ch="1">二</div></div></div></div>',
   );
+});
+
+test('a ［＃○字下げ］ is N space cells where it stands: wrapped continuations return to the margin, a block adds its padding', () => {
+  assert.equal(
+    html('　［＃３字下げ］本文本文本文本文', 8),
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line" data-line="0">　　　　本文本文</div>' +
+      '<div class="line" data-line="0" data-ch="12">本文本文</div></div></div></div>',
+  );
+  assert.equal(
+    html('［＃ここから２字下げ］\n［＃１字下げ］本文', 6),
+    '<div class="book"><div class="page" data-page="0"><div class="grid">' +
+      '<div class="line indent-2" data-line="1">　本文</div></div></div></div>',
+  );
+  assert.deepEqual(klines('一二［＃９字下げ］三', 3), ['一二　', '　　　', '　　　', '　　三']); // mid-line, wrapping like typed spaces
 });
 
 test('０字下げ / a dangling ［＃ここで字下げ終わり］ are render no-ops', () => {
@@ -951,7 +967,7 @@ test('見出し composes with 字下げ; a ruby-bearing heading matches its BASE
   assert.equal(
     html('［＃２字下げ］序［＃「序」は小見出し］'),
     '<div class="book"><div class="page" data-page="0"><div class="grid">' +
-      '<div class="line indent-2 midashi" data-line="0">序</div></div></div></div>',
+      '<div class="line midashi" data-line="0">　　序</div></div></div></div>',
   );
   // Aozora: the heading target EXCLUDES ruby readings — base-text matching resolves it.
   assert.match(
@@ -1456,6 +1472,12 @@ test('a 外字注記 lays out exactly like its character typed as it is, and say
     assert.equal(html(noted), html(typed), char);
     assert.deepEqual(unitsOf(noted).map((u) => u.at).slice(3, 5), [at(noted, mark).start, at(noted, 'と').start], char);
   }
+});
+
+test('the 二重山括弧 外字注記 are brackets to 禁則 like the typed ones', () => {
+  assert.deepEqual(klines(`あい${gaijiOf('《')}う`, 3), ['あい', '《う']); // 行末禁則: 追い出し
+  assert.deepEqual(klines(`あい${gaijiOf('》')}`, 2), ['あ', 'い》']); // 行頭禁則
+  assert.deepEqual(klines(`あい${gaijiOf('《')}う`, 3, 'none'), ['あい《', 'う']);
 });
 
 // --------------------------------------------------------------- where it was written (cursor follow)

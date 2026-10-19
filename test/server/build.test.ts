@@ -20,6 +20,7 @@ import {
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT } from '../../src/shared/config/settings.ts';
 import { INDENT_MAX, indentAnnotation } from '../../src/shared/ast/notation.ts';
+import { blockOf } from '../shared/ast/_shape.ts';
 import { HEADER, JPBOOK_VERSION, META_KEYS } from '../../src/shared/book/jpbook.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import { CHARS_MIN, LAYOUT_DEFAULT, PROJECT_DEFAULT } from '../../src/shared/config/types.ts';
@@ -142,8 +143,8 @@ test('a metadata divider lands between heading-less chapters in BOTH artifacts',
   });
   const html = htmlResult.artifacts[0];
   assert.ok(html?.kind === 'html');
-  assert.ok(html.content.includes('<div class="line indent-19">＊</div>'), 'centred divider row');
-  assert.match(html.content, /\.indent-19\{padding-inline-start:19em\}/);
+  assert.ok(html.content.includes(`<div class="line">${'　'.repeat(19)}＊</div>`), 'centred divider row');
+  assert.doesNotMatch(html.content, /indent-19/);
   assert.match(html.content, /<div class="line midashi" data-line="0">終章<\/div>/);
   assert.match(html.content, /\.midashi\{font-family:sans-serif;font-weight:bold\}/);
 });
@@ -1011,11 +1012,11 @@ test('build format "epub" returns one kind:"epub" artifact of member files per b
   );
 });
 
-test('build caps the EPUB 字下げ by charsPerLine from the settings snapshot', async () => {
+test('build caps the EPUB block 字下げ by charsPerLine from the settings snapshot', async () => {
   await using ws = await makeTmpWorkspace();
   const { ctx } = boot();
   await writeUnder(ws.dir, 'vol1/vol1.jpbook', meta() + 'a.jpnov');
-  await writeUnder(ws.dir, 'vol1/a.jpnov', `${indentAnnotation(INDENT_MAX)}本文。`);
+  await writeUnder(ws.dir, 'vol1/a.jpnov', `${blockOf(indentAnnotation(INDENT_MAX))}\n本文。`);
 
   const result = await handleBuild(ctx, {
     format: 'epub',

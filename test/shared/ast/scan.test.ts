@@ -9,7 +9,7 @@ import { GAIJI, INDENT_MAX, VALUE_NAMES, indentAnnotation, valueAnnotation } fro
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { scan } from '../../../src/shared/ast/scan.ts';
 
-import { at, blockIndent, blockOf, contentOf, facts, gaijiOf, kinds, lineShapes, nodeOf, nodesOf, shape } from './_shape.ts';
+import { at, blockIndent, blockOf, contentOf, facts, gaijiOf, issuesOf, kinds, lineShapes, nodeOf, nodesOf, shape } from './_shape.ts';
 import { D } from '../_kana.ts';
 import { inLinearTime } from '../_timing.ts';
 
@@ -147,6 +147,12 @@ test('a 外字注記 is one node from its ※ to its ］, standing for its chara
   assert.deepEqual(shape(mark), [`gaiji ${mark}`]); // at a line head
   assert.deepEqual(shape(`※${mark}${mark}`), ['text ※', `gaiji ${mark}`, `gaiji ${mark}`]);
   assert.deepEqual(shape(`［＃３字下げ］${mark}`), ['indent ［＃３字下げ］', `gaiji ${mark}`]);
+  // The 二重山括弧 are brackets: neither half opens or closes a ruby, alone or as a pair.
+  const [open, close] = [gaijiOf('《'), gaijiOf('》')];
+  assert.deepEqual(shape(`スキル${open}聖剣${close}`), ['text スキル', `gaiji ${open}`, 'text 聖剣', `gaiji ${close}`]);
+  assert.deepEqual(shape(`スキル${open}聖剣》`), ['text スキル', `gaiji ${open}`, 'text 聖剣》']);
+  assert.deepEqual(shape(`スキル《聖剣${close}`), ['text スキル《聖剣', `gaiji ${close}`]);
+  assert.deepEqual(issuesOf(`スキル${open}聖剣${close}`), []);
 });
 
 test('any other ※ is text, and what follows it is what it was', () => {
@@ -184,7 +190,7 @@ test('改ページ is a pageBreak', () => {
 /** ［＃○字下げ］ with `digits` as written. */
 const indentOf = (digits: string): string => `［＃${digits}字下げ］`;
 
-test('a line-head ［＃○字下げ］ is an indent (full-width digits, up to INDENT_MAX)', () => {
+test('a ［＃○字下げ］ is an indent (full-width digits, up to INDENT_MAX)', () => {
   assert.deepEqual(facts(nodeOf('［＃３字下げ］本文', 'indent')), { kind: 'indent', text: '［＃３字下げ］', amount: 3 });
   assert.equal(nodeOf('　まくら\n［＃２字下げ］次', 'indent').amount, 2); // the head of a later line
   assert.equal(nodeOf(`${indentAnnotation(INDENT_MAX)}x`, 'indent').amount, INDENT_MAX);
@@ -197,9 +203,9 @@ test('a line-head ［＃○字下げ］ is an indent (full-width digits, up to I
   assert.equal(nodeOf('［＃０字下げ］x', 'indent').amount, 0);
 });
 
-test('a mid-line ［＃○字下げ］ is a comment; a lone \\r starts a line like any terminator', () => {
-  assert.deepEqual(shape('本文［＃３字下げ］'), ['text 本文', 'comment ［＃３字下げ］']);
-  assert.deepEqual(kinds('　［＃３字下げ］'), ['text', 'comment']); // the ［ must open the line
+test('a ［＃○字下げ］ is read anywhere on its line; a lone \\r starts a line like any terminator', () => {
+  assert.deepEqual(shape('本文［＃３字下げ］'), ['text 本文', 'indent ［＃３字下げ］']);
+  assert.deepEqual(kinds('　［＃３字下げ］'), ['text', 'indent']); // after the auto-indent space
   assert.deepEqual(kinds('A\r［＃３字下げ］'), ['text', 'indent']);
   assert.deepEqual(kinds('［＃3字下げ］'), ['comment']); // half-width
   assert.deepEqual(kinds('［＃三字下げ］'), ['comment']); // a kanji numeral

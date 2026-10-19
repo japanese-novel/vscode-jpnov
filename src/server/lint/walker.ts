@@ -22,10 +22,10 @@
  *
  * Lines are NEVER merged: a multi-line utterance yields one line per source line with
  * `openDepthAtEnd` > 0, and the 〇 sentinel lands on the line holding the utterance's first
- * interior character. A rendered 字下げ reaches rules only as `LintLine.indent`. No LSP types:
+ * interior character. The 字下げ a line opens with reaches rules only as `LintLine.indent`. No LSP types:
  * offsets only.
  */
-import type { Ast, SyntaxNode } from '../../shared/ast/nodes.ts';
+import type { Ast, Line, SyntaxNode } from '../../shared/ast/nodes.ts';
 import { spanChannel } from '../../shared/ast/notation.ts';
 import { DialogueStack } from '../dialogue.ts';
 
@@ -38,7 +38,7 @@ const SENTINEL = '〇';
 /** What a node does to the outer extents: `open` wraps the piece after it (a span start, a
  *  ruby's ｜); `attach` (a postfix, a value field, a 外字注記) extends the piece before it; `close` (a span end)
  *  does too unless its own opener is still pending; `reading` (a ruby's 《…》) extends it and marks
- *  a ruby base; `neutral` binds nothing (a line-head ［＃N字下げ］ must stay at the head).
+ *  a ruby base; `neutral` binds nothing (a ［＃N字下げ］ is no prose).
  *  Exhaustive: a new node kind is a compile error. */
 type ExtentRole = 'open' | 'close' | 'attach' | 'reading' | 'neutral';
 const EXTENT_ROLE: Record<SyntaxNode['kind'], ExtentRole> = {
@@ -265,6 +265,20 @@ class LineBuilder {
   }
 }
 
+/** The 字下げ a line opens with: the block's N plus every ［＃N字下げ］ before its first text. */
+function indentAtHead(line: Line): number {
+  let n = line.indent;
+  for (const node of line.syntax) {
+    if (node.kind === 'text') {
+      return n;
+    }
+    if (node.kind === 'indent') {
+      n += node.amount;
+    }
+  }
+  return n;
+}
+
 /** The line as source slices: every markup node on its own, the text between them joined. */
 function slicesOf(nodes: readonly SyntaxNode[]): SourceSlice[] {
   const out: SourceSlice[] = [];
@@ -349,7 +363,7 @@ export function* walkLines(ast: Ast): Generator<LintLine, void, undefined> {
       srcStart: line.span.start,
       srcEnd: line.span.end,
       source: slicesOf(line.syntax),
-      indent: line.indent,
+      indent: indentAtHead(line),
       heading: line.heading,
       openDepthAtEnd: dialogue.depth,
     });

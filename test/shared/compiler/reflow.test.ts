@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { INDENT_MAX, indentAnnotation } from '../../../src/shared/ast/notation.ts';
+import { INDENT_MAX } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { CHARS_MIN, LAYOUT_DEFAULT } from '../../../src/shared/config/types.ts';
 import { reflowStylesheet } from '../../../src/shared/compiler/css.ts';
@@ -88,23 +88,25 @@ test('assertXmlChars follows the XML Char production', () => {
   }
 });
 
-test('字下げ becomes the indent-N class and sinks into used', () => {
+test('a block 字下げ becomes the indent-N class and sinks into used; a ［＃○字下げ］ is its spaces', () => {
   const used = new Set<string>();
-  const out = reflowSegments(rows('［＃２字下げ］文だ。'), CPL, used);
+  const out = reflowSegments(rows(`${blockIndent(2)}\n文だ。`), CPL, used);
   assert.equal(out[0]?.body, '<p class="indent-2">文だ。</p>');
   assert.ok(used.has('indent-2'));
+  const own = new Set<string>();
+  assert.equal(reflowSegments(rows('［＃２字下げ］文だ。'), CPL, own)[0]?.body, '<p>　　文だ。</p>');
+  assert.deepEqual([...own], []);
 });
 
-test('字下げ caps at charsPerLine - 1, like the paginated build', () => {
+test('a block 字下げ caps at charsPerLine - 1, like the paginated build', () => {
   const cap = CHARS_MIN - 1;
   const over = CHARS_MIN + 5;
   assert.ok(over <= INDENT_MAX);
   const capped = `class="indent-${String(cap)}"`;
   const cases: readonly (readonly [name: string, src: string, body: string])[] = [
-    ['inline', `${indentAnnotation(over)}文だ。`, `<p ${capped}>文だ。</p>`],
     ['block', `${blockIndent(over)}\n一\n二\n［＃ここで字下げ終わり］`, `<p ${capped}>一</p><p ${capped}>二</p>`],
-    ['見出し', `${indentAnnotation(over)}序章［＃「序章」は大見出し］`, `<h1 ${capped}>序章</h1>`],
-    ['at the cap', `${indentAnnotation(cap)}文だ。`, `<p ${capped}>文だ。</p>`],
+    ['見出し', `${blockIndent(over)}\n序章［＃「序章」は大見出し］`, `<h1 ${capped}>序章</h1>`],
+    ['at the cap', `${blockIndent(cap)}\n文だ。`, `<p ${capped}>文だ。</p>`],
   ];
   for (const [name, src, want] of cases) {
     const used = new Set<string>();
@@ -115,7 +117,7 @@ test('字下げ caps at charsPerLine - 1, like the paginated build', () => {
 
 test('charsPerLine 1 leaves no indent class', () => {
   const used = new Set<string>();
-  assert.equal(reflowSegments(rows('［＃２字下げ］文'), 1, used)[0]?.body, '<p>文</p>');
+  assert.equal(reflowSegments(rows(`${blockIndent(2)}\n文`), 1, used)[0]?.body, '<p>文</p>');
   assert.deepEqual([...used], []);
 });
 
@@ -205,7 +207,9 @@ test('the kitchen sink emits well-formed XML end to end', () => {
   const src = [
     '序章［＃「序章」は大見出し］',
     '',
-    '［＃２字下げ］青空《あおぞら》の下、英雄《えいゆう》［＃「英雄」の左に「ひーろー」のルビ］は言った。',
+    '［＃ここから２字下げ］',
+    '［＃１字下げ］青空《あおぞら》の下、英雄《えいゆう》［＃「英雄」の左に「ひーろー」のルビ］は言った。',
+    '［＃ここで字下げ終わり］',
     '「――――そうか」と12［＃「12」は縦中横］月の風［＃「風」に傍点］。',
     'A & B <not-a-tag> ［＃謎の注記-］',
     '［＃改ページ］',

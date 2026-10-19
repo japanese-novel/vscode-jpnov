@@ -126,7 +126,7 @@ export interface PageBreakNode extends AnnotationBase {
   readonly kind: 'pageBreak';
 }
 
-/** ［＃○字下げ］ at a line head, ○ up to the notation's maximum; anything else is a comment. */
+/** ［＃○字下げ］ anywhere on its line, ○ up to the notation's maximum (above it, a comment): ○ full-width spaces where it stands. */
 export interface IndentNode extends AnnotationBase {
   readonly kind: 'indent';
   readonly amount: number;
@@ -239,8 +239,8 @@ export type SyntaxNode =
 export type Marks = Readonly<Partial<Record<Channel, Mark>>>;
 
 /**
- * Where a run's characters come from: `prose` typed text; `value` a substituted value; `gaiji` a
- * 外字注記; `markup` ruby markup printed as typed (its base came out empty); `broken` an unclosed ［＃.
+ * Where a run's characters come from: `prose` typed text; `value` a substituted value or the spaces
+ * a ［＃○字下げ］ stands for; `gaiji` a 外字注記; `markup` ruby markup printed as typed (its base came out empty); `broken` an unclosed ［＃.
  */
 export type CharsOrigin = 'prose' | 'value' | 'gaiji' | 'markup' | 'broken';
 
@@ -295,7 +295,7 @@ export type ScanIssue =
   | { readonly kind: 'unclosedAnnotation'; readonly span: Span }
   // `span`: the whole annotation, which is left a comment.
   | { readonly kind: 'indentTooLarge'; readonly span: Span }
-  // `span`: the 《…》 left as text, from its ｜ when one opened it.
+  // `span`: the 《…》 left as text, from its ｜ when one opened it (it starts at the 《 exactly when none did).
   | { readonly kind: 'rubyBaseMissing'; readonly span: Span; readonly reading: string }
   | { readonly kind: 'rubyReadingEmpty'; readonly span: Span };
 
@@ -327,7 +327,7 @@ export interface SyntaxLine {
 
 export interface Line extends SyntaxLine {
   readonly content: readonly Inline[];
-  /** 字下げ in effect on this line: its own ［＃○字下げ］, else the open block's. */
+  /** 字下げ of the open block on this line; a ［＃○字下げ］ is content, N spaces. */
   readonly indent: number;
   /** 見出し level, when a bound postfix, a span or a block covers the line. */
   readonly heading?: HeadingLevel;

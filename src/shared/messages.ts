@@ -86,7 +86,7 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
     case 'syntax.tcyTooLong':
       return '縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)';
     case 'syntax.rubyBaseMissing':
-      return `ruby reading 《${a(0)}》 has no base text before it (it prints as typed)`;
+      return `ruby reading 《${a(0)}》 has no base text before it (it prints as typed; for brackets, write the 二重山括弧 外字注記)`;
     case 'syntax.rubyReadingEmpty':
       return 'empty ruby reading 《》 (it prints as typed)';
     case 'syntax.rubyInTcy':
@@ -107,7 +107,7 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
     case 'hover.blockEnd':
       return `${a(0)} end (block form)`;
     case 'hover.indent':
-      return `Indent by ${a(0)} (this line)`;
+      return `Indent by ${a(0)} (${a(0)} full-width spaces here)`;
     case 'hover.pageBreak':
       return 'Page break';
     case 'hover.value':

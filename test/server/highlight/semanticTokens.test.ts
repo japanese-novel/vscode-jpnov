@@ -176,17 +176,18 @@ test('punctuation-only body yields no tokens', () => {
 
 // ----------------------------------------------------------------------- 字下げ / block markup
 
-test('a line-head ［＃３字下げ］: whole inner is one directive', () => {
+test('a ［＃３字下げ］: whole inner is one directive', () => {
   const toks = decode(buildSemanticTokens(doc('［＃３字下げ］'), rec).data);
   assert.deepEqual(at(toks, 0, 0), { line: 0, char: 0, len: 2, type: MARKER }); // ［＃
   assert.deepEqual(at(toks, 0, 2), { line: 0, char: 2, len: 4, type: tokenTypeIndex('directive') }); // ３字下げ
   assert.deepEqual(at(toks, 0, 6), { line: 0, char: 6, len: 1, type: MARKER }); // ］
 });
 
-test('a mid-line ［＃３字下げ］ greys whole (comment in both layers, no directive)', () => {
+test('a mid-line ［＃３字下げ］ is the same directive: it stands for its spaces wherever it is', () => {
   const toks = decode(buildSemanticTokens(doc('本［＃３字下げ］'), rec).data);
-  assert.deepEqual(at(toks, 0, 1), { line: 0, char: 1, len: 7, type: MARKER }); // whole annotation
-  assert.ok(!toks.some((t) => t.type === tokenTypeIndex('directive')));
+  assert.deepEqual(at(toks, 0, 1), { line: 0, char: 1, len: 2, type: MARKER }); // ［＃
+  assert.deepEqual(at(toks, 0, 3), { line: 0, char: 3, len: 4, type: tokenTypeIndex('directive') }); // ３字下げ
+  assert.deepEqual(at(toks, 0, 7), { line: 0, char: 7, len: 1, type: MARKER }); // ］
 });
 
 test('block 字下げ start/end: ここから/ここで/終わり are markers, only ○字下げ is a directive', () => {

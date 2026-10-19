@@ -102,9 +102,11 @@ test('an unencodable character becomes one 〓 and is counted', () => {
   assert.equal(encodeTxt('あいう', 'shiftJis').substitutions, 0);
 });
 
-test('the six characters with a 外字注記 are written as it, and are not counted', () => {
+test('the characters with a 外字注記 and no cell are written as it, and are not counted', () => {
   const decoder = new TextDecoder('shift_jis');
-  for (const char of Object.values(GAIJI)) {
+  const noted = Object.values(GAIJI).filter((char) => !isShiftJisEncodable(char.codePointAt(0) ?? 0));
+  assert.deepEqual(noted, ['‼', '⁇', '⁈', '⁉', '¡', '¿']);
+  for (const char of noted) {
     const annotation = gaijiOf(char);
     const { bytes, substitutions } = encodeTxt(`なに${char}［＃「なに${char}」に傍点］`, 'shiftJis');
     assert.equal(decoder.decode(bytes), `なに${annotation}［＃「なに${annotation}」に傍点］`, char);
@@ -115,6 +117,11 @@ test('the six characters with a 外字注記 are written as it, and are not coun
       assert.ok(new TextDecoder().decode(encodeTxt(char, encoding).bytes).endsWith(char), `${char} in ${encoding}`);
     }
   }
+  // 《 》 have a cell: a ruby's brackets are written as they are, never as their 外字注記.
+  assert.equal(decoder.decode(encodeTxt('漢字《かんじ》', 'shiftJis').bytes), '漢字《かんじ》');
+  assert.equal(encodeTxt('漢字《かんじ》', 'shiftJis').substitutions, 0);
+  assert.deepEqual(unencodableChars('《》'), []);
+  assert.equal(decoder.decode(encodeTxt(gaijiOf('《'), 'shiftJis').bytes), gaijiOf('《'));
   // The emoji spelling: the character is written, its selector is what Shift JIS lacks.
   assert.equal(decoder.decode(encodeTxt('\u2049\uFE0F', 'shiftJis').bytes), '※［＃感嘆符疑問符、1-8-78］');
   assert.deepEqual(unencodableChars('あ\u2049\uFE0F'), [{ cluster: '\u2049\uFE0F', cp: 0xfe0f, offset: 2, length: 1 }]);

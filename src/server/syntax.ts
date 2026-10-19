@@ -4,7 +4,9 @@
  * configuration, ahead of the lint findings in the same cache, and carry a fix where one is
  * mechanical: an end annotation of the other form than its start is respelled as the AST says;
  * a start that sets again what is in effect, and an end with nothing open (a render no-op), are
- * removed, with the line when a block directive had the line to itself (such a line paints nothing).
+ * removed, with the line when a block directive had the line to itself (such a line paints nothing);
+ * a 《…》 no ｜ opened and no base precedes is respelled as the 二重山括弧 外字注記, the brackets it
+ * already prints as.
  *
  * An unclosed ［＃ is an Error, like an unterminated string literal; everything else is a Warning,
  * the markup being well-formed and the render lenient about it.
@@ -13,7 +15,7 @@ import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Ast, Issue, Span } from '../shared/ast/nodes.ts';
-import { INDENT_MAX, fullWidthDigits } from '../shared/ast/notation.ts';
+import { INDENT_MAX, RUBY_CLOSE, RUBY_OPEN, fullWidthDigits, gaijiAnnotation } from '../shared/ast/notation.ts';
 import { paintsNothing } from '../shared/ast/resolve.ts';
 import { bySource } from '../shared/ast/span.ts';
 import { displayText, graphemeCount } from '../shared/chars.ts';
@@ -89,6 +91,10 @@ function removal(doc: TextDocument, ast: Ast, span: Span): Span {
     : { start: line.span.start, end: line.span.end + line.eol.length };
 }
 
+/** 《 and 》 as 外字注記: brackets that open no ruby. Both are listed; the fallback only narrows the type. */
+const ANGLE_OPEN = gaijiAnnotation(RUBY_OPEN) ?? RUBY_OPEN;
+const ANGLE_CLOSE = gaijiAnnotation(RUBY_CLOSE) ?? RUBY_CLOSE;
+
 /** The fix of an issue, where one is mechanical (see the module header). */
 function fixOf(issue: Issue, doc: TextDocument, ast: Ast): Fix | undefined {
   switch (issue.kind) {
@@ -99,6 +105,11 @@ function fixOf(issue: Issue, doc: TextDocument, ast: Ast): Fix | undefined {
       return edit(doc, removal(doc, ast, issue.span), '');
     case 'spanFormMismatch':
       return edit(doc, issue.span, issue.expected);
+    case 'rubyBaseMissing':
+      // A span from a ｜: the author meant ruby, and nothing is offered.
+      return doc.getText().startsWith(RUBY_OPEN, issue.span.start)
+        ? edit(doc, issue.span, `${ANGLE_OPEN}${issue.reading}${ANGLE_CLOSE}`)
+        : undefined;
     default:
       return undefined;
   }

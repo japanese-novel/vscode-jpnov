@@ -159,7 +159,7 @@ Most annotations take a **forward-ref** form: the annotation follows the text it
 | Bold 太字 | `［＃「対象」は太字］` | `［＃太字］…［＃太字終わり］` | `［＃ここから太字］…［＃ここで太字終わり］` |
 | Italic 斜体 | `［＃「対象」は斜体］` | `［＃斜体］…［＃斜体終わり］` | `［＃ここから斜体］…［＃ここで斜体終わり］` |
 | Heading 見出し | `第一章［＃「第一章」は大見出し］` (大見出し / 中見出し / 小見出し) | `［＃大見出し］…［＃大見出し終わり］` | `［＃ここから大見出し］…［＃ここで大見出し終わり］` |
-| Indent 字下げ | `［＃○字下げ］` (line head) | — | `［＃ここから○字下げ］…［＃ここで字下げ終わり］` |
+| Indent 字下げ | `［＃○字下げ］` (○ full-width spaces where it stands) | — | `［＃ここから○字下げ］…［＃ここで字下げ終わり］` |
 | Page break | `［＃改ページ］` (on its own line) | — | — |
 
 <img src="docs/images/notation.png" width="800" alt="A rendered specimen showing ruby, both-side ruby, emphasis dots, a wavy side line, bold, and tate-chū-yoko">
@@ -181,11 +181,13 @@ Notes: 傍点/傍線 take a left-side variant spelled differently in each form �
 **forward-ref** form uses `の左に` (`［＃「対象」の左に傍点］`), the **start / end**
 form uses bare `左に` (`［＃左に傍点］…［＃左に傍点終わり］`); bold/italic use the
 connector **は**. Indent counts (`○`) are **full-width digits** (２, １０), ９９ at most; a larger
-one is left unapplied and raises an editor **Warning**. The block indent also indents wrapped
-continuation lines. An unclosed start / end or block annotation
+one is left unapplied and raises an editor **Warning**. A `［＃○字下げ］` is ○ full-width
+spaces at its position, so wrapped continuation lines return to the margin; the block indent
+indents them too. An unclosed start / end or block annotation
 (`［＃太字］` or `ここから…` with no `…終わり`) still renders to the end of the file but
 raises an editor **Warning**, as does a `…終わり` with nothing open and a `《…》` reading
-with no base text before it or an empty `《》` (both print as typed); an unclosed `［＃`
+with no base text before it or an empty `《》` (both print as typed; the former carries a
+quick fix respelling it as the 二重山括弧 外字注記 below); an unclosed `［＃`
 is an **Error**. An
 explicit `｜` base runs up to the `《` even across annotations inside it
 (`｜山田［＃「山田」に傍点］《やまだ》` is one ruby, dotted). Italic relies on the browser
@@ -225,14 +227,17 @@ text and every `「…」` naming it together; it is offered only where the `「
 is written exactly as the text it bound to (no ruby, annotation, value or 外字
 inside the range, kana composed alike), otherwise the editor says so.
 
-**外字注記** (external-character annotations) are recognised for six characters. In
+**外字注記** (external-character annotations) are recognised for eight characters. In
 body text, `※` directly followed by one of these annotations is one character:
 `※［＃感嘆符二つ、1-8-75］` (`‼`), `※［＃疑問符二つ、1-8-76］` (`⁇`),
 `※［＃疑問符感嘆符、1-8-77］` (`⁈`), `※［＃感嘆符疑問符、1-8-78］` (`⁉`),
-`※［＃逆感嘆符、1-9-3］` (`¡`) and `※［＃逆疑問符、1-9-22］` (`¿`). Any other
-`※［＃…］` is a `※` and a comment. The six characters can also be typed as they
-are. Shift JIS has no code for them, so a Shift JIS `.txt` build writes each as
-its annotation.
+`※［＃逆感嘆符、1-9-3］` (`¡`), `※［＃逆疑問符、1-9-22］` (`¿`),
+`※［＃始め二重山括弧、1-1-52］` (`《`) and `※［＃終わり二重山括弧、1-1-53］` (`》`). Any other
+`※［＃…］` is a `※` and a comment. `《…》` always means ruby, so the brackets are
+written this way (`スキル※［＃始め二重山括弧、1-1-52］聖剣※［＃終わり二重山括弧、1-1-53］`).
+The first six can also be typed as they are; Shift JIS has no code for them, so a
+Shift JIS `.txt` build writes each as its annotation, while `《` `》` are written as
+themselves.
 
 ## Auto indent
 

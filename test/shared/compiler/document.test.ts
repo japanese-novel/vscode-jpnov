@@ -393,17 +393,17 @@ test('renderBook inserts the divider line + one blank as synthetic (anchor-less)
     fontFamily: '',
     chrome: OFF,
   });
-  // cpl 4 → the centring annotation is ［＃１字下げ］: the glue line carries indent-1.
+  // cpl 4 → the centring annotation is ［＃１字下げ］: the glue line opens with its one space.
   assert.equal(
     bodyOf(html),
     '<div class="book"><div class="page" data-page="0"><div class="grid">' +
       '<div class="line" data-line="0">第一</div>' +
       '<div class="line"></div>' +
-      '<div class="line indent-1">＊</div>' +
+      '<div class="line">　＊</div>' +
       '<div class="line"></div>' +
       '<div class="line" data-line="0">第二</div></div></div></div>',
   );
-  assert.match(html, /\.indent-1\{padding-inline-start:1em\}/); // its rule emits on demand
+  assert.doesNotMatch(html, /indent-/); // the space is a cell, not a padding rule
 });
 
 /** Pairs as the text build meets them: under a 縦中横 annotation, in what a left ruby takes as
@@ -460,10 +460,13 @@ test('renderBook: a 太字 span emits <span class="b"> and the .b rule on demand
   assert.match(out, /\.b\{font-weight:bold\}/);
 });
 
-test('renderBook: a 字下げ column carries the indent class + its .indent-N rule', () => {
-  const out = render('［＃２字下げ］頭');
-  assert.match(out, /<div class="line indent-2" data-line="0">頭<\/div>/);
+test('renderBook: a block 字下げ column carries the indent class + its .indent-N rule; a ［＃○字下げ］ its spaces', () => {
+  const out = render('［＃ここから２字下げ］\n頭');
+  assert.match(out, /<div class="line indent-2" data-line="1">頭<\/div>/);
   assert.match(out, /\.indent-2\{padding-inline-start:2em\}/);
+  const own = render('［＃２字下げ］頭');
+  assert.match(own, /<div class="line" data-line="0">　　頭<\/div>/);
+  assert.doesNotMatch(own, /indent-/);
 });
 
 // --- page furniture (chrome) ---------------------------------------------------------
@@ -663,12 +666,12 @@ test('cover: the template annotations substitute the book values; 総ページ�
   );
   const bodyPages = (body.match(/<div class="page" data-page=/g) ?? []).length;
   assert.equal(bodyPages, 3);
-  assert.match(body, /<div class="line indent-5" data-line="0">作品名<\/div>/);
-  assert.match(body, /<div class="line indent-7" data-line="1">ペンネーム<\/div>/);
+  assert.match(body, /<div class="line" data-line="0">　{5}作品名<\/div>/);
+  assert.match(body, /<div class="line" data-line="1">　{7}ペンネーム<\/div>/);
   // The count is derived, never pinned: it must equal the number of BODY sheets…
   assert.match(
     body,
-    new RegExp(`<div class="line indent-7" data-line="2">全<span class="tcy">${String(bodyPages)}</span>ページ</div>`),
+    new RegExp(`<div class="line" data-line="2">　{7}全<span class="tcy">${String(bodyPages)}</span>ページ</div>`),
   );
   // …which is exactly what the footer's 総ページ数 reports.
   assert.match(body, new RegExp(`<div class="ft r">1 / ${String(bodyPages)}</div>`));
@@ -789,9 +792,9 @@ test('cover: an unset author leaves its column blank, indent and neighbours inta
       },
     ]),
   );
-  assert.match(body, /<div class="line indent-5" data-line="0">題<\/div>/);
-  assert.match(body, /<div class="line indent-7" data-line="1"><\/div>/); // the author column
-  assert.match(body, /<div class="line indent-7" data-line="2">全<span class="tcy">1<\/span>ページ<\/div>/);
+  assert.match(body, /<div class="line" data-line="0">　{5}題<\/div>/);
+  assert.match(body, /<div class="line" data-line="1">　{7}<\/div>/); // the author column
+  assert.match(body, /<div class="line" data-line="2">　{7}全<span class="tcy">1<\/span>ページ<\/div>/);
 });
 
 test('per-book pagination: an empty book adds no blank sheet and never breaks the run', () => {
@@ -903,12 +906,12 @@ test('cover: 原稿用紙換算枚数 counts an NFD kana as one cell, like its N
 
 test('cover: a 天地中央揃え divider counts from the line head; an author 字下げ passes through', () => {
   // 16 lines + glue (blank, mark, blank) + 1 line = 20 → one sheet. The grid's own centring
-  // (indent-17 at cpl 40) would leave the sheet a budget of 1: 5 columns for the mark → 2 sheets.
+  // (17 spaces at cpl 40) would leave the sheet a budget of 1: 5 columns for the mark → 2 sheets.
   const n = MANUSCRIPT_SHEET.linesPerPage - 4;
   const chapters = (divider: string): BookInput =>
     counted([{ name: 'a.jpnov', src: repeat(n, 'あ') }, { name: 'b.jpnov', src: 'か' }], divider);
   assert.equal(countsOf([chapters('＊　＊　＊')]).sheets, '1');
-  assert.match(bodyOf(renderBooks([chapters('＊　＊　＊')])), /<div class="line indent-17">＊　＊　＊<\/div>/);
+  assert.match(bodyOf(renderBooks([chapters('＊　＊　＊')])), /<div class="line">　{17}＊　＊　＊<\/div>/);
   // ［＃１９字下げ］＊＊ is the author's own position: budget 1 on the sheet → 2 columns → 21 → 2.
   const indented = chapters(`${indentAnnotation(MANUSCRIPT_SHEET.charsPerLine - 1)}＊＊`);
   assert.equal(countsOf([indented]).sheets, '2');

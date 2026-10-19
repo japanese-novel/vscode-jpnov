@@ -73,9 +73,9 @@ function isListLine(view: ProseView): boolean {
   return view.text.charAt(k) === '・';
 }
 
-/** 行頭字下げ: a 地の文 line must open with 　 / an opening bracket, or carry a ［＃字下げ］. The
- *  fix inserts the 　 before the first prose unit's markup (a ｜, a ［＃縦中横］) and after a
- *  line-head ［＃０字下げ］, which must stay at the head. */
+/** 行頭字下げ: a 地の文 line must open with 　 / an opening bracket, or a ［＃字下げ］ before its
+ *  text. The fix inserts the 　 before the first prose unit's markup (a ｜, a ［＃縦中横］) and
+ *  after a ［＃０字下げ］, which shows nothing. */
 export function indentRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {

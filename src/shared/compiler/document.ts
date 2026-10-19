@@ -94,7 +94,7 @@ function sumUnits(rows: readonly Row[], measure: (u: Unit) => number): number {
  * (a ruby/縦中横-bearing mark centres on its true advance); a value already carrying a
  * ［＃○字下げ］ prefix passes through verbatim, and N = 0 emits the bare mark — never a
  * ［＃０字下げ］. The annotation spelling keeps the offset out of the `.txt` prose while the
- * HTML side renders the same string through the indent machinery as padding. `charsPerLine`
+ * HTML side shows the same string as N full-width spaces. `charsPerLine`
  * null = no centring, the bare mark as written.
  */
 function dividerLine(divider: string, charsPerLine: number | null): string {
@@ -226,7 +226,7 @@ export interface BookCounts {
   /** 原稿用紙換算枚数: the body on {@link MANUSCRIPT_SHEET}. */
   readonly sheets: number;
   /** 文字数: the characters a reader sees — ruby readings and annotations excluded, spaces
-   *  included, a 縦中横 run its own length, a blank line none. */
+   *  included (not the ones centring a divider), a 縦中横 run its own length, a blank line none. */
   readonly chars: number;
 }
 
@@ -240,11 +240,11 @@ export function bookCounts(
   opts: Pick<LayoutSettings, 'charsPerLine' | 'linesPerPage' | 'kinsoku' | 'dash'>,
 ): BookCounts {
   const flow = bodyFlow(book, opts.dash);
-  const rows = flow(opts.charsPerLine);
+  const plain = flow(null);
   return {
-    pages: paginate(rows, opts.charsPerLine, opts.linesPerPage, opts.kinsoku).length,
-    sheets: sheetCount(flow(null), opts.kinsoku),
-    chars: sumUnits(rows, (u) => graphemeCount(u.text)),
+    pages: paginate(flow(opts.charsPerLine), opts.charsPerLine, opts.linesPerPage, opts.kinsoku).length,
+    sheets: sheetCount(plain, opts.kinsoku),
+    chars: sumUnits(plain, (u) => graphemeCount(u.text)),
   };
 }
 

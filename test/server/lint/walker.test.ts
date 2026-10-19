@@ -199,11 +199,11 @@ test('blank vs directive-only: a token-less line is blank, a ここから/改ペ
 
 // --- the line state is the AST's ---
 
-test('indent and heading are the AST line\'s, handed through line by line', () => {
+test('heading is the AST line\'s; indent adds the ［＃N字下げ］ before the line\'s first text to the block\'s', () => {
   const src = [
     '＊冒頭は字下げなし。',
     '　字面の空白で始まる行。',
-    '［＃３字下げ］行頭指定の行。',
+    '本文のあとの［＃３字下げ］は数えない行。',
     '［＃０字下げ］ゼロ指定の行。',
     '',
     '［＃ここから２字下げ］同じ行の本文。',
@@ -226,6 +226,8 @@ test('indent and heading are the AST line\'s, handed through line by line', () =
     [...walkLines(ast)].map((l) => [l.srcLine, l.indent, l.heading]),
     ast.lines.map((l) => [l.index, l.indent, l.heading]),
   );
+  // After the first text it is content, not an opening: the line still opens with its block's N.
+  assert.deepEqual(lines('本文［＃３字下げ］\n　［＃３字下げ］本文\n［＃ここから１字下げ］\n［＃２字下げ］本文').map((l) => l.indent), [0, 0, 0, 3]);
 });
 
 test('a heading postfix whose target is missing leaves its line plain prose', () => {
@@ -313,7 +315,7 @@ test('a start on a channel already open wraps nothing new: the end after it clos
   assert.deepEqual(outer('山田［＃傍点］［＃太字］［＃傍点終わり］'), [['山田', '山田']]);
 });
 
-test('neutral markup binds nothing: a line-head 字下げ stays at the head, a comment is transparent', () => {
+test('neutral markup binds nothing: a 字下げ is outside every piece, a comment is transparent', () => {
   assert.deepEqual(outer('［＃０字下げ］本文'), [['本文', '本文']]);
   assert.deepEqual(outer('［＃０字下げ］［＃傍点］内容だ［＃傍点終わり］'), [['内容だ', '［＃傍点］内容だ［＃傍点終わり］']]);
   assert.deepEqual(outer('山田［＃メモ］［＃傍点終わり］'), [['山田', '山田［＃メモ］［＃傍点終わり］']]);

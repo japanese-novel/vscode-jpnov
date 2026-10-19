@@ -221,7 +221,8 @@ export function tcyAnnotation(target: string): string {
 export const GAIJI_MARK = '※';
 
 /** The 外字注記 that are read, by what the annotation holds, each with its character
- *  (https://www.aozora.gr.jp/gaiji_chuki/sonota.html). */
+ *  (https://www.aozora.gr.jp/gaiji_chuki/sonota.html). A 《 or 》 written this way is a bracket:
+ *  only a typed one opens or closes a ruby. */
 export const GAIJI = {
   '感嘆符二つ、1-8-75': '‼',
   '疑問符二つ、1-8-76': '⁇',
@@ -229,6 +230,8 @@ export const GAIJI = {
   '感嘆符疑問符、1-8-78': '⁉',
   '逆感嘆符、1-9-3': '¡',
   '逆疑問符、1-9-22': '¿',
+  '始め二重山括弧、1-1-52': '《',
+  '終わり二重山括弧、1-1-53': '》',
 } as const;
 
 // Maps, not the object: both keys come from the document.

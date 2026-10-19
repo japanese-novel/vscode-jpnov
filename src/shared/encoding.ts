@@ -12,11 +12,13 @@
  * Decomposed kana (か + U+3099) are composed per grapheme cluster, on both sides, through the
  * shared {@link composeKana} — pair-wise composition only, never whole-text NFC.
  *
- * The characters of {@link GAIJI} have no cell: Shift JIS writes each as its 外字注記
- * (https://www.aozora.gr.jp/annotation/external_character.html), so both sides count them as held.
+ * The characters of {@link GAIJI} that have no cell are written as their 外字注記
+ * (https://www.aozora.gr.jp/annotation/external_character.html), so both sides count them as held;
+ * one with a cell, such as 《, is written as itself.
  */
 import { GAIJI, gaijiAnnotation } from './ast/notation.ts';
 import { clustersOf, composeKana, dropWithOrigin, graphemes } from './chars.ts';
+import { charClass } from './utils/regex.ts';
 
 /** `jpnov.layout.txt.encoding` members — the encodings a built `.txt` can be written in. */
 export const TXT_ENCODINGS = ['shiftJis', 'utf8', 'utf8Bom'] as const;
@@ -139,8 +141,11 @@ export interface UnencodableChar {
   readonly length: number;
 }
 
-/** The characters Shift JIS writes as their 外字注記. */
-const GAIJI_CHARS = new RegExp(`[${Object.values(GAIJI).join('')}]`, 'g');
+/** The characters Shift JIS writes as their 外字注記: those of {@link GAIJI} without a cell. Built with the table. */
+let notedGaiji: RegExp | undefined;
+function notedGaijiChars(): RegExp {
+  return (notedGaiji ??= new RegExp(`[${charClass(Object.values(GAIJI).filter((ch) => !isShiftJisEncodable(ch.codePointAt(0) ?? 0)))}]`, 'g'));
+}
 
 /** True when Shift JIS can write `ch`: in its cell, or as its 外字注記. */
 function holds(ch: string, map: Map<number, number>): boolean {
@@ -207,8 +212,8 @@ export interface EncodedTxt {
 const UTF8 = new TextEncoder();
 
 /**
- * Encodes one `.txt` artifact. Shift JIS writes the characters of {@link GAIJI} as their 外字注記,
- * and 〓 for anything else it cannot hold, which it counts — the build always produces a file, and
+ * Encodes one `.txt` artifact. Shift JIS writes the characters of {@link GAIJI} it lacks as their
+ * 外字注記, and 〓 for anything else it cannot hold, which it counts — the build always produces a file, and
  * the caller reports the count. UTF-8 holds everything.
  */
 export function encodeTxt(text: string, encoding: TxtEncoding): EncodedTxt {
@@ -226,7 +231,7 @@ export function encodeTxt(text: string, encoding: TxtEncoding): EncodedTxt {
   // ❤️ and 👨‍👩‍👦 are 2 and 5 code points but one square each. The cluster's kana are composed first
   // (か + U+3099 writes が); whatever else can be written is written (辻 survives when only its
   // variation selector is unrepresentable), and a cluster that yields nothing becomes one 〓.
-  const written = text.replace(GAIJI_CHARS, (ch) => gaijiAnnotation(ch) ?? ch);
+  const written = text.replace(notedGaijiChars(), (ch) => gaijiAnnotation(ch) ?? ch);
   for (const segment of graphemes(written)) {
     const before = bytes.length;
     for (const ch of composeKana(segment)) {

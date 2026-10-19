@@ -21,7 +21,7 @@ import { parse } from '../../../src/shared/ast/parse.ts';
 import { COVER_TEMPLATE } from '../../../src/shared/book/create.ts';
 import { renderEnglish } from '../../../src/shared/messages.ts';
 import { D } from '../../shared/_kana.ts';
-import { at, blockOf } from '../../shared/ast/_shape.ts';
+import { at, blockOf, gaijiOf } from '../../shared/ast/_shape.ts';
 import { fixAllOf, openDoc as doc } from '../helpers.ts';
 
 /** The syntax findings of `document` over the editor's parse of it. */
@@ -416,11 +416,39 @@ test('a closed 《…》 with no base yields one Warning over the run, carrying 
   assert.equal(d.severity, DiagnosticSeverity.Warning);
   assert.equal(d.source, 'jpnov');
   assert.deepEqual(d.data, { code: 'syntax.rubyBaseMissing', args: ['ごう'] });
-  assert.equal(d.message, 'ruby reading 《ごう》 has no base text before it (it prints as typed)');
+  assert.equal(d.message, 'ruby reading 《ごう》 has no base text before it (it prints as typed; for brackets, write the 二重山括弧 外字注記)');
   assert.deepEqual(d.range, {
     start: { line: 0, character: 5 },
     end: { line: 0, character: 9 }, // 《ごう》
   });
+});
+
+test('a bare 《…》 with no base carries the fix respelling it as the 二重山括弧 外字注記; one a ｜ opened does not', () => {
+  const [open, close] = [gaijiOf('《'), gaijiOf('》')];
+  const cases: readonly [src: string, run: string, fixed: string][] = [
+    ['「《聖剣》」', '《聖剣》', `「${open}聖剣${close}」`],
+    ['《よみ》\r\n次', '《よみ》', `${open}よみ${close}\r\n次`],
+    ['　行くぞ。《ごう》', '《ごう》', `　行くぞ。${open}ごう${close}`],
+    ['漢字《かんじ》《かんじ》', '《かんじ》', `漢字《かんじ》${open}かんじ${close}`],
+  ];
+  for (const [src, run, fixed] of cases) {
+    const document = doc(src);
+    const findings = annotationFindings(document);
+    assert.equal(findings.length, 1, src);
+    const f = findings[0];
+    assert.ok(f);
+    const start = src.lastIndexOf(run);
+    const range = rangeOf(document, { start, end: start + run.length });
+    assert.deepEqual(f.fix, { range, newText: `${open}${run.slice(1, -1)}${close}`, within: [] }, src);
+    assert.equal(TextDocument.applyEdits(document, [f.fix]), fixed, src);
+    assert.deepEqual(annotationDiagnostics(doc(fixed)), [], fixed); // the brackets open no ruby
+    const actions = buildCodeActions(document.uri, findings, range, undefined);
+    assert.deepEqual(actions.map((a) => a.kind), [CodeActionKind.QuickFix, CodeActionKind.SourceFixAll], src);
+  }
+  // The author wrote the ｜ of a ruby; an empty 《》 is no bracket pair.
+  for (const src of ['｜《よみ》', '｜［＃メモ］《よみ》', '｜漢字《》']) {
+    assert.deepEqual(annotationFindings(doc(src)).map((f) => f.fix), [undefined], src);
+  }
 });
 
 test('the ruby Warning range: from a bare ｜, before a CRLF, on the reading\'s own line', () => {
@@ -499,6 +527,8 @@ test('a 字下げ above INDENT_MAX yields one Warning over the annotation, namin
   assert.equal(d.message, renderEnglish(INDENT_TOO_LARGE.code, INDENT_TOO_LARGE.args));
   assert.ok(d.message.includes(fullWidthDigits(INDENT_MAX)));
   assert.deepEqual(d.range, { start: { line: 0, character: 0 }, end: { line: 0, character: over.length } });
+  // Mid-line too: the annotation stands for its spaces wherever it is written.
+  assert.deepEqual(annotationDiagnostics(doc(`本文${over}`)).map((e): unknown => e.data), [INDENT_TOO_LARGE]);
 
   // The block form: its end no longer has a start.
   const block = annotationDiagnostics(doc(`${blockOf(over)}\nA\n［＃ここで字下げ終わり］`));
@@ -506,5 +536,4 @@ test('a 字下げ above INDENT_MAX yields one Warning over the annotation, namin
   assert.deepEqual(block.map((x): unknown => x.data), [INDENT_TOO_LARGE, { code: 'syntax.danglingBlockEnd' }]);
 
   assert.deepEqual(annotationDiagnostics(doc(`${indentAnnotation(INDENT_MAX)}本文`)), []);
-  assert.deepEqual(annotationDiagnostics(doc(`本文${over}`)), []); // mid-line: a comment like any other
 });

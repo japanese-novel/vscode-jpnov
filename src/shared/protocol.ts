@@ -87,10 +87,10 @@ export type MsgCode =
   | 'syntax.unterminatedTcy' // args: [] — ［＃縦中横］ with no 終わり before its line end (the render auto-closes); range = the opening annotation
   | 'syntax.danglingTcyEnd' // args: [] — ［＃縦中横終わり］ with no open span (render no-op); range = the annotation
   | 'syntax.tcyTooLong' // args: [] — combined 縦中横 content over 3 grapheme clusters (renders but squishes); range = the content (span form) / the target inside 「」 (postfix form)
-  | 'syntax.rubyBaseMissing' // args: [reading] — a closed 《…》 with no base text before it (line start; after punctuation, a space or an annotation; a ｜ with nothing visible before the 《), printed as typed; range = the 《…》 run, from the ｜ when one opened it
+  | 'syntax.rubyBaseMissing' // args: [reading] — a closed 《…》 with no base text before it (line start; after punctuation, a space or an annotation; a ｜ with nothing visible before the 《), printed as typed; range = the 《…》 run, from the ｜ when one opened it; fix (no ｜ only): the 《…》 respelled as the 二重山括弧 外字注記
   | 'syntax.rubyReadingEmpty' // args: [] — an empty 《》 (no reading to set), printed as typed; range = the 《》
   | 'syntax.rubyInTcy' // args: [reading] — a ruby inside a ［＃縦中横］ span or under a 縦中横 postfix: the reading is dropped, the base text alone fills the cell; range = the 《…》 inside a span, the whole ruby under a postfix (one per side of a 両側ルビ)
-  | 'syntax.indentTooLarge' // args: [limit] — a line-head ［＃○字下げ］ or a ［＃ここから○字下げ］ above the notation's maximum, left a comment; `limit` is the largest count that is read, in full-width digits; range = the annotation
+  | 'syntax.indentTooLarge' // args: [limit] — a ［＃○字下げ］ or a ［＃ここから○字下げ］ above the notation's maximum, left a comment; `limit` is the largest count that is read, in full-width digits; range = the annotation
   // hover.* — the lines of a jpnov/hover reply (see HoverResult): first what the annotation is, then what it relates to
   | 'hover.postfix' // args: [mark] — a corner-target postfix: the mark it sets (傍点, 左に傍線, 太字, 縦中横, 大見出し)
   | 'hover.rubyLeft' // args: [reading] — ［＃「…」の左に「reading」のルビ］
@@ -98,7 +98,7 @@ export type MsgCode =
   | 'hover.spanEnd' // args: [mark] — an inline ［＃mark終わり］ end
   | 'hover.blockStart' // args: [mark] — a ［＃ここからmark］ start
   | 'hover.blockEnd' // args: [mark] — a ［＃ここでmark終わり］ end
-  | 'hover.indent' // args: [count] — a line-head ［＃○字下げ］; `count` in full-width digits
+  | 'hover.indent' // args: [count] — a ［＃○字下げ］, N full-width spaces where it stands; `count` in full-width digits
   | 'hover.pageBreak' // args: []
   | 'hover.value' // args: [name] — ［＃ここに「name」の値を表示］; the editor never knows the value
   | 'hover.gaiji' // args: [char] — a 外字注記 and the character it stands for

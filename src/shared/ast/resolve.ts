@@ -21,6 +21,7 @@ import type {
   EmphasisSpanStartNode,
   HeadingLevel,
   Held,
+  IndentNode,
   Issue,
   Line,
   Mark,
@@ -102,6 +103,11 @@ export function paintsNothing(line: Line): boolean {
   return line.blockDirective && line.content.every((item) => item.kind === 'comment');
 }
 
+/** The full-width spaces a ［＃○字下げ］ shows where it stands. */
+function spacesOf(node: IndentNode): string {
+  return '　'.repeat(node.amount);
+}
+
 /** The mark a decoration sets on its channel. */
 function markOf(node: EmphasisPostfixNode | EmphasisSpanStartNode): Mark {
   return { variant: node.variant, left: node.left };
@@ -120,7 +126,7 @@ class LineResolver {
   private readonly values: ValueLookup | undefined;
 
   private readonly cells = new LineCells();
-  private indent: number;
+  private readonly indent: number;
   private heading: HeadingLevel | undefined;
   private pageBreak = false;
   private blockDirective = false;
@@ -156,7 +162,7 @@ class LineResolver {
 
   /**
    * Nothing nests inside an open 縦中横: text and a broken ［＃ join the cell as typed, a value
-   * field and a 外字注記 as what they show; a ruby's ｜ and 《reading》 are dropped and the
+   * field, a 外字注記 and a ［＃○字下げ］ as what they show; a ruby's ｜ and 《reading》 are dropped and the
    * reading reported, its base text joining as text. False when `node` does not join.
    */
   private intoTcy(node: SyntaxNode): boolean {
@@ -179,6 +185,9 @@ class LineResolver {
         break;
       case 'gaiji':
         tcy.text += node.char;
+        break;
+      case 'indent':
+        tcy.text += spacesOf(node);
         break;
       default:
         return false;
@@ -232,7 +241,7 @@ class LineResolver {
         }
         break;
       case 'indent':
-        this.indent = node.amount;
+        this.chars(node, spacesOf(node), 'value');
         break;
       case 'pageBreak':
         this.pageBreak = true;
