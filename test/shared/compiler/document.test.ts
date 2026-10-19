@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BuildChrome, FurnitureAlign } from '../../../src/shared/compiler/chrome.ts';
 import { FURNITURE_ALIGNS } from '../../../src/shared/compiler/chrome.ts';
-import { chapterGlue, concatBookText, MANUSCRIPT_SHEET, renderBook, type BookInput } from '../../../src/shared/compiler/document.ts';
+import { bookCounts, chapterGlue, concatBookText, MANUSCRIPT_SHEET, renderBook, type BookInput } from '../../../src/shared/compiler/document.ts';
 import { FOOTER_BAND, HEADER_BAND, SIDE_PAD } from '../../../src/shared/compiler/geometry.ts';
 import { INDENT_MAX, VALUE_DEFAULTS, indentAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
@@ -584,6 +584,9 @@ const COVER_SRC = '［＃５字下げ］［＃ここに「タイトル」の値�
   '［＃７字下げ］［＃ここに「ペンネーム」の値を表示］\n' +
   '［＃７字下げ］全［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］ページ';
 
+/** The layout slice renderBooks lays out on — and bookCounts counts on, so the figures can be held against the cover. */
+const BODY_LAYOUT = { charsPerLine: 40, linesPerPage: 34, kinsoku: 'none', dash: 'horizontalBar' } as const;
+
 /** Render `books` with the shared option baseline; `chrome` overrides ride on top. */
 const renderBooks = (
   books: readonly BookInput[],
@@ -591,11 +594,9 @@ const renderBooks = (
 ): string =>
   renderBook({
     books,
-    charsPerLine: 40,
-    linesPerPage: opts.linesPerPage ?? 34,
+    ...BODY_LAYOUT,
+    linesPerPage: opts.linesPerPage ?? BODY_LAYOUT.linesPerPage,
     linePitch: 2,
-    kinsoku: 'none',
-    dash: 'horizontalBar',
     paperSize: 'a4',
     paperOrientation: 'auto',
     fontFamily: '',
@@ -970,4 +971,35 @@ test('cover: the sheet count runs only when a cover or the furniture asks for it
   assert.equal(flowsFor(['表紙'], { footer: SHEETS_SRC }), 2);
   assert.equal(flowsFor(['表紙'], { header: SHEETS_SRC }), 2);
   assert.equal(flowsFor([SHEETS_SRC], { header: SHEETS_SRC, footer: SHEETS_SRC }), 2);
+});
+
+// --- bookCounts (the Books view's figures) -------------------------------------------
+
+test('bookCounts: pages and sheets are the cover\'s 総ページ数 and 原稿用紙換算枚数', () => {
+  // Two chapters with a divider: the glue is part of the body in both places.
+  const n = MANUSCRIPT_SHEET.linesPerPage * 2 + 5;
+  const book = counted([{ name: 'a.jpnov', src: repeat(n, 'あ') }, { name: 'b.jpnov', src: repeat(MANUSCRIPT_SHEET.linesPerPage, 'い') }], '＊');
+  const { pages, sheets } = countsOf([book]);
+  const counts = bookCounts(book, BODY_LAYOUT);
+  assert.equal(String(counts.pages), pages);
+  assert.equal(String(counts.sheets), sheets);
+  assert.notEqual(counts.pages, counts.sheets);
+});
+
+test('bookCounts: characters are the ones a reader sees', () => {
+  const chars = (src: string): number => bookCounts({ files: [{ name: 'a.jpnov', src }] }, BODY_LAYOUT).chars;
+  assert.equal(chars('漢字《かんじ》'), 2); // a ruby reading is not body text
+  assert.equal(chars('語［＃「語」に傍点］'), 1); // nor is an annotation
+  assert.equal(chars('えっ!?［＃「!?」は縦中横］'), 4); // a 縦中横 run is one cell but its own characters
+  assert.equal(chars('　昔々。'), 4); // a full-width space counts, as in a word processor
+  assert.equal(chars('一\n\n二'), 2); // line ends and blank lines do not
+  assert.equal(chars(`か${D}`), 1); // one cluster, one character
+  assert.equal(chars(''), 0);
+});
+
+test('bookCounts: the chapter divider counts, the cover never does', () => {
+  const two = [{ name: 'a.jpnov', src: 'あ' }, { name: 'b.jpnov', src: 'い' }];
+  assert.equal(bookCounts({ files: two }, BODY_LAYOUT).chars, 2);
+  assert.equal(bookCounts({ files: two, divider: '＊' }, BODY_LAYOUT).chars, 3);
+  assert.deepEqual(bookCounts(counted(two), BODY_LAYOUT), bookCounts({ files: two }, BODY_LAYOUT));
 });

@@ -562,6 +562,11 @@ test('preview: the 改ページ dashed rule overshoots the writing band into the
   assert.match(css, /\.pagebreak\{[^}]*margin-inline:-8px/);
 });
 
+test('preview: the automatic page turn shares the marker box as a faint dotted hairline, no label', () => {
+  const css = preview();
+  assert.match(css, /\.auto\{border-block-start:1px dotted;opacity:\.5;\}/);
+});
+
 // --- build chrome ------------------------------------------------------------
 
 test('build all-on chrome: bands, outset frame, counters, rules, furniture styles', () => {

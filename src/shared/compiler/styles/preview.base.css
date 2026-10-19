@@ -35,8 +35,8 @@ body{margin:0;padding-inline:16px;padding-block:calc(10*var(--pitch)*1rem) 20px;
 /* No ruby rules here: every <rt> lives inside a classed ruby (rr/lr/br), whose on-demand
    classRule (css.ts) owns the lane layout INCLUDING the 0.5em lane size — the single home. */
 
-/* The forced-page-break marker: a dashed rule with a small vertical 「改ページ」 label pinned
-   to its middle. The negative inline margins (−8px = pad ÷ 2) stretch the auto-sized box past
+/* The page-break markers between segments. ［＃改ページ］: a dashed rule with a small vertical
+   「改ページ」 label pinned to its middle. The negative inline margins (−8px = pad ÷ 2) stretch the auto-sized box past
    the writing band into each pad, so the rule's tips overshoot the segment frames and the text
    alike (hierarchy: 改ページ > 枠 > text) — deliberately independent of edgeLine. Must stay
    ≤ the 16px pad so the marker never leaves the body padding box. The block margins keep two
@@ -44,3 +44,6 @@ body{margin:0;padding-inline:16px;padding-block:calc(10*var(--pitch)*1rem) 20px;
    and never under 13px for the segments themselves — the label is 14px wide at any fit size. */
 .pagebreak{position:relative;border-block-start:2px dashed;margin-block:max(1em,13px);margin-inline:-8px;}
 .pb-label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:10px;line-height:1;background:var(--vscode-editor-background,#fff);padding-block:2px;pointer-events:none;user-select:none;}
+/* Where the page merely ran out of lines (the build's page turn): the same box, so the column
+   spacing matches, but a faint dotted hairline and no label — one step below the author's break. */
+.auto{border-block-start:1px dotted;opacity:.5;}

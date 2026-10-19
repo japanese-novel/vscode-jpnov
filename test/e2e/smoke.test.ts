@@ -604,12 +604,12 @@ function assertFrameSpans(segWidth: number, frameWidth: number, what: string): v
   );
 }
 
-/** The over-long last chapter of the edge test: its own segment, no ［＃改ページ］ inside. */
+/** The over-long last chapter of the edge test: no ［＃改ページ］ inside, so the flow turns its pages itself. */
 const LONG_CHAPTER_LINES = 2 * PREVIEW_SETTINGS.linesPerPage + 12;
 
-test('preview edge: a ［＃改ページ］-short segment reserves a page, an over-long one is ruled to its end, at every 行送り', BROWSER_SKIP, async () => {
+test('preview edge: a ［＃改ページ］-short segment reserves a page, an over-long chapter is cut into pages, at every 行送り', BROWSER_SKIP, async () => {
   assert.ok(browser, 'JPNOV_E2E_REQUIRE_BROWSER=1 but no Chromium-family browser was found');
-  // One page per launch: the short first chapter AND an over-long last one (#177).
+  // One page per launch: the short first chapter AND an over-long last one (#177, #231).
   const text = `${CHAPTER_TEXT}［＃改ページ］\n${'　山田　太郎は王都へ行った。\n'.repeat(LONG_CHAPTER_LINES)}`;
   for (const linePitch of LINE_PITCHES) {
     const html = await render('file:///e2e/edge.jpnov', text, { ...PREVIEW_SETTINGS, edgeLine: 'red', linePitch });
@@ -637,12 +637,15 @@ test('preview edge: a ［＃改ページ］-short segment reserves a page, an ov
     );
     assertFrameSpans(m.segWidth, m.frameWidth, `@${String(linePitch)} first segment`);
 
-    // The over-long last segment grows with its lines (no page cap), and so does its frame.
-    assert.ok(m.segments >= 2 && m.lastLineCount === LONG_CHAPTER_LINES, `@${String(linePitch)}: the last chapter must over-fill a page in ONE segment`);
-    const extent = LONG_CHAPTER_LINES * column;
+    // The over-long chapter is cut at linesPerPage into one segment per page (#231): its short
+    // last page reserves the full page width too, and its frame spans that.
+    const lastPageLines = LONG_CHAPTER_LINES % PREVIEW_SETTINGS.linesPerPage;
+    const shortSegments = CHAPTER_TEXT.split('［＃改ページ］').length; // the short chapter's own pages
+    assert.equal(m.segments, shortSegments + Math.ceil(LONG_CHAPTER_LINES / PREVIEW_SETTINGS.linesPerPage), `@${String(linePitch)}: one segment per page`);
+    assert.equal(m.lastLineCount, lastPageLines, `@${String(linePitch)}: the last segment holds the chapter's last page`);
     assert.ok(
-      Math.abs(m.lastSegWidth - extent) < 2,
-      `@${String(linePitch)}: a long segment must span all its columns (${String(m.lastSegWidth)}px vs ${String(extent)}px)`,
+      Math.abs(m.lastSegWidth - fullPage) < 2,
+      `@${String(linePitch)}: the last page must reserve the full page width (${String(m.lastSegWidth)}px vs ${String(fullPage)}px)`,
     );
     assertFrameSpans(m.lastSegWidth, m.lastFrameWidth, `@${String(linePitch)} last segment`);
 

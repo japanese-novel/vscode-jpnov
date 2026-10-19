@@ -15,9 +15,12 @@ import * as vscode from 'vscode';
 import type { LanguageClient } from 'vscode-languageclient/node';
 
 import {
+  BookCountsRequest,
   BuildRequest,
   FixAllRequest,
   ListBooksRequest,
+  type BookCountsParams,
+  type BookCountsResult,
   type BookEntry,
   type BuildError,
   type BuildFormat,
@@ -36,7 +39,7 @@ import { errorText } from '#/shared/utils/errors.ts';
 import { isRecord } from '#/shared/utils/guards.ts';
 import { ocfZip } from '#/shared/compiler/ocf.ts';
 
-import type { BookVM, BuildAction, DetailMessage, EntryVM, MetaVM, StateMessage } from '../protocol.ts';
+import type { BookVM, BuildAction, CountsVM, DetailMessage, EntryVM, MetaVM, StateMessage } from '../protocol.ts';
 
 import { applyBookEdits, metaLabel, metaValueParts } from './manage.ts';
 import type { BookNode } from './nodes.ts';
@@ -44,11 +47,17 @@ import { booksHtml } from './webviewHtml.ts';
 import { renderMessage } from '../messages.ts';
 import { bookDir, compareStr, lastPathSegment, resolveUri, splitRelPath } from '../paths.ts';
 import { bookTargets, isOpenBook } from '../projectConfig.ts';
-import { buildHtmlSettings } from '../renderConfig.ts';
-import { raceRequest } from '../requests.ts';
+import { affectsRenderSettings, buildHtmlSettings } from '../renderConfig.ts';
+import { cappedRequest, raceRequest } from '../requests.ts';
 
 /** Trailing-edge delay for chapter-file event bursts (matches the preview's render debounce). */
 const REPOST_DEBOUNCE_MS = 120;
+
+/** Trailing-edge delay after a keystroke in a chapter of the open detail: its figures follow the typing, one layout per pause. */
+const COUNTS_DEBOUNCE_MS = 500;
+
+/** Hard cap on the count round-trip: one book laid out twice, so a reply this late means a stuck server. */
+const COUNTS_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Hard cap on the build round-trip: a whole-root scan is bounded work, so a reply this late
  *  means a stuck server. */
@@ -117,6 +126,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private openDetailUri: string | undefined;
   /** Trailing-edge timer coalescing chapter-file events into one detail re-post per burst. */
   private repostTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The chapter URIs of the last posted detail: the documents whose edits re-count it. */
+  private detailChapters: ReadonlySet<string> = new Set();
   /** The contributed view title captured at resolve, restored when the detail closes. */
   private defaultTitle: string | undefined;
   /** Serializes the row verbs (remove / move / drop), see `runEntryVerb`. */
@@ -131,12 +142,12 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     // create/delete/change all re-list. The watcher only fires onDidChange for on-disk writes —
     // not per keystroke.
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.jpbook');
-    // Chapter existence backs the detail's missing flags, so a `.jpnov` appearing/disappearing
-    // re-stats the open detail. Content saves don't move the panel — change events stay ignored.
-    const chapterWatcher = vscode.workspace.createFileSystemWatcher('**/*.jpnov', false, true, false);
+    // Chapter existence backs the detail's missing flags, and chapter text its figures, so a
+    // `.jpnov` appearing, disappearing or changing on disk re-posts the open detail.
+    const chapterWatcher = vscode.workspace.createFileSystemWatcher('**/*.jpnov');
     // Debounced: a bulk operation (branch switch, folder paste) fires one event per file,
-    // and each re-post stats every listed chapter — one run per burst is enough.
-    const repostDetail = (): void => {
+    // and each re-post stats every listed chapter and lays the book out — one run per burst.
+    const schedule = (delay: number): void => {
       if (this.openDetailUri === undefined) {
         return;
       }
@@ -145,8 +156,14 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (this.openDetailUri !== undefined) {
           void this.postDetail(this.openDetailUri);
         }
-      }, REPOST_DEBOUNCE_MS);
+      }, delay);
     };
+    const repostDetail = (): void => {
+      schedule(REPOST_DEBOUNCE_MS);
+    };
+    /** A chapter of the open detail that no editor holds: only the disk can change it. */
+    const closedChapter = (uri: vscode.Uri): boolean =>
+      this.detailChapters.has(uri.toString()) && !vscode.workspace.textDocuments.some((d) => d.uri.toString() === uri.toString());
 
     this.disposables.push(
       watcher,
@@ -158,14 +175,30 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       chapterWatcher,
       chapterWatcher.onDidCreate(repostDetail),
       chapterWatcher.onDidDelete(repostDetail),
+      // An open chapter's save changes nothing the buffer path has not counted already.
+      chapterWatcher.onDidChange((uri) => {
+        if (closedChapter(uri)) {
+          repostDetail();
+        }
+      }),
       // Deleting/creating a FOLDER emits one watcher event for the folder path — no `.jpnov`
       // match — so Explorer-driven folder operations re-stat through the workspace events.
       vscode.workspace.onDidCreateFiles(repostDetail),
       vscode.workspace.onDidDeleteFiles(repostDetail),
       // The detail renders the live buffer, so it follows the buffer: an edit whose save failed
-      // (or a hand edit, an undo) fires no watcher event.
+      // (or a hand edit, an undo) fires no watcher event. The figures follow the chapters' buffers
+      // the same way (the server reads them through the editor), a pause after typing at a time.
       vscode.workspace.onDidChangeTextDocument((e) => {
-        if (e.document.uri.toString() === this.openDetailUri) {
+        const uri = e.document.uri.toString();
+        if (uri === this.openDetailUri) {
+          repostDetail();
+        } else if (this.detailChapters.has(uri)) {
+          schedule(COUNTS_DEBOUNCE_MS);
+        }
+      }),
+      // The figures are laid out on the render settings, so a change to them re-counts.
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (affectsRenderSettings(e)) {
           repostDetail();
         }
       }),
@@ -245,15 +278,12 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const seq = ++this.refreshSeq;
     const params: ListBooksParams = bookTargets();
     let result: ListBooksResult;
-    const cancel = new vscode.CancellationTokenSource();
     try {
-      result = await raceRequest(
-        this.client.sendRequest<ListBooksResult>(ListBooksRequest, params, cancel.token),
-        cancel.token,
+      result = await cappedRequest(
+        (token) => this.client.sendRequest<ListBooksResult>(ListBooksRequest, params, token),
         LIST_REQUEST_TIMEOUT_MS,
       );
     } catch (err) {
-      cancel.cancel(); // a timed-out request stops on the server too
       if (report) {
         const reload = vscode.l10n.t('Reload Window');
         const message = vscode.l10n.t("Japanese Novel: couldn't load the books. {0}", errorText(err));
@@ -264,8 +294,6 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         });
       }
       return;
-    } finally {
-      cancel.dispose();
     }
     if (seq !== this.refreshSeq) {
       return; // a newer refresh already superseded this one
@@ -628,11 +656,12 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return; // the user navigated away while the document loaded
     }
     const parsed = parseJpbook(text);
-    const [chapters, covers, characters, keywords] = await Promise.all([
+    const [chapters, covers, characters, keywords, counts] = await Promise.all([
       this.entryVMs(entry, parsed.lines, 'chapters'),
       this.entryVMs(entry, parsed.lines, 'covers'),
       this.entryVMs(entry, parsed.lines, 'characters'),
       this.entryVMs(entry, parsed.lines, 'keywords'),
+      this.countsOf(uri),
     ]);
     const meta: MetaVM[] = metaRows(parsed.meta).map((row) => {
       const parts = metaValueParts(row.key, row.value);
@@ -641,6 +670,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (this.openDetailUri !== uri) {
       return; // navigated away during the async stats
     }
+    this.detailChapters = new Set(chapters.map((c) => c.fileUri).filter((u) => u !== null));
     const message: DetailMessage = {
       type: 'detail',
       uri,
@@ -651,9 +681,37 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       characters,
       keywords,
       meta,
+      counts,
       ...(reveal ? { reveal } : {}),
     };
     void view.webview.postMessage(message);
+  }
+
+  /**
+   * The book's body figures from the server, laid out on the build's settings snapshot and
+   * worded here for the detail's status bar (the webview prints what it gets). Null when a chapter could not be read, the
+   * server did not answer in time, or it is not running: the detail then shows no figures.
+   */
+  private async countsOf(uri: string): Promise<CountsVM | null> {
+    const params: BookCountsParams = { uri, settings: buildHtmlSettings() };
+    let result: BookCountsResult;
+    try {
+      result = await cappedRequest(
+        (token) => this.client.sendRequest<BookCountsResult>(BookCountsRequest, params, token),
+        COUNTS_REQUEST_TIMEOUT_MS,
+      );
+    } catch {
+      return null;
+    }
+    if (result.counts === null) {
+      return null;
+    }
+    const n = (value: number): string => value.toLocaleString(vscode.env.language);
+    return {
+      pages: { text: vscode.l10n.t('{0} page(s)', n(result.counts.pages)), title: vscode.l10n.t('Body pages') },
+      sheets: { text: vscode.l10n.t('{0} sheet(s)', n(result.counts.sheets)), title: vscode.l10n.t('Manuscript sheets (400-character 原稿用紙)') },
+      chars: { text: vscode.l10n.t('{0} character(s)', n(result.counts.chars)), title: vscode.l10n.t('Character count') },
+    };
   }
 
   /** One list's rows: the listed path (the row's identity, split into name/folder for display), file

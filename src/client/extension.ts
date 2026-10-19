@@ -45,6 +45,7 @@ import { folderIsNovelProject } from './probe.ts';
 import { isLocalizableMessage, renderMessage } from './messages.ts';
 import { documentSync } from './documentSync.ts';
 import { Preview } from './preview/preview.ts';
+import { affectsRenderSettings } from './renderConfig.ts';
 import { registerRenameTracking } from './book/tracking.ts';
 import { readText } from './book/readText.ts';
 
@@ -229,8 +230,7 @@ function ensureStarted(): void {
       if (e.affectsConfiguration('jpnov.lint') && client?.state === State.Running) {
         pushLint();
       }
-      if (e.affectsConfiguration('jpnov.layout') || e.affectsConfiguration('jpnov.lint.common.dash')) {
-        // The dash choice is the one lint key the render snapshot also carries.
+      if (affectsRenderSettings(e)) {
         preview?.refresh();
       }
     }),

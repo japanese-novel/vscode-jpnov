@@ -40,9 +40,10 @@ const OFF: BuildChrome = {
   footerAlign: 'right',
 };
 
-// The continuous preview flow (no pagination); mirrors what renderPreview emits as <body>.
-const flow = (src: string, charsPerLine = 40, kinsoku: KinsokuMode = 'none'): string =>
-  flowToHtml(rowsOf(src), charsPerLine, kinsoku);
+// The continuous preview flow (segments where the build would turn the page); mirrors what
+// renderPreview emits as <body>.
+const flow = (src: string, charsPerLine = 40, kinsoku: KinsokuMode = 'none', linesPerPage = 34): string =>
+  flowToHtml(rowsOf(src), charsPerLine, linesPerPage, kinsoku);
 
 const pages = (src: string, charsPerLine = 40, linesPerPage = 34) =>
   paginate(rowsOf(src), charsPerLine, linesPerPage, 'none');
@@ -484,7 +485,7 @@ test('flowToHtml: a break followed by a blank line opens the next segment on the
 
 // ダッシュ tests drive the translation explicitly — the plain helpers above stay glyph-agnostic.
 const dashFlow = (src: string, dash: DashMode = 'horizontalBar'): string =>
-  flowToHtml(rowsOf(src, { dash }), 40, 'none');
+  flowToHtml(rowsOf(src, { dash }), 40, 34, 'none');
 const dashHtml = (src: string): string =>
   pagesToHtml(sheets(paginate(rowsOf(src, { dash: 'horizontalBar' }), 40, 34, 'none')), undefined, OFF);
 
@@ -539,17 +540,50 @@ test('flowToHtml: honors the kinsoku mode (禁則) — the SAME engine as the bu
   );
 });
 
-test('flowToHtml: lineNumbers emits JS-numbered .ln heads that restart at a break marker', () => {
-  // Numbering is computed here (not CSS counters — a sibling counter-reset does not reset
-  // following siblings in Chromium); a wrapped continuation column counts as its own line,
-  // and a collapsed (doubled) break still restarts only once — with the segment it opens.
+test('flowToHtml: lineNumbers emits JS-numbered .ln heads that run through every break marker', () => {
+  // A wrapped continuation column counts as its own line; neither a ［＃改ページ］ nor a page
+  // turn restarts the count (the build's pages do — the preview numbers the whole file).
   assert.equal(
-    flowToHtml(rowsOf('一二三\n［＃改ページ］\n［＃改ページ］\n四'), 2, 'none', undefined, true),
+    flowToHtml(rowsOf('一二三\n［＃改ページ］\n［＃改ページ］\n四\n五'), 2, 1, 'none', undefined, true),
     '<div class="book"><div class="segment">' +
-      '<div class="line" data-line="0"><span class="ln">1</span>一二</div>' +
-      '<div class="line" data-line="0" data-ch="2"><span class="ln">2</span>三</div></div>' +
+      '<div class="line" data-line="0"><span class="ln">1</span>一二</div></div>' +
+      '<div class="pagebreak auto"></div>' +
+      '<div class="segment"><div class="line" data-line="0" data-ch="2"><span class="ln">2</span>三</div></div>' +
       '<div class="pagebreak"><span class="pb-label">改ページ</span></div>' +
-      '<div class="segment"><div class="line" data-line="3"><span class="ln">1</span>四</div></div></div>',
+      '<div class="segment"><div class="line" data-line="3"><span class="ln">3</span>四</div></div>' +
+      '<div class="pagebreak auto"></div>' +
+      '<div class="segment"><div class="line" data-line="4"><span class="ln">4</span>五</div></div></div>',
+  );
+});
+
+test('flowToHtml: every linesPerPage columns a label-less .pagebreak.auto turns the page between segments', () => {
+  assert.equal(
+    flow('一\n二\n三', 40, 'none', 2),
+    '<div class="book"><div class="segment"><div class="line" data-line="0">一</div><div class="line" data-line="1">二</div></div>' +
+      '<div class="pagebreak auto"></div>' +
+      '<div class="segment"><div class="line" data-line="2">三</div></div></div>',
+  );
+  // A wrapped continuation column fills the page like any other.
+  assert.equal(
+    flow('一二三', 2, 'none', 1),
+    '<div class="book"><div class="segment"><div class="line" data-line="0">一二</div></div>' +
+      '<div class="pagebreak auto"></div>' +
+      '<div class="segment"><div class="line" data-line="0" data-ch="2">三</div></div></div>',
+  );
+  // A page that ends with the file leaves no trailing marker.
+  assert.equal(
+    flow('一\n二', 40, 'none', 2),
+    '<div class="book"><div class="segment"><div class="line" data-line="0">一</div><div class="line" data-line="1">二</div></div></div>',
+  );
+});
+
+test('flowToHtml: ［＃改ページ］ written where the page ends emits the labelled marker alone', () => {
+  // paginate makes no empty page there either: one turn, the author's.
+  assert.equal(
+    flow('一\n二\n［＃改ページ］\n三', 40, 'none', 2),
+    '<div class="book"><div class="segment"><div class="line" data-line="0">一</div><div class="line" data-line="1">二</div></div>' +
+      '<div class="pagebreak"><span class="pb-label">改ページ</span></div>' +
+      '<div class="segment"><div class="line" data-line="3">三</div></div></div>',
   );
 });
 

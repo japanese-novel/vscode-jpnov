@@ -106,7 +106,7 @@ const host = {
     const vms = (list) => list.map((n, i) => ({ line: i + 3, path: n, name: n, folder: '', fileUri: U(n), missing: false }));
     send({
       type: 'detail', uri: this.open, title: d.title, version: d.version,
-      chapters: vms(d.chapters), covers: vms(d.covers), characters: [], keywords: [], meta: d.meta.map((m) => ({ ...m })),
+      chapters: vms(d.chapters), covers: vms(d.covers), characters: [], keywords: [], meta: d.meta.map((m) => ({ ...m })), counts: null,
     });
   },
   // A row verb's outcome: the prompt re-push always; the save → watcher round trip only after an edit.

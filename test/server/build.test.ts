@@ -8,7 +8,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CancellationToken, CancellationTokenSource } from 'vscode-languageserver/node';
 
-import { handleBuild, handleListBooks } from '../../src/server/build.ts';
+import { handleBookCounts, handleBuild, handleListBooks } from '../../src/server/build.ts';
 import {
   makeContext,
   makeFakeConnection,
@@ -1691,4 +1691,37 @@ test('build: the manifest is diagnosed on the lines the reader returns, unsaved 
       [[`${ws.uri}/vol1.jpbook`, [['jpbook.fileNotFound', line]]]],
     );
   }
+});
+
+// --- jpnov/bookCounts ----------------------------------------------------------
+
+test('bookCounts lays the body out like a build on the request settings; a title-less book still counts, nothing is diagnosed', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx, conn } = boot();
+  // Two heading-less chapters join over one blank glue line; the cover is not the body.
+  const n = MANUSCRIPT_SHEET.linesPerPage * 2 + 5;
+  await writeUnder(ws.dir, 'vol1/vol1.jpbook', `${HEAD}cover: c.jpnov\n---\na.jpnov\nb.jpnov`);
+  await writeUnder(ws.dir, 'vol1/a.jpnov', Array.from({ length: n }, () => 'あ').join('\n'));
+  await writeUnder(ws.dir, 'vol1/b.jpnov', 'い');
+  await writeUnder(ws.dir, 'vol1/c.jpnov', '表紙の文');
+
+  const result = await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/vol1.jpbook`, settings: SETTINGS });
+  const lines = n + 2;
+  assert.deepEqual(result, {
+    counts: {
+      pages: Math.ceil(lines / LAYOUT_DEFAULT.linesPerPage),
+      sheets: Math.ceil(lines / MANUSCRIPT_SHEET.linesPerPage),
+      chars: n + 1,
+    },
+  });
+  assert.equal(conn.published.length, 0);
+});
+
+test('bookCounts is null when the book or one of its chapters cannot be read', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, 'vol1/vol1.jpbook', `${HEAD}---\na.jpnov\nmissing.jpnov`);
+  await writeUnder(ws.dir, 'vol1/a.jpnov', 'あ');
+  assert.deepEqual(await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/vol1.jpbook`, settings: SETTINGS }), { counts: null });
+  assert.deepEqual(await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/none.jpbook`, settings: SETTINGS }), { counts: null });
 });

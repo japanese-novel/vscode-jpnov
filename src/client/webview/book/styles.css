@@ -119,6 +119,9 @@ h1, h2 { margin: 0; font-size: inherit; font-weight: inherit; }
   background: var(--vscode-sideBar-background, transparent);
 }
 .selrow { display: flex; justify-content: space-between; }
+/* The detail's status bar: the body's figures as short muted items in one row, like the window's status bar. */
+.status { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.status span { white-space: nowrap; }
 .link {
   background: none; border: none; color: var(--vscode-textLink-foreground);
   cursor: pointer; padding: 2px 0; font-size: 12px;

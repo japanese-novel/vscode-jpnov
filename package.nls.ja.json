@@ -76,7 +76,7 @@
   "jpnov.lint.ruby.kana.katakana.description": "片仮名以外の読みを警告します。",
   "jpnov.layout.title": "小説 — 組版と出力",
   "jpnov.layout.charsPerLine.description": "1 行の文字数。プレビューと HTML 出力のグリッドに使います。EPUB 出力の字下げは、この文字数より 1 字少ない字数までです。",
-  "jpnov.layout.linesPerPage.description": "1 ページの行数。HTML 出力のグリッドに使います。プレビューは連続表示ですが、罫線を有効にした場合は、改ページで区切られた範囲ごとに枠線を引き、少なくともこの行数ぶんの幅を確保します。",
+  "jpnov.layout.linesPerPage.description": "1 ページの行数。HTML 出力のグリッドに使います。プレビューは連続表示で、この行数ごとに自動の改ページの線を引きます。",
   "jpnov.layout.linePitch.description": "行送り。行の中心から次の行の中心までの距離を、文字サイズに対する倍率で指定します。プレビューと HTML 出力の両方に適用されます。",
   "jpnov.layout.linePitch.1.5.label": "1.5 倍",
   "jpnov.layout.linePitch.1.5.description": "最も詰まった行送り。ルビが隣の行に接します。",

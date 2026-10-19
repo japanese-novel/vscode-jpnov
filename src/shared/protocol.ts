@@ -13,6 +13,7 @@
  * manuscript text (it never decodes bytes itself).
  */
 import type { EdgeLineStyle, PreviewChrome } from './compiler/chrome.ts';
+import type { BookCounts } from './compiler/document.ts';
 import type { EpubMember } from './compiler/epub.ts';
 import type { PaperOrientation, PaperSize } from './compiler/geometry.ts';
 import type { LayoutSettings } from './config/types.ts';
@@ -346,6 +347,24 @@ export interface BookEntry {
 
 export interface ListBooksResult {
   readonly books: readonly BookEntry[];
+}
+
+// jpnov/bookCounts (C->S request)
+
+export const BookCountsRequest = 'jpnov/bookCounts';
+
+/**
+ * One `.jpbook` to count for the Books view's detail: its chapters read through `jpnov/readText`
+ * and laid out as a build would, on the same `settings` snapshot a build carries.
+ */
+export interface BookCountsParams {
+  readonly uri: string;
+  readonly settings: HtmlSettings;
+}
+
+/** The body's figures; null when the book or one of its chapters could not be read. */
+export interface BookCountsResult {
+  readonly counts: BookCounts | null;
 }
 
 // jpnov/renderFile (C->S request)
