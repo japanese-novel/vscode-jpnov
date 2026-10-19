@@ -139,6 +139,11 @@ export async function writeUnder(dir: string, rel: string, content: string | Uin
   return full;
 }
 
+/** `src` as an open `.jpnov` document. */
+export function openDoc(src: string): TextDocument {
+  return TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
+}
+
 /** One lint-fix edit in absolute source offsets (`s === e` is an insert). */
 export interface LintEdit {
   readonly s: number;
@@ -148,7 +153,7 @@ export interface LintEdit {
 
 /** `src` as an open document, and its lint findings under `raw`. */
 export function lintFindings(src: string, raw: RawLintConfigWire): { doc: TextDocument; findings: Finding[] } {
-  const doc = TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
+  const doc = openDoc(src);
   return { doc, findings: computeLintFindings(doc, parse(src), selectRules(raw)) };
 }
 

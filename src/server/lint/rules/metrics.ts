@@ -5,8 +5,6 @@
  * maxTen its 、 marks and arabicDigits its digits (every one a single UTF-16 unit).
  * Sentence rules measure the narration and dialogue views separately, so an utterance is one
  * sentence of its own and its 〇 sentinel costs the surrounding 地の文 exactly one square.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import { graphemeCount, isCjkIdeograph } from '../../../shared/chars.ts';
 

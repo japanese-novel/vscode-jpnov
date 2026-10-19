@@ -32,6 +32,7 @@ import type {
   Span,
   SpanChannel,
   SpanCloserNode,
+  IndentBlockStartNode,
   SpanOpenerNode,
   Syntax,
   SyntaxLine,
@@ -65,6 +66,7 @@ interface Ledger {
   readonly pairs: Map<PairedNode, Span>;
   readonly bound: Map<PostfixNode, Span>;
   readonly held: Map<TcySpanStartNode, Held>;
+  readonly replaced: Map<IndentBlockStartNode, Span>;
 }
 
 /** An explicit ｜ base under construction. */
@@ -392,6 +394,9 @@ class LineResolver {
       if (redundant) {
         return; // sets what is set: neither the slot nor the flow changes
       }
+      if (prev.kind === 'indentBlockStart') {
+        ledger.replaced.set(prev, node.span);
+      }
     }
     flow.open.set(channel, node);
     switch (node.kind) {
@@ -473,7 +478,7 @@ class LineResolver {
  */
 export function resolve(doc: Syntax, values?: ValueLookup): Ast {
   const flow: Flow = { marks: {}, indent: 0, heading: undefined, open: new Map() };
-  const ledger: Ledger = { issues: [...doc.issues], pairs: new Map(), bound: new Map(), held: new Map() };
+  const ledger: Ledger = { issues: [...doc.issues], pairs: new Map(), bound: new Map(), held: new Map(), replaced: new Map() };
 
   const lines = doc.lines.map((line): Line => ({ ...line, ...new LineResolver(line, flow, ledger, values).run() }));
 
@@ -483,5 +488,5 @@ export function resolve(doc: Syntax, values?: ValueLookup): Ast {
     ledger.issues.push({ kind: 'unterminatedSpan', span: opener.span, block: isBlockForm(opener) });
   }
 
-  return { lines, issues: ledger.issues.sort(bySource), openAtEnd, pairs: ledger.pairs, bound: ledger.bound, held: ledger.held };
+  return { lines, issues: ledger.issues.sort(bySource), openAtEnd, pairs: ledger.pairs, bound: ledger.bound, held: ledger.held, replaced: ledger.replaced };
 }

@@ -6,8 +6,6 @@
  *
  * The hover is a custom request: its lines are message codes the client renders, since the
  * server writes no UI text. The rename and the highlight are the standard LSP requests.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import { DocumentHighlightKind } from 'vscode-languageserver/node';
 import type { DocumentHighlight, Range, TextEdit, WorkspaceEdit } from 'vscode-languageserver/node';
@@ -147,6 +145,10 @@ function pairLine(doc: TextDocument, ast: Ast, node: PairedNode): LocalizableMes
   const partner = ast.pairs.get(node);
   const start = node.kind.endsWith('Start');
   if (partner === undefined) {
+    const replacer = node.kind === 'indentBlockStart' ? ast.replaced.get(node) : undefined;
+    if (replacer !== undefined) {
+      return { code: 'hover.replaced', args: [doc.positionAt(replacer.start).line + 1] };
+    }
     return { code: start ? 'hover.endMissing' : 'hover.startMissing' };
   }
   const line = doc.positionAt(partner.start).line + 1;

@@ -14,7 +14,7 @@ html{writing-mode:vertical-rl;line-height:var(--pitch);font-size:calc((100vh - 3
    scrollbar (~10px in vscode webviews) from covering the last character; the top half doubles
    as the band the .ln numbers are lifted into (see preview.ln.css).
    padding-block is the physical right/left: PREVIEW_MARGIN_LINES lines of blank margin where
-   the text starts (#123; rem, so the host's body{font-size} cannot scale it), and the host's
+   the text starts (rem, so the host's body{font-size} cannot scale it), and the host's
    own 20px at the left, written out so a standalone page matches. */
 body{margin:0;padding-inline:16px;padding-block:calc(10*var(--pitch)*1rem) 20px;}
 

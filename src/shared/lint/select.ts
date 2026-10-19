@@ -3,9 +3,8 @@
  * on. This is the ONE place enablement, threshold clamping, option normalization, and code
  * derivation happen — `server/lint/engine.ts` only reads the result (it re-filters nothing).
  *
- * Pure + import-light: it consumes the {@link RULES} catalog and the wire config type, references
- * NO rule modules and NO `vscode`, so it is safe to import from the vscode-free server (and to run
- * on Node's native test loader). The rule MODULE join happens later, keyed by {@link ActiveRule.id}.
+ * It consumes the {@link RULES} catalog and the wire config type and references no rule module;
+ * the rule MODULE join happens later, keyed by {@link ActiveRule.id}.
  */
 import type { RawLintConfigWire } from '../protocol.ts';
 import { clampInt } from '../utils/numbers.ts';

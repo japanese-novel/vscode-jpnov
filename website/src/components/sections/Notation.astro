@@ -1,14 +1,9 @@
 ---
-import renders from '../../generated/renders.json';
-import type { Renders } from '../../../scripts/contract.ts';
 import { LINKS } from '../../copy/links.ts';
+import { sampleOf } from '../../renders.ts';
 import JpRender from '../JpRender.astro';
 
-const notation = (renders as Renders).samples.notation;
-if (notation.kind !== 'preview') {
-  throw new Error('notation must be a preview render');
-}
-const source = notation.src.replace(/\n$/, '');
+const source = sampleOf('notation', 'preview').src.replace(/\n$/, '');
 ---
 
 <section class="jp-notation" aria-labelledby="notation-h">

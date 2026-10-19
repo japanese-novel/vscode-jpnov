@@ -12,8 +12,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { highlightsAt, hoverAt, prepareRenameAt, renameAt } from '../../src/server/annotations.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
 import { at, gaijiOf } from '../shared/ast/_shape.ts';
-
-const doc = (src: string): TextDocument => TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
+import { openDoc as doc } from './helpers.ts';
 
 /** The position of the `nth` occurrence of `needle` in `src`, `into` characters in. */
 const posOf = (src: string, needle: string, nth = 0, into = 0): Position => doc(src).positionAt(at(src, needle, nth).start + into);
@@ -68,6 +67,12 @@ test('the hover of a start or end: its form, and the annotation it pairs with on
     lines: ['hover.blockStart(２字下げ)', 'hover.pairEnd(［＃ここで字下げ終わり］, 3)'], over: '［＃ここから２字下げ］', link: 'layout_2.html#jisage',
   });
   assert.deepEqual(hover('［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］', '字下げ終わり')?.lines, ['hover.blockEnd(字下げ)', 'hover.pairStart(［＃ここから２字下げ］, 1)']);
+  // A 字下げ start of another count takes the slot (the notation's own form): the start it replaced says so,
+  // not that it lacks an end; one of the same count is redundant and replaces nothing.
+  const replaced = '［＃ここから２字下げ］\n本文\n［＃ここから３字下げ］\n本文\n［＃ここで字下げ終わり］';
+  assert.deepEqual(hover(replaced, '２字下げ')?.lines, ['hover.blockStart(２字下げ)', 'hover.replaced(3)']);
+  assert.deepEqual(hover(replaced, '３字下げ')?.lines, ['hover.blockStart(３字下げ)', 'hover.pairEnd(［＃ここで字下げ終わり］, 5)']);
+  assert.deepEqual(hover('［＃ここから２字下げ］\n本文\n［＃ここから２字下げ］\n本文', '２字下げ')?.lines, ['hover.blockStart(２字下げ)', 'hover.endMissing()']);
 });
 
 test('the hover of a 縦中横 span: what it holds', () => {

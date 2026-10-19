@@ -2,7 +2,7 @@
  * A minimal in-memory `vscode` stand-in for client unit tests under `node --test`.
  *
  * The real `vscode` module only exists inside the extension host, so these tests run
- * against this stub installed via `mock.module('vscode', ...)` (Node's
+ * against this stub installed via `mock.module('vscode', { exports })` (Node's
  * `--experimental-test-module-mocks`). It implements ONLY the surface the client
  * modules touch; anything else is intentionally absent so accidental new dependencies
  * fail loudly.
@@ -113,10 +113,6 @@ export class FileSystemError extends Error {
   static FileNotFound(uri?: Uri | string): FileSystemError {
     return new FileSystemError('FileNotFound', uri === undefined ? undefined : String(uri));
   }
-
-  static FileExists(uri?: Uri | string): FileSystemError {
-    return new FileSystemError('FileExists', uri === undefined ? undefined : String(uri));
-  }
 }
 
 export class RelativePattern {
@@ -143,13 +139,6 @@ export class WorkspaceEdit {
   readonly replaces: { uri: Uri; range: Range; newText: string }[] = [];
   replace(uri: Uri, range: Range, newText: string): void {
     this.replaces.push({ uri, range, newText });
-  }
-}
-
-export class ThemeColor {
-  readonly id: string;
-  constructor(id: string) {
-    this.id = id;
   }
 }
 
@@ -249,7 +238,6 @@ export interface FakeWebviewPanel {
   onDidDispose(listener: Listener<void>): Disposable;
 }
 
-/** Mutable test harness backing the mocked `vscode` namespace. */
 /** The InputBoxOptions fields the extension's prompts set, typed once for assertions. */
 export interface RecordedInputBox {
   prompt?: string;
@@ -260,6 +248,7 @@ export interface RecordedInputBox {
   validateInput?: (value: string) => string | null | Promise<string | null>;
 }
 
+/** Mutable test harness backing the mocked `vscode` namespace. */
 export interface MockState {
   textDocuments: FakeTextDocument[];
   /** Hover providers registered via `languages.registerHoverProvider`, with their selector. */
@@ -268,8 +257,6 @@ export interface MockState {
   registeredCommands: Map<string, (...args: unknown[]) => unknown>;
   /** `commands.executeCommand` invocations, so tests can assert dispatched jpbook.* / vscode.open. */
   executedCommands: { command: string; args: unknown[] }[];
-  /** WebviewView providers registered via `window.registerWebviewViewProvider`, keyed by view id. */
-  registeredViewProviders: Map<string, unknown>;
   writtenFiles: { uri: string; content: string }[];
   /**
    * Replaces from `workspace.applyEdit` (range as [startLine, startChar, endLine, endChar]).
@@ -302,6 +289,8 @@ export interface MockState {
   quickPickCalls: { items: unknown; options: unknown }[];
   /** Every `createQuickPick()` instance, in creation order, for reading its final rows. */
   quickPicks: FakeQuickPick<{ label: string; description?: string }>[];
+  /** `window.registerWebviewViewProvider` registrations by view id, so a test can resolve a view as VS Code would. */
+  registeredViewProviders: Map<string, { resolveWebviewView(view: unknown): void }>;
   inputBoxQueue: (string | undefined)[];
   inputBoxCalls: { options: RecordedInputBox | undefined }[];
   /** Folders the init command may scaffold into; undefined = no folder open. */
@@ -360,7 +349,6 @@ export function createMockState(): MockState {
     panels: [],
     registeredCommands: new Map(),
     executedCommands: [],
-    registeredViewProviders: new Map(),
     writtenFiles: [],
     appliedEdits: [],
     applyEditResult: true,
@@ -380,6 +368,7 @@ export function createMockState(): MockState {
     quickPickQueue: [],
     quickPickCalls: [],
     quickPicks: [],
+    registeredViewProviders: new Map(),
     inputBoxQueue: [],
     inputBoxCalls: [],
     workspaceFolders: undefined,
@@ -420,7 +409,6 @@ export function resetMockState(s: MockState): void {
   s.panels.length = 0;
   s.registeredCommands.clear();
   s.executedCommands.length = 0;
-  s.registeredViewProviders.clear();
   s.writtenFiles.length = 0;
   s.appliedEdits.length = 0;
   s.applyEditResult = true;
@@ -440,6 +428,7 @@ export function resetMockState(s: MockState): void {
   s.quickPickQueue.length = 0;
   s.quickPickCalls.length = 0;
   s.quickPicks.length = 0;
+  s.registeredViewProviders.clear();
   s.inputBoxQueue.length = 0;
   s.inputBoxCalls.length = 0;
   s.workspaceFolders = undefined;
@@ -472,10 +461,9 @@ export function resetMockState(s: MockState): void {
 const DECODER_LABELS: Readonly<Partial<Record<string, string>>> = { utf8: 'utf-8', shiftjis: 'shift_jis' };
 
 /**
- * Build a `vscode`-shaped namespace object bound to `state`. Pass this to
- * `mock.module('vscode', { defaultExport: ..., namedExports: ... })` — but because the
- * client does `import * as vscode`, install it as the default+namespace via the
- * `namedExports` returned here.
+ * Build a `vscode`-shaped namespace object bound to `state`, the `exports` of
+ * `mock.module('vscode', { exports })`: the client does `import * as vscode`, so every member is
+ * a named export.
  */
 export function buildVscode(state: MockState): Record<string, unknown> {
   const window = {
@@ -497,11 +485,11 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       state.panels.push(panel);
       return panel;
     },
-    registerWebviewViewProvider(viewId: string, provider: unknown): Disposable {
-      state.registeredViewProviders.set(viewId, provider);
-      return new Disposable(() => state.registeredViewProviders.delete(viewId));
+    // Tests hand a panel to `Preview.adopt()` themselves; a view provider is recorded for the tests that open the view.
+    registerWebviewViewProvider(id: string, provider: { resolveWebviewView(view: unknown): void }): Disposable {
+      state.registeredViewProviders.set(id, provider);
+      return registrationOnly();
     },
-    // The preview's revival hook (tests hand a panel to `Preview.adopt()` themselves).
     registerWebviewPanelSerializer: registrationOnly,
     showErrorMessage(...args: unknown[]): Promise<string | undefined> {
       if (typeof args[0] === 'string') {
@@ -793,7 +781,6 @@ export function buildVscode(state: MockState): Record<string, unknown> {
     RelativePattern,
     Range,
     WorkspaceEdit,
-    ThemeColor,
     MarkdownString,
     Hover,
     Disposable,
@@ -946,7 +933,7 @@ export function doc(uri: string, languageId: string, text = '', encoding = 'utf8
 }
 
 /** A fake `vscode.Webview`: captures outbound `postMessage` (posted) + delivers inbound (receive). */
-export function makeFakeWebview(options?: unknown): FakeWebview {
+function makeFakeWebview(options?: unknown): FakeWebview {
   const recv = new EventEmitter<unknown>();
   return {
     html: '',
@@ -1001,21 +988,16 @@ export function createFakePanel(
 
 export interface FakeWebviewView {
   webview: FakeWebview;
-  visible: boolean;
   onDidDispose(listener: Listener<void>): Disposable;
-  onDidChangeVisibility(listener: Listener<void>): Disposable;
   dispose(): void;
 }
 
 /** A fake sidebar WebviewView handed to `BooksViewProvider.resolveWebviewView`. */
 export function createFakeWebviewView(): FakeWebviewView {
   const disposeEmitter = new EventEmitter<void>();
-  const visEmitter = new EventEmitter<void>();
   return {
     webview: makeFakeWebview(),
-    visible: true,
     onDidDispose: disposeEmitter.event,
-    onDidChangeVisibility: visEmitter.event,
     dispose() {
       disposeEmitter.fire();
     },

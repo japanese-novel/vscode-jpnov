@@ -40,9 +40,8 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
   ordinary words are never flagged, and every coined term you declare is
   recognised. What deserves highlighting is the author's call; the lint rules
   reason about structure.
-- **Zero runtime dependencies.** Everything ships bundled: no package manager,
-  no post-install downloads, no network traffic — fully offline, with an
-  instant preview. Printing opens a local file in your own browser.
+- **Fully offline.** Everything ships bundled: no post-install downloads, no
+  network traffic, an instant preview. Printing opens a local file in your own browser.
 - **Non-invasive.** Sources are plain text in Aozora notation under dedicated
   extensions (`.jpnov` / `.jpbook`), so no `.txt` / `.md` project is ever
   touched, and the manuscript outlives the tool.
@@ -82,10 +81,8 @@ output beside the book, `../dist` one level up. A book under no workspace
 folder counts from its own folder either way. Dot-folders, `node_modules` and
 a nested workspace folder (a root of its own) are never scanned for books. A workspace folder is
 optional: a `.jpbook` open in the editor is listed under **Open files** when
-no folder contains it. The extension activates when you open a
-`.jpnov`/`.jpbook`, when a workspace folder contains a `*.jpbook`, or when
-any `jpnov.*` setting is saved at workspace or folder level — preview and
-book editing need no configuration at all. A **Get started with Japanese
+no folder contains it. The extension activates once the window has finished
+starting — preview and book editing need no configuration at all. A **Get started with Japanese
 Novel** walkthrough covers the same steps.
 
 ## A 60-second Japanese typography primer
@@ -131,8 +128,9 @@ but not Japanese typesetting:
   dash. In HTML and EPUB output, the chosen character is typeset as
   the em dash (`—`), and Japanese fonts join the pair into one unbroken line.
 
-- **Genkō-yōshi (原稿用紙)** — the manuscript grid Japanese prose is drafted
-  on. The default page is **40 characters × 34 lines**, and the line pitch
+- **Genkō-yōshi (原稿用紙)** — the 20 × 20 manuscript grid Japanese prose is
+  drafted on. The default page here is the submission format, **40 characters
+  × 34 lines**, and the line pitch
   comes in four steps
   (`jpnov.layout.linePitch`); turn on line numbers and column
   rules for the classic manuscript-paper look, shown here at the 2× pitch:
@@ -311,8 +309,8 @@ is an icon button):
 Outputs land in `<outDir>/<name>.{html,epub,txt}`, `<name>` being the
 `.jpbook`'s file name without the extension and `outDir` defaulting to
 `${workspaceFolder}/dist` (a value without the token counts from the
-`.jpbook`'s own folder). Two book files that resolve to the same output file
-fail the build with a diagnostic, and neither is written. A `.jpbook` with
+`.jpbook`'s own folder). Two book files built together that resolve to the same
+output file fail the build with a diagnostic, and neither is written. A `.jpbook` with
 an error (a missing metadata key or
 closing `---`, a backslash in a path, an entry that is not a `.jpnov` file) fails that
 book's build with its first error; the other books still build. Warnings, such
@@ -342,8 +340,9 @@ single line to retarget a submission. Name and move chapter files freely; the
 book keeps its order.
 
 The built output has no table-of-contents page yet. Headings come from
-annotations (see [Annotations](#annotations)): a heading line is set in a bold
-gothic (sans-serif) face at the body size, and the three levels look the same.
+annotations (see [Annotations](#annotations)): a line carrying a heading
+annotation is a heading as a whole, set in a bold gothic (sans-serif) face at
+the body size, and the three levels look the same.
 Chapters appear in the order the `.jpbook` lists them.
 
 On `.jpbook` files the editor offers completion (chapter paths, metadata keys,
@@ -476,7 +475,8 @@ start/end form (`［＃大見出し］［＃ここに「タイトル」の値を
 
 ページ番号 defaults to `0`, like 総ページ数. Any other name prints as itself:
 `［＃ここに「13」の値を表示］` renders `13`. Values are filled on cover pages and in the header
-and footer only; in a body chapter every annotation prints its default.
+and footer only; in a body chapter every annotation prints its default. On a line that
+carries a value annotation, a 対象文字列 that fails to match is not reported.
 
 The manuscript-sheet count is the number of vertical 20 × 20 manuscript sheets
 (400字詰め原稿用紙) the body fills, the unit Japanese literary contests state length in.
@@ -589,8 +589,8 @@ are not settings: they live in the `.jpbook` files.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `jpnov.layout.charsPerLine` | `40` | Characters per line (16–64), preview and builds |
-| `jpnov.layout.linesPerPage` | `34` | Lines per page in builds (16–64) |
+| `jpnov.layout.charsPerLine` | `40` | Characters per line (15–64), preview and builds |
+| `jpnov.layout.linesPerPage` | `34` | Lines per page in builds (15–64) |
 | `jpnov.layout.linePitch` | `1.5` | Line pitch as a multiple of the character size: `1.5` / `1.75` / `2` / `2.25`; preview and built pages |
 | `jpnov.layout.fontFamily` | `""` | Body font as a CSS font-family list: blank uses the default Mincho stack; preview and built HTML |
 | `jpnov.layout.kinsoku` | `strict` | Line-breaking rules: `none` / `relaxed` / `strict` |
@@ -692,8 +692,8 @@ For design rationale and architecture, see
 npm install
 ```
 
-Press <kbd>F5</kbd> to launch an Extension Development Host. Open a `.jpnov`
-file (or a folder containing a `*.jpbook`) to trigger activation.
+Press <kbd>F5</kbd> to launch an Extension Development Host; the extension
+activates once the window has finished starting.
 
 Other commands:
 

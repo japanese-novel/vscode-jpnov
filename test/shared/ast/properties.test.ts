@@ -110,7 +110,7 @@ test('the relations and the open spans name the very nodes of the lines', () => 
   for (const src of ALL) {
     const ast = parse(src);
     const nodes = new Set(nodesIn(ast));
-    for (const node of [...ast.pairs.keys(), ...ast.bound.keys(), ...ast.held.keys(), ...ast.openAtEnd]) {
+    for (const node of [...ast.pairs.keys(), ...ast.bound.keys(), ...ast.held.keys(), ...ast.replaced.keys(), ...ast.openAtEnd]) {
       assert.ok(nodes.has(node), `${node.kind} in ${JSON.stringify(src)}`);
     }
     // Resolving adds the content and the state; the syntax layer is the scan's, untouched.

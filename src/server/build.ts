@@ -21,7 +21,7 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { CancellationToken, WorkDoneProgressReporter } from 'vscode-languageserver/node';
+import type { CancellationToken } from 'vscode-languageserver/node';
 
 import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, NO_NAMES, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
@@ -72,8 +72,6 @@ interface BookTarget extends Omit<BookEntry, 'title'> {
  * `handleBuild` free of an omit-when-undefined dance.
  */
 interface BuildSelection {
-  /** When set, only book files whose URI is in the set are built; `undefined` = every book. */
-  readonly books: ReadonlySet<string> | undefined;
   readonly format: BuildFormat;
   /** The re-resolved render settings; every format reads its slice, the paper/chrome fields are html-only. */
   readonly settings: HtmlSettings;
@@ -184,9 +182,8 @@ function outPathOf(book: BookTarget): string {
 }
 
 /**
- * The books whose output path another book also claims, mapped to the collision message. Judged
- * over EVERY book the request names, selected or not: building either would clobber the other's
- * output, so a later full build could never be trusted.
+ * The books whose output path another book of the same build also claims, mapped to the
+ * collision message. Judged over the books being built: a book nobody asked for cannot clobber.
  */
 function collisionsOf(books: readonly BookTarget[]): Map<string, LocalizableMessage> {
   const byPath = Map.groupBy(books, outPathOf);
@@ -382,20 +379,13 @@ async function buildBook(
 }
 
 /**
- * Handles `jpnov/build` for every book the request names. Reports coarse `$/progress` via the
- * supplied work-done reporter (one tick per book). The result is `ok` when no error was
+ * Handles `jpnov/build` for every book the request names. The result is `ok` when no error was
  * collected; per-book errors are surfaced in `errors[]` and as diagnostics on each offending
  * `.jpbook`. A cancelled `token` makes it stop between books and return what's done — the
  * client has stopped listening, so no RequestCancelled is raised.
  */
-export async function handleBuild(
-  ctx: ServerContext,
-  params: BuildParams,
-  progress?: WorkDoneProgressReporter,
-  token?: CancellationToken,
-): Promise<BuildResult> {
+export async function handleBuild(ctx: ServerContext, params: BuildParams, token?: CancellationToken): Promise<BuildResult> {
   const { books } = await bookTargets(params);
-  const collisions = collisionsOf(books);
   const artifacts: BuildArtifact[] = [];
   const outDirs = new Set<string>();
   const errors: BuildError[] = [];
@@ -404,23 +394,14 @@ export async function handleBuild(
   // => restrict to exactly that set, so an empty selection legitimately builds nothing.
   // Settings are re-resolved once here (clamp + enum coercion of the untrusted payload)
   // and shared by every book in this build.
-  const selection: BuildSelection = {
-    books: params.books ? new Set(params.books) : undefined,
-    format: params.format,
-    settings: resolveHtmlSettings(params.settings),
-  };
+  const requested = params.books ? new Set(params.books) : undefined;
+  const built = requested === undefined ? books : books.filter((b) => requested.has(b.uri));
+  const selection: BuildSelection = { format: params.format, settings: resolveHtmlSettings(params.settings) };
+  const collisions = collisionsOf(built);
 
-  // The server cannot localize a $/progress title (no vscode.l10n in the fork); the client shows
-  // its own localized progress notification, so begin with no English label.
-  progress?.begin('', 0, undefined, false);
-
-  for (const [index, book] of books.entries()) {
+  for (const book of built) {
     if (token?.isCancellationRequested) {
       break;
-    }
-    // Subset build: skip books outside the requested set entirely (no read, no diagnostics).
-    if (selection.books && !selection.books.has(book.uri)) {
-      continue;
     }
     const output = await buildBook(ctx, book, selection, collisions.get(book.uri), token);
     if (output?.kind === 'artifact') {
@@ -429,10 +410,7 @@ export async function handleBuild(
     } else if (output !== null) {
       errors.push(output.error);
     }
-    progress?.report(Math.round(((index + 1) / books.length) * 100));
   }
-
-  progress?.done();
 
   // Spread: a Set doesn't survive JSON-RPC serialization; the wire carries a plain array.
   return { ok: errors.length === 0, outDirs: [...outDirs], artifacts, errors };

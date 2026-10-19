@@ -15,7 +15,7 @@ import { meta } from '../shared/book/_fixture.ts';
 import { buildVscode, createFakeWebviewView, createMockState, doc, resetMockState, tick, Uri, FileType } from './_vscodeMock.ts';
 
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 const { createFile } = await import('../../src/client/book/manage.ts');
 const { BooksViewProvider } = await import('../../src/client/book/view.ts');
@@ -217,11 +217,11 @@ test('revealNewBook focuses the view and opens the detail of a non-ASCII book', 
   // The reveal-flagged push is what the webview accepts on its list screen; a plain
   // re-push would be dropped as a stale race.
   assert.equal(revealedDetail(view)?.uri, bookUri);
-  // A newly discovered book defaults to checked in the pushed state.
+  // A newly discovered book is not checked: the detail's build buttons build it on their own.
   const posted = view.webview.posted as { type?: string }[];
   const states = posted.filter((m) => m.type === 'state') as { groups?: { books: { uri: string; checked: boolean }[] }[] }[];
   const last = states[states.length - 1];
-  assert.equal(last?.groups?.[0]?.books[0]?.checked, true);
+  assert.equal(last?.groups?.[0]?.books[0]?.checked, false);
   // The view chrome follows: title = the book, context key hides the title-bar `+`.
   assert.equal((view as { title?: string }).title, '本');
   const ctx = state.executedCommands

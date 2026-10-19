@@ -27,9 +27,6 @@ export function sampleDocument(src: string): { doc: TextDocument; ast: Ast } {
   return { doc: TextDocument.create(URI, 'jpnov', 1, src), ast: parse(src) };
 }
 
-/** The syntax diagnostics of `document` over the editor's parse of it. */
-const annotationDiagnostics = (document: TextDocument): Diagnostic[] => syntaxFindings(document, parse(document.getText())).map((f) => f.diagnostic);
-
 interface Manifest {
   readonly contributes: {
     readonly configuration: readonly { readonly properties: Readonly<Record<string, { readonly default?: unknown }>> }[];
@@ -96,8 +93,8 @@ export function lintSource(src: string): LintResult {
   for (const finding of findings) {
     push(finding.diagnostic, finding.fix === undefined ? undefined : { range: toRange(finding.fix.range), newText: finding.fix.newText });
   }
-  for (const diag of annotationDiagnostics(doc)) {
-    push(diag);
+  for (const finding of syntaxFindings(doc, ast)) {
+    push(finding.diagnostic);
   }
   const whole = { start: { line: 0, character: 0 }, end: doc.positionAt(src.length) };
   const action = buildCodeActions(URI, findings, whole, undefined).find((a) => a.kind === CodeActionKind.SourceFixAll);

@@ -13,7 +13,7 @@
    height.
    The 罫線 are this frame's own background: one column-wide tile with a 1px line at its right
    edge, repeated along the segment, so every column boundary is ruled however long the segment
-   grows (#177). Anchored one column in, so the first line sits between columns 1 and 2; the
+   grows. Anchored one column in, so the first line sits between columns 1 and 2; the
    instances on the frame's own borders fall under background-clip. Screen-only — the build
-   keeps css.ts's edgeRules() layers (the no-repeated-tile ruling lives there). */
+   keeps css.ts's edgeRules() layers (the no-repeated-tile rule lives there). */
 .segment::before{content:"";position:absolute;top:0;left:0;right:0;height:calc(100vh - 32px);box-sizing:border-box;border:1px solid color-mix(in srgb,var(--edge) 80%,transparent);background-image:linear-gradient(to left,color-mix(in srgb,var(--edge) 80%,transparent) 1px,transparent 1px);background-size:calc(var(--pitch)*1em) 100%;background-position:right calc(var(--pitch)*1em - 1px) top;background-repeat:repeat-x;background-origin:border-box;background-clip:padding-box;pointer-events:none;}

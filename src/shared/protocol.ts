@@ -110,6 +110,7 @@ export type MsgCode =
   | 'hover.pairEnd' // args: [annotation, line] — a start's end, with its 1-based line
   | 'hover.pairStart' // args: [annotation, line] — an end's start, with its 1-based line
   | 'hover.endMissing' // args: [] — a start with no end
+  | 'hover.replaced' // args: [line] — an unpaired ［＃ここから○字下げ］ whose slot a later one of another count took, with its 1-based line
   | 'hover.startMissing' // args: [] — an end with no start
   | 'hover.holds' // args: [text] — what a ［＃縦中横］ span holds
   | LintCode // one prose-lint code per (scope, rule); see lint/catalog.ts
@@ -384,7 +385,7 @@ export interface FixAllResult {
 
 export const ReadTextRequest = 'jpnov/readText';
 
-/** The `file:` URI of a `.jpnov` / `.jpbook`, percent-encoded like every URI the server composes (#76). */
+/** The `file:` URI of a `.jpnov` / `.jpbook`, percent-encoded like every URI the server composes. */
 export interface ReadTextParams {
   readonly uri: string;
 }

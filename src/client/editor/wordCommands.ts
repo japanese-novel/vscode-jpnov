@@ -1,5 +1,5 @@
 /**
- * The vscode half of the word commands (#155): six commands on the keys of VS Code's own word
+ * The vscode half of the word commands: six commands on the keys of VS Code's own word
  * commands, bound to `.jpnov` editors in package.json. Server-free, registered in Phase-1
  * activate().
  */

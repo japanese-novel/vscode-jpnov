@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { strFromU8, unzipSync } from 'fflate';
 
 import type { BookInput } from '../../../src/shared/compiler/document.ts';
-import { chapterStem, epubMembers } from '../../../src/shared/compiler/epub.ts';
+import { epubMembers } from '../../../src/shared/compiler/epub.ts';
 import { ocfZip } from '../../../src/shared/compiler/ocf.ts';
 import { BLANKS } from '../_kana.ts';
 import { assertWellFormedXml, assertXmlChars } from '../xml.ts';
@@ -179,6 +179,12 @@ test('nav lists one entry per CHAPTER (not per split), labeled by first 見出�
   assert.ok(nav.includes('<li><a href="text/ch002.xhtml">b</a></li>'));
   assert.ok(!nav.includes('ch001-2.xhtml'), 'mid-chapter splits stay out of the nav');
   assertWellFormedXml(nav);
+
+  // The stem drops the directories and the extension in any letter case; a name without one is itself.
+  const stems = members({ files: [{ name: 'vol1/第一章.JPNOV', src: '本文。' }, { name: 'readme', src: '本文。' }] });
+  const labels = contentOf(stems, 'OEBPS/nav.xhtml');
+  assert.ok(labels.includes('<li><a href="text/ch001.xhtml">第一章</a></li>'));
+  assert.ok(labels.includes('<li><a href="text/ch002.xhtml">readme</a></li>'));
 });
 
 test('chapter documents are well-formed XHTML linking the one shared stylesheet', () => {
@@ -261,10 +267,4 @@ test('CRLF chapters yield the same members as their LF twins', () => {
     files: TWO_CHAPTERS.files.map((f) => ({ ...f, src: f.src.replaceAll('\n', '\r\n') })),
   };
   assert.deepEqual(members(crlf), members(TWO_CHAPTERS));
-});
-
-test('chapterStem drops the directories and the .jpnov extension in any letter case (#86)', () => {
-  assert.equal(chapterStem('vol1/第一章.jpnov'), '第一章');
-  assert.equal(chapterStem('第一章.JPNOV'), '第一章');
-  assert.equal(chapterStem('readme'), 'readme');
 });

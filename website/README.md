@@ -6,8 +6,8 @@ release tag or a manual run.
 
 Prerequisites: Node 24 (`nvm use` at the repository root) and a root `npm ci`. The site renders
 its manuscript samples through the extension's own compiler, which needs the root's generated
-modules, and it lints with the root's ESLint and TypeScript install in the house config
-(`eslint.house.mjs`, `tsconfig.base.json`). The packages the site shares with the root are kept
+modules, and it lints with the root's ESLint install in the house config (`eslint.house.mjs`)
+and extends the root's `tsconfig.base.json`. The packages the site shares with the root are kept
 in lockstep by `test/deps.test.ts`; the README specimens it renders live in `docs/specimens/`.
 
 Classes: every class the site defines is `jp-*`. The product fragments keep their bare names

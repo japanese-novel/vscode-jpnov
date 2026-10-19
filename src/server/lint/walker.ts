@@ -22,9 +22,8 @@
  *
  * Lines are NEVER merged: a multi-line utterance yields one line per source line with
  * `openDepthAtEnd` > 0, and the 〇 sentinel lands on the line holding the utterance's first
- * interior character. A rendered 字下げ reaches rules only as `LintLine.indent`.
- *
- * Relative imports only (native test loader); vscode-free; no LSP types (offsets only).
+ * interior character. A rendered 字下げ reaches rules only as `LintLine.indent`. No LSP types:
+ * offsets only.
  */
 import type { Ast, SyntaxNode } from '../../shared/ast/nodes.ts';
 import { spanChannel } from '../../shared/ast/notation.ts';

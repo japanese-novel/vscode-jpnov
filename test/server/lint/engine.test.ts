@@ -8,8 +8,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { TextDocument } from 'vscode-languageserver-textdocument';
-
 import { computeLintFindings } from '../../../src/server/lint/engine.ts';
 import { INDENT_MAX, indentAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
@@ -19,7 +17,7 @@ import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
 import { selectRules } from '../../../src/shared/lint/select.ts';
 import type { RawLintConfigWire } from '../../../src/shared/protocol.ts';
 import { inLinearTime } from '../../shared/_timing.ts';
-import { applyFixAll, applyLintFixes, lintFindings } from '../helpers.ts';
+import { applyFixAll, applyLintFixes, lintFindings, openDoc } from '../helpers.ts';
 
 interface Hit {
   readonly code: string;
@@ -54,7 +52,7 @@ function applied(src: string, raw: RawLintConfigWire): string {
 const DASH_BAR: RawLintConfigWire = { 'jpnov.lint.common.dash': 'horizontalBar' };
 
 test('no rules enabled -> empty result', () => {
-  const doc = TextDocument.create('mem://x.jpnov', 'jpnov', 1, '　半 角 が あ る。');
+  const doc = openDoc('　半 角 が あ る。');
   assert.deepEqual(computeLintFindings(doc, parse(doc.getText()), selectRules({})), []);
 });
 
@@ -66,7 +64,7 @@ test('a common rule sees content INSIDE 「」', () => {
 
 test('a rule message reaches Diagnostic.data whole, args included', () => {
   // renderEnglish substitutes a missing arg with '', so a dropped arg would surface only here
-  const doc = TextDocument.create('mem://x.jpnov', 'jpnov', 1, '彼は——と');
+  const doc = openDoc('彼は——と');
   const findings = computeLintFindings(doc, parse(doc.getText()), selectRules(DASH_BAR));
   assert.deepEqual(
     findings.map((f) => f.diagnostic.data as unknown),
@@ -1006,7 +1004,7 @@ test('fixtures produce well-formed findings under the full rule set', () => {
   for (const name of ['seams.jpnov', 'showcase.jpnov']) {
     const url = new URL(`../../../test-fixtures/novel/${name}`, import.meta.url);
     const src = readFileSync(fileURLToPath(url), 'utf8');
-    const doc = TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
+    const doc = openDoc(src);
     const findings = computeLintFindings(doc, parse(src), selectRules(everything));
     assert.ok(findings.length > 0, `${name}: the corpus should trip something`);
     for (const f of findings) {

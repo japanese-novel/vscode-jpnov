@@ -8,8 +8,6 @@
  * nothing continues across a line break). The '\n' separator unit of a dialogue view is a hard
  * boundary. Leading whitespace is not part of a sentence; … and dashes do not terminate (a
  * trailing …… simply leaves the sentence open until the line ends).
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import { charClass } from '../../shared/utils/regex.ts';
 

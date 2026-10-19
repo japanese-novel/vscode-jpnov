@@ -366,6 +366,8 @@ export interface Ast {
   readonly bound: ReadonlyMap<PostfixNode, Span>;
   /** A ［＃縦中横］ start that opened a span → what the span holds. */
   readonly held: ReadonlyMap<TcySpanStartNode, Held>;
+  /** A ［＃ここから○字下げ］ whose slot a start of another count took → the span of that start. */
+  readonly replaced: ReadonlyMap<IndentBlockStartNode, Span>;
 }
 
 /** Supplies the values of ［＃ここに「…」の値を表示］ by name; a Map is one. */

@@ -44,10 +44,11 @@ test('product defaults differ per target: preview line numbers on, html off', ()
   assert.equal(BUILD_CHROME_DEFAULT.lineNumbers, false);
 });
 
-test('grid geometry clamps to [16..64] and falls back on non-integers', () => {
-  assert.equal(resolveHtmlSettings({ ...HTML_BASE, charsPerLine: 3 }).charsPerLine, 16);
+test('grid geometry clamps to [15..64], and falls back on non-integers', () => {
+  assert.equal(resolveHtmlSettings({ ...HTML_BASE, charsPerLine: 3 }).charsPerLine, 15);
   assert.equal(resolveHtmlSettings({ ...HTML_BASE, charsPerLine: 99 }).charsPerLine, 64);
-  assert.equal(resolveHtmlSettings({ ...HTML_BASE, linesPerPage: 1 }).linesPerPage, 16);
+  assert.equal(resolveHtmlSettings({ ...HTML_BASE, linesPerPage: 1 }).linesPerPage, 15);
+  assert.equal(resolveHtmlSettings({ ...HTML_BASE, linesPerPage: 15 }).linesPerPage, 15);
   assert.equal(
     resolveHtmlSettings(badHtml({ charsPerLine: 'wide' })).charsPerLine,
     LAYOUT_DEFAULT.charsPerLine,
@@ -58,7 +59,7 @@ test('grid geometry clamps to [16..64] and falls back on non-integers', () => {
   );
   assert.equal(resolvePreviewSettings({ ...PREVIEW_BASE, charsPerLine: 64 }).charsPerLine, 64);
   // linesPerPage rides the preview snapshot too (the edge frame's page extent) — same clamp.
-  assert.equal(resolvePreviewSettings({ ...PREVIEW_BASE, linesPerPage: 1 }).linesPerPage, 16);
+  assert.equal(resolvePreviewSettings({ ...PREVIEW_BASE, linesPerPage: 1 }).linesPerPage, 15);
   assert.equal(
     resolvePreviewSettings(badPreview({ linesPerPage: 'tall' })).linesPerPage,
     LAYOUT_DEFAULT.linesPerPage,

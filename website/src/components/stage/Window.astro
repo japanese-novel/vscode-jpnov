@@ -3,9 +3,8 @@
  * The reconstructed VS Code window (2026 Dark). `snapshot` renders one static end state; `motion`
  * renders the final state with every element the timeline animates present and pre-hidden.
  */
-import renders from '../../generated/renders.json';
 import { lineText } from '../../../scripts/contract.ts';
-import type { Renders } from '../../../scripts/contract.ts';
+import { sampleOf } from '../../renders.ts';
 import type { BeatId } from '../../stage/beats.ts';
 import { BAIT_LINE, EMPH_ANNOTATION, EMPH_LINE, TYPED_FROM } from '../../stage/sample.ts';
 import { NAMES } from '../../stage/strings.ts';
@@ -20,20 +19,16 @@ import StatusBar from './StatusBar.astro';
 import TitleBar from './TitleBar.astro';
 
 /** A static end state (a beat short of the printed page), or the animated window. */
-export type Snapshot = Exclude<BeatId, 'book'> | 'motion';
+type Snapshot = Exclude<BeatId, 'book'> | 'motion';
 
 interface Props {
   snapshot: Snapshot;
 }
 
 const { snapshot } = Astro.props;
-const samples = (renders as Renders).samples;
-const typing = samples.stageTyping;
-const emphasised = samples.stageEmphasised;
-const fixed = samples.stageFixed;
-if (typing.kind !== 'preview' || emphasised.kind !== 'preview' || fixed.kind !== 'preview') {
-  throw new Error('stage samples must be previews');
-}
+const typing = sampleOf('stageTyping', 'preview');
+const emphasised = sampleOf('stageEmphasised', 'preview');
+const fixed = sampleOf('stageFixed', 'preview');
 const motion = snapshot === 'motion';
 const state = snapshot === 'write' ? typing : motion ? fixed : emphasised;
 const diagnostic = emphasised.diagnostics[0];

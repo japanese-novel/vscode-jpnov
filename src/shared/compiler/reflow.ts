@@ -20,9 +20,9 @@ import {
   effectiveIndent,
   emitUnits,
   insepClass,
-  reflowRubyHtml,
   unitKey,
   type Row,
+  type RubyText,
   type Unit,
 } from './layout.ts';
 
@@ -36,6 +36,24 @@ export function nonBlank(text: string): string | null {
 export interface ReflowSegment {
   readonly body: string;
   readonly heading: string | null;
+}
+
+/**
+ * A ruby unit's markup for the reflow output: NATIVE `<ruby>` in every form — the reading system
+ * owns spacing and overhang. A left-side reading rides `ruby.ru` (class.ruby-u.css moves it to
+ * the under side); a both-side ruby nests, the HTML double-sided pattern. The paginated lanes
+ * cannot serve here: Apple Books neutralizes position:absolute in reflowable EPUB, dropping the
+ * absolutely positioned readings into the text flow.
+ */
+function reflowRubyHtml(r: RubyText): string {
+  if (r.left === undefined) {
+    return `<ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right ?? '')}</rt></ruby>`;
+  }
+  const left = `<rt>${escapeHtml(r.left)}</rt>`;
+  if (r.right === undefined) {
+    return `<ruby class="ru">${escapeHtml(r.base)}${left}</ruby>`;
+  }
+  return `<ruby class="ru"><ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right)}</rt></ruby>${left}</ruby>`;
 }
 
 /**

@@ -48,8 +48,8 @@ const BOOK_OPEN = '<div class="book">';
 /** The preview's fit-to-pane formula, rebuilt from the same constant the product derives it from. */
 const FIT_FORMULA = `font-size:calc((100vh - 32px) / (var(--cpl) + ${String(2 * EDGE_INSET)}));`;
 
-/** The preview body's blank right margin (#123): scroll room for the editor's pane. An embed has
- *  no pane to scroll, so the margin goes and only the host's 20px at the left stays (#213). */
+/** The preview body's blank right margin: scroll room for the editor's pane. An embed has no
+ *  pane to scroll, so the margin goes and only the host's 20px at the left stays. */
 const PREVIEW_MARGIN = `padding-block:calc(${String(PREVIEW_MARGIN_LINES)}*var(--pitch)*1rem) 20px;`;
 
 /** Replaces one product literal, throwing when the product no longer writes it. */

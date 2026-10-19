@@ -19,7 +19,7 @@ import { renderEnglish } from '../../src/shared/messages.ts';
 import type { MsgCode } from '../../src/shared/protocol.ts';
 import { buildVscode, createMockState } from './_vscodeMock.ts';
 
-mock.module('vscode', { namedExports: buildVscode(createMockState()) });
+mock.module('vscode', { exports: buildVscode(createMockState()) });
 
 const { renderMessage } = await import('../../src/client/messages.ts');
 
@@ -83,6 +83,7 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'hover.pairEnd': ['［＃傍点終わり］', 3],
   'hover.pairStart': ['［＃傍点］', 1],
   'hover.endMissing': [],
+  'hover.replaced': [3],
   'hover.startMissing': [],
   'hover.holds': ['12'],
   'lint.common.sentenceLength': [],

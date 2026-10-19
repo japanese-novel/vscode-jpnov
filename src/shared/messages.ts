@@ -132,6 +132,8 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return `Starts at ${a(0)} (line ${a(1)})`;
     case 'hover.endMissing':
       return 'No end annotation';
+    case 'hover.replaced':
+      return `Replaced by the 字下げ on line ${a(0)}`;
     case 'hover.startMissing':
       return 'No start annotation';
     case 'hover.holds':

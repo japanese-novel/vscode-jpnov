@@ -1,9 +1,7 @@
 import { OUT_DIR_DEFAULT, WORKSPACE_FOLDER_TOKEN } from './validate.ts';
 
-/**
- * Inclusive bounds for `jpnov.layout.charsPerLine` / `jpnov.layout.linesPerPage`.
- */
-export const CHARS_MIN = 16;
+/** Inclusive bounds of `jpnov.layout.charsPerLine` and `jpnov.layout.linesPerPage`: a 文庫 page runs to 15 lines. */
+export const CHARS_MIN = 15;
 export const CHARS_MAX = 64;
 
 /**

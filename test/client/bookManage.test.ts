@@ -17,7 +17,7 @@ import { buildVscode, createMockState, doc, FakeQuickPick, FileType, resetMockSt
 import { HEAD } from '../shared/book/_fixture.ts';
 
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 const { registerBookCommands } = await import('../../src/client/book/manage.ts');
 const { COVER_TEMPLATE } = await import('../../src/shared/book/create.ts');
@@ -456,6 +456,21 @@ test('editMeta edits the lines of ONE key and saves the book', async () => {
       [{ range: [1, 0, 1, 10], newText: 'title:' }, { range: [2, 0, 3, 0], newText: '' }],
     ],
     [
+      'the header pick "Title" writes the title value annotation',
+      'title: 作品名\n---\n', 'header', { picked: [{ pick: 'Title' }, 'accept'] },
+      [{ range: [1, 10, 1, 10], newText: '\nheader: ［＃ここに「タイトル」の値を表示］' }],
+    ],
+    [
+      'the header pick "No header" is written as `header:`',
+      'title: 作品名\nheader: 作品名　一\n---\n', 'header', { picked: [{ pick: 'No header' }, 'accept'] },
+      [{ range: [2, 0, 2, 13], newText: 'header:' }],
+    ],
+    [
+      'a typed header is the first item, taken as typed',
+      'title: 作品名\n---\n', 'header', { picked: [{ type: ' 作品名　一 ' }, 'accept'] },
+      [{ range: [1, 10, 1, 10], newText: '\nheader: 作品名　一' }],
+    ],
+    [
       'the footer pick "No footer" is written as `footer:`',
       'title: 作品名\n---\n', 'footer', { picked: [{ pick: 'No footer' }, 'accept'] },
       [{ range: [1, 10, 1, 10], newText: '\nfooter:' }],
@@ -544,6 +559,7 @@ test('editMeta offers the five alignments for the header and the footer, each wi
 test('a dismissed dialog applies nothing and saves nothing', async () => {
   const cases: readonly (readonly [name: string, key: string, given: Answer])[] = [
     ['a dismissed input box', 'title', { typed: undefined }],
+    ['a dismissed header pick', 'header', { picked: undefined }],
     ['a dismissed footer pick', 'footer', { picked: undefined }],
     ['a dismissed divider pick', 'divider', { picked: undefined }],
     ['a dismissed alignment pick', 'headerAlign', { picked: undefined }],
@@ -575,7 +591,7 @@ test('a refused edit or a failed save is toasted (#90)', async () => {
   book(true);
   state.applyEditResult = false;
   await run();
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit book.jpbook. "]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit book.jpbook."]);
   assert.equal(saves, 0);
 
   resetMockState(state);

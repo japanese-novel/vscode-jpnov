@@ -4,8 +4,8 @@
  * its em from `--jp-paper-width`; a preview fragment from the pane height `--jp-vh`, which `em`
  * derives the way the product's own fit formula does.
  */
-import renders from '../generated/renders.json';
-import type { Renders, SampleName } from '../../scripts/contract.ts';
+import type { SampleName } from '../../scripts/contract.ts';
+import { RENDERS } from '../renders.ts';
 
 interface Props {
   name: SampleName;
@@ -16,7 +16,7 @@ interface Props {
 }
 
 const { name, em, class: cls = '', style = '' } = Astro.props;
-const sample = (renders as Renders).samples[name];
+const sample = RENDERS.samples[name];
 const fragment = sample.kind === 'book' ? sample.fragment : sample.preview;
 let sizing = '';
 if (sample.kind === 'book') {

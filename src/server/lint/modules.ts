@@ -2,12 +2,10 @@
  * Binds each catalog rule id to HOW it runs: a `line` rule (a per-document {@link LineRule}
  * instance fed every {@link LintLine} by the engine) or a `raw` scan over the document source.
  *
- * `satisfies Record<CatalogId, RuleImpl>` makes the catalog and the implementations a compile-time
+ * The `Record<CatalogId, RuleImpl>` type makes the catalog and the implementations a compile-time
  * pair: a rule added to `catalog.ts` without an entry here (or vice-versa) fails to build.
  * Character-class scanners are lifted through the adapters in rules/adapt.ts; everything else is a
  * hand-written factory in rules/.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import type { CatalogId } from '../../shared/lint/catalog.ts';
 

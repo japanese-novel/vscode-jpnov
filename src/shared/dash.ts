@@ -8,8 +8,7 @@ export const DASH_BY_MODE: Readonly<Record<DashMode, string>> = {
   boxDrawing: '─', // U+2500
 };
 
-/** Every dash glyph, whatever the setting selects: all of them bind as one 分離禁止 class.
- *  Shared with the lint scanner (server/lint/prescan.ts). */
+/** Every dash glyph, whatever the setting selects: all of them bind as one 分離禁止 class. */
 export const DASH_CHARS = new Set<string>(Object.values(DASH_BY_MODE));
 
 /** The configured dash mode's glyph is EMITTED as this one (U+2014): its ink runs edge to edge

@@ -30,7 +30,7 @@ const LABELS = {
 } as const;
 
 function layout(over: Partial<PreviewLayoutInit>): PreviewLayoutInit {
-  return { charsPerLine: 40, linesPerPage: 34, adjusted: false, min: 16, max: 64, labels: LABELS, ...over };
+  return { charsPerLine: 40, linesPerPage: 34, adjusted: false, min: 15, max: 64, labels: LABELS, ...over };
 }
 
 /** The page as the host serves it: the widget stylesheet, a body, the stub API + `__INIT`, the real bundle. */
@@ -131,7 +131,7 @@ test('folded by default, the widget opens on its summary, clamps and de-duplicat
   step('over-max', () => change(cpl, '70'));
   step('under-min', () => change(lpp, '3'));
   step('cleared', () => change(lpp, ''));
-  step('same', () => change(lpp, '16'));
+  step('same', () => change(lpp, '15'));
   step('enter', () => { cpl.value = '30'; key(cpl, 'Enter'); });
   step('fraction', () => change(cpl, '33.6'));
   step('focus-stays', () => { leave(cpl, lpp); });
@@ -144,25 +144,25 @@ test('folded by default, the widget opens on its summary, clamps and de-duplicat
   assert.equal(report.adjusted, false);
   assert.equal(report.title, 'HINT');
   assert.deepEqual(report.names, ['CPL', 'LPP']);
-  assert.deepEqual(report.bounds, ['16', '64']);
+  assert.deepEqual(report.bounds, ['15', '64']);
   assert.deepEqual(report.fields, ['字', '行']);
   assert.deepEqual(report.buttons, [], 'no reset/save buttons while the values are the settings');
   assert.equal(report.summaryName, 'SHOW');
-  assert.equal(report.summaryText, '34 字 × 16 行', 'the summary follows the committed values');
+  assert.equal(report.summaryText, '34 字 × 15 行', 'the summary follows the committed values');
   assert.deepEqual(report.steps, [
     { name: 'loaded', posted: [], values: ['40', '34'], active: null, ...FOLDED },
     { name: 'summary-click', posted: [], values: ['40', '34'], active: 'cpl', ...OPEN },
     { name: 'in-range', posted: [set('charsPerLine', 42)], values: ['42', '34'], active: 'cpl', ...OPEN },
     { name: 'over-max', posted: [set('charsPerLine', 64)], values: ['64', '34'], active: 'cpl', ...OPEN },
-    { name: 'under-min', posted: [set('linesPerPage', 16)], values: ['64', '16'], active: 'cpl', ...OPEN },
-    { name: 'cleared', posted: [], values: ['64', '16'], active: 'cpl', ...OPEN },
-    { name: 'same', posted: [], values: ['64', '16'], active: 'cpl', ...OPEN },
-    { name: 'enter', posted: [set('charsPerLine', 30)], values: ['30', '16'], active: 'cpl', ...OPEN },
-    { name: 'fraction', posted: [set('charsPerLine', 34)], values: ['34', '16'], active: 'cpl', ...OPEN },
+    { name: 'under-min', posted: [set('linesPerPage', 15)], values: ['64', '15'], active: 'cpl', ...OPEN },
+    { name: 'cleared', posted: [], values: ['64', '15'], active: 'cpl', ...OPEN },
+    { name: 'same', posted: [], values: ['64', '15'], active: 'cpl', ...OPEN },
+    { name: 'enter', posted: [set('charsPerLine', 30)], values: ['30', '15'], active: 'cpl', ...OPEN },
+    { name: 'fraction', posted: [set('charsPerLine', 34)], values: ['34', '15'], active: 'cpl', ...OPEN },
     // Synthetic focusout: the handler folds only when focus leaves the chip (focus itself stays put).
-    { name: 'focus-stays', posted: [], values: ['34', '16'], active: 'cpl', ...OPEN },
-    { name: 'focus-leaves', posted: [], values: ['34', '16'], active: 'cpl', ...FOLDED },
-    { name: 'summary-again', posted: [], values: ['34', '16'], active: 'cpl', ...OPEN },
+    { name: 'focus-stays', posted: [], values: ['34', '15'], active: 'cpl', ...OPEN },
+    { name: 'focus-leaves', posted: [], values: ['34', '15'], active: 'cpl', ...FOLDED },
+    { name: 'summary-again', posted: [], values: ['34', '15'], active: 'cpl', ...OPEN },
   ]);
 });
 

@@ -10,7 +10,7 @@
    every pitch the glyph's ≥0.25em column-side slack clears the stroke). All guarded against
    drift by styles-codegen.test.ts.
    The 罫線 are this frame's own BACKGROUND, independent of the .line count — emitted by
-   css.ts's edgeRules(), which owns the layer geometry and the no-repeated-tile ruling.
+   css.ts's edgeRules(), which owns the layer geometry and the no-repeated-tile rule.
    background-clip:padding-box keeps the 80%-alpha stripes off the frame's own border;
    print-color-adjust:exact keeps the background in print/PDF (borders print, backgrounds are
    omitted). Longhand background-* only: the shorthand resets origin/clip. */

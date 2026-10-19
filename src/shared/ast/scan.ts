@@ -128,7 +128,7 @@ function hasShown(src: string, start: number, end: number): boolean {
 
 /** The explicit base a ｜ opened, until its 《reading》: where the text before the ｜ starts, the
  *  ｜ itself, and the nodes met since (the text after the last of them is still pending). */
-interface Held {
+interface OpenBase {
   readonly beforeStart: number;
   readonly at: number;
   readonly nodes: SyntaxNode[];
@@ -137,7 +137,7 @@ interface Held {
 function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): SyntaxNode[] {
   const nodes: SyntaxNode[] = [];
   let runStart = from; // the pending text run is [runStart, i)
-  let held: Held | null = null;
+  let held: OpenBase | null = null;
 
   // Every delimiter search stays inside the line.
   const line = src.slice(from, to);

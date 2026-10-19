@@ -8,8 +8,6 @@
  * A matched 《》 pair in prose is a base-less reading (the Scanner keeps it literal and reports
  * syntax.rubyBaseMissing) and balances here. An unmatched prose 《 or 》 is
  * always a broken ruby — flagging it here is the feature.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import { charClass } from '../../../shared/utils/regex.ts';
 

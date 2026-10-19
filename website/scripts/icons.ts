@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { writeIfChanged } from '../../scripts/write.ts';
 import { sitePath } from './root.ts';
 
-export const CODICONS = [
+const CODICONS = [
   'files', 'search', 'source-control', 'debug-alt', 'extensions', 'account', 'settings-gear', 'refresh',
   'chevron-left', 'chevron-right', 'chevron-down', 'chevron-up', 'close', 'gripper', 'checklist', 'new-file',
   'edit', 'open-preview', 'split-horizontal', 'ellipsis', 'lightbulb', 'lightbulb-autofix', 'warning', 'error',

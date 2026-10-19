@@ -1,6 +1,6 @@
 /* source(none): no automatic class detection, so Tailwind emits its @theme variables and
    preflight and never a utility. The embedded product fragments carry bare class names
-   (grid, indent-N, …) and any harvested utility would land on them (#70). */
+   (grid, indent-N, …) and any harvested utility would land on them. */
 @import 'tailwindcss' source(none);
 @import './fonts.css';
 
@@ -131,8 +131,7 @@ pre.jp-source {
 .jp-cta:hover { background: var(--color-vermilion); }
 .jp-cta-quiet { font-size: 0.9375rem; }
 .jp-paper { --jp-paper-width: 100cqw; }
-.jp-scope.jp-paper .page { box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
-.jp-scope.jp-paper .page { margin: 0 auto; }
+.jp-scope.jp-paper .page { margin: 0 auto; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
 .jp-on-paper { --jp-bg: #fff; }
 /* Vertical specimens sit on a small sheet, like the page renders. Flex, not inline-block:
    WebKit sizes a vertical-rl inline-block's intrinsic width as 0 inside a shrink-to-fit box. */
@@ -163,10 +162,6 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
 /* Physical margin: on a vertical-rl box, margin-inline-end would be the bottom. */
 .jp-hero-copy > .jp-hero-title { grid-area: 2 / 2; margin-right: clamp(1.5rem, 10vw, 12rem); }
 .jp-hero-copy > .jp-hero-intro { grid-area: 2 / 1; }
-/* Beside the title the buttons sit flush right under the lede, the primary one nearest the
-   title; the reversed flow keeps the source order primary-first, so when the row wraps the
-   primary button is the top line. */
-.jp-hero-intro > .jp-cta-row { flex-direction: row; justify-content: flex-start; }
 @media (max-width: 40rem) {
   .jp-hero-copy { grid-template-columns: minmax(0, 1fr); }
   /* Stretched to the column, a vertical-rl box would lay its columns out from the right. */
@@ -195,7 +190,6 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
 @media (min-width: 48rem) { .jp-stance-list { grid-template-columns: 1fr 1fr; } }
 .jp-stance-list h3 { font-family: var(--font-mincho); font-weight: 500; font-size: 1.375rem; margin-bottom: 0.75rem; }
 .jp-stance-list p { line-height: 2; color: color-mix(in srgb, var(--color-ink) 80%, transparent); }
-.jp-sm-only { display: none; }
 
 /* ---- notation -------------------------------------------------------------------------- */
 .jp-specimen { display: grid; gap: 2.5rem; margin-top: 3.5rem; align-items: start; }
@@ -225,8 +219,7 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
 /* ---- typesetting ----------------------------------------------------------------------- */
 .jp-kinsoku { display: flex; gap: 3rem 4rem; margin-top: 3.5rem; flex-wrap: wrap; justify-content: center; --jp-embed-em: 24px; }
 @media (max-width: 40rem) { .jp-kinsoku { --jp-embed-em: 17px; gap: 1.5rem; } }
-.jp-kinsoku figure { margin: 0; }
-.jp-kinsoku figure { display: flex; flex-direction: column; align-items: center; }
+.jp-kinsoku figure { margin: 0; display: flex; flex-direction: column; align-items: center; }
 .jp-genko { margin-top: 4rem; container-type: inline-size; }
 
 /* ---- getting started ------------------------------------------------------------------- */

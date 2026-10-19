@@ -9,8 +9,6 @@
  * range, a value field, a 外字注記, a dropped character, kana composed on one side only — and
  * then a splice of the 「…」 would guess; those postfixes are left alone, and a stale target is
  * `syntax.postfixTargetMissing`'s to report.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import type { Range, TextEdit } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';

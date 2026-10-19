@@ -4,18 +4,14 @@
  * and a wide viewport, and the same five end states stacked for everyone else (reduced motion,
  * narrow viewports, no JS).
  */
-import renders from '../../generated/renders.json';
-import type { Renders } from '../../../scripts/contract.ts';
+import { sampleOf } from '../../renders.ts';
 import { BEATS, STAGE_HEADING } from '../../stage/beats.ts';
 import Captions from './Captions.astro';
 import PageLayer from './PageLayer.astro';
 import Sprite from './Sprite.astro';
 import Window from './Window.astro';
 
-const stage = (renders as Renders).samples.stageEmphasised;
-if (stage.kind !== 'preview') {
-  throw new Error('stageEmphasised must be a preview render');
-}
+const stage = sampleOf('stageEmphasised', 'preview');
 ---
 
 <section class="jp-stage" aria-labelledby="stage-h">
