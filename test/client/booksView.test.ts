@@ -1207,7 +1207,7 @@ test('openDetail asks the server for the body\'s figures on the build settings a
   assert.deepEqual(firstDetail(view).counts, {
     pages: { text: '2 page(s)', title: 'Body pages' },
     sheets: { text: '3 sheet(s)', title: 'Manuscript sheets (400-character 原稿用紙)' },
-    chars: { text: '45 character(s)', title: 'Characters' },
+    chars: { text: '45 character(s)', title: 'Character count' },
   });
   const [request, ...more] = client.calls.counts;
   assert.ok(request !== undefined && more.length === 0, 'one count request per detail');

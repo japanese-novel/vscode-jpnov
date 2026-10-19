@@ -710,7 +710,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     return {
       pages: { text: vscode.l10n.t('{0} page(s)', n(result.counts.pages)), title: vscode.l10n.t('Body pages') },
       sheets: { text: vscode.l10n.t('{0} sheet(s)', n(result.counts.sheets)), title: vscode.l10n.t('Manuscript sheets (400-character 原稿用紙)') },
-      chars: { text: vscode.l10n.t('{0} character(s)', n(result.counts.chars)), title: vscode.l10n.t('Characters') },
+      chars: { text: vscode.l10n.t('{0} character(s)', n(result.counts.chars)), title: vscode.l10n.t('Character count') },
     };
   }
 
