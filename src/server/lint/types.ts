@@ -88,7 +88,7 @@ export interface LintLine {
    *  an annotation), one per run of text between them — what a rule scans when it must see the
    *  markup interiors every view elides. */
   readonly source: readonly SourceSlice[];
-  /** Rendered 字下げ of this line (line-head ［＃N字下げ］ override, else the open block's N). */
+  /** 字下げ the line opens with: the block's N plus any ［＃N字下げ］ before its first text. */
   readonly indent: number;
   /** The line's 見出し level, when a heading postfix/span/block covers it. */
   readonly heading: HeadingLevel | undefined;

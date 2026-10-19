@@ -27,7 +27,7 @@ test('an unclosed ［＃ is reported over the broken annotation, never its termi
 
 // --------------------------------------------------------------- 字下げ above the maximum
 
-test('a 字下げ above INDENT_MAX is reported over the annotation, at a line head and as a block opener', () => {
+test('a 字下げ above INDENT_MAX is reported over the annotation, wherever it stands and as a block opener', () => {
   const over = indentAnnotation(INDENT_MAX + 1);
   const head = `${over}本文`;
   assert.deepEqual(issuesOf(head), [{ kind: 'indentTooLarge', span: at(head, over) }]);
@@ -43,9 +43,11 @@ test('a 字下げ above INDENT_MAX is reported over the annotation, at a line he
   assert.deepEqual(parse(block).lines.map((line) => line.indent), [0, 0, 0]);
   assert.deepEqual(parse(`${opener}\nA`).openAtEnd, []);
 
-  // A mid-line one is a comment like any mid-line 字下げ; the maximum itself is read.
+  // Mid-line too, since the annotation stands for its spaces anywhere; the maximum itself is read.
+  const mid = `本文${over}`;
+  assert.deepEqual(issuesOf(mid), [{ kind: 'indentTooLarge', span: at(mid, over) }]);
   const max = indentAnnotation(INDENT_MAX);
-  for (const clean of [`本文${over}`, `${max}本文`, `${blockOf(max)}\nA\n［＃ここで字下げ終わり］`]) {
+  for (const clean of [`${max}本文`, `本文${max}`, `${blockOf(max)}\nA\n［＃ここで字下げ終わり］`]) {
     assert.deepEqual(issuesOf(clean), [], clean);
   }
 });

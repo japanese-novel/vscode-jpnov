@@ -85,7 +85,7 @@ The text build prints the nodes.
 | Stage | Produces | Holds |
 | --- | --- | --- |
 | **Scanner** | Per line, the nodes in source order: text, annotations, ruby marks and readings. Each is a verbatim slice with its position; an annotation also carries the position of every part inside it. | Lossless: printing the nodes gives the source back. Every pairing the scanner makes is bounded by its line, so broken markup affects that line alone. |
-| **AST** | Per line, the content in paint order with its decoration marks, and the line's state (字下げ, 見出し, 改ページ). Beside the lines: which span start pairs with which end, what each annotation bound to, and every structural finding. | Total: it always yields a result. Content strings are display strings (kana composed, values substituted, a 外字注記 as its character, the characters no output can carry dropped), a character being one grapheme cluster; the nodes stay verbatim. |
+| **AST** | Per line, the content in paint order with its decoration marks, and the line's state (block 字下げ, 見出し, 改ページ). Beside the lines: which span start pairs with which end, what each annotation bound to, and every structural finding. | Total: it always yields a result. Content strings are display strings (kana composed, values substituted, a 外字注記 as its character, the characters no output can carry dropped), a character being one grapheme cluster; the nodes stay verbatim. |
 | **Output** | Rows of units, a unit being one glyph group with its advance in cells. From the rows: the preview, the paginated HTML, the EPUB. | The only stage that takes layout settings. |
 
 `parse` is `scan` followed by `resolve`.
@@ -102,7 +102,7 @@ The outputs:
 | --- | --- | --- |
 | Preview | `renderPreview` | the rows, as one continuous flow, marked where the build would turn the page |
 | Book HTML | `renderBook` | the rows, paginated in the compiler so the printed page is what the screen showed |
-| EPUB | `epubMembers` | the rows, reflowed: the reading system breaks the lines and the pages; 字下げ keeps the paginated cap |
+| EPUB | `epubMembers` | the rows, reflowed: the reading system breaks the lines and the pages; the block 字下げ keeps the paginated cap |
 | Text | `concatBookText` | the nodes, printed back; the characters no output can carry removed |
 
 Preview and builds run the same layout engine. No output has a rule the others
@@ -154,9 +154,11 @@ Where things live today:
 | --- | --- | --- |
 | Which characters before a `《…》` are its base | Scanner | a rule of the notation; a grapheme cluster is one character, classed by its first code point |
 | The largest 字下げ that is read | Scanner | a rule of the notation |
+| What a ［＃○字下げ］ shows: ○ full-width spaces where it stands, so a wrapped continuation returns to the margin ([layout_2](https://www.aozora.gr.jp/annotation/layout_2.html), １行だけの字下げ); the block form is a value of the line, padding on every column of it | AST (the spaces); Output (the block padding) | content is what is shown; the padding is typesetting |
 | Pairing ［＃傍点］ with ［＃傍点終わり］; finding what ［＃「…」に傍点］ names | AST | what the notation means |
 | A start while its channel is in effect (［＃太字］ inside ［＃ここから太字］); a ［＃ここから○字下げ］ of another count is the notation's own form, not a finding ([layout_2](https://www.aozora.gr.jp/annotation/layout_2.html)) | AST (the finding); editor (the fix removing a start that sets again what is in effect, or an end with nothing open, with its line when a block directive had it to itself) | the slot is the resolver's: a start replaces the open one, never nests; whether a line can go is the editor's |
 | An end of the other form than its start (［＃ここから太字］ closed by ［＃太字終わり］) | AST (the finding); editor (the fix, `src/server/syntax.ts`) | the pairing is the resolver's, and it holds both forms; which annotation to rewrite, and how, is the editor's: the end, respelled in the start's form |
+| A `《…》` no ｜ opened and no base precedes | AST (the finding); editor (the fix, `src/server/syntax.ts`) | the scanner knows it made no ruby; respelling it as the 二重山括弧 外字注記, the brackets it already prints as, is the editor's call, and only where no ｜ said ruby was meant |
 | Which `※［＃…］` is a 外字注記 | Scanner | a rule of the notation: the annotation directly follows its `※` |
 | Showing a 外字注記 as its character | AST | content is what is shown |
 | What one character shown is: a grapheme cluster, its kana composed | AST | content is what is shown; a target cannot cut one |
@@ -169,7 +171,7 @@ Where things live today:
 | Which 「」『』 of the prose open and close an utterance, across lines | editor (`src/server/dialogue.ts`; the corner characters themselves in `src/shared/chars.ts`) | a convention of the manuscript over the prose nodes, read by the lint and the highlighter alike; an annotation's 「対象」 is not prose, and a listed name holds no corner |
 | A half-width pair (`!?`) with no 縦中横 annotation | editor | a manuscript convention, judged on what the AST holds; the fix replaces the pair with its character or writes the annotation, as the lint setting says |
 | What an annotation shows on hover, what lights up with it, renaming a 対象文字列 with the body it names, a fix rewriting the 「…」 of the postfix bound over it | editor (`src/server/annotations.ts`, `targets.ts`) | each reads what the postfix bound to and which start pairs with which end: the resolver's findings; the 「…」 is rewritten only where it is written as the body it bound to |
-| Writing `‼` `⁇` `⁈` `⁉` `¡` `¿` as 外字注記 in a Shift JIS text | client (`encodeTxt`, `src/shared/encoding.ts`) | the encoding is a client setting; the Scanner and the AST take none |
+| Writing `‼` `⁇` `⁈` `⁉` `¡` `¿` as 外字注記 in a Shift JIS text (`《` `》` have a cell and are written as themselves) | client (`encodeTxt`, `src/shared/encoding.ts`) | the encoding is a client setting; the Scanner and the AST take none |
 
 ## The full pipeline, and why ours is shorter
 

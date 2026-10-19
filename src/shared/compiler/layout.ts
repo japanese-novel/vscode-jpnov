@@ -85,7 +85,7 @@ export type Row =
   }
   | { readonly kind: 'pagebreak' };
 
-/** A laid-out display line — one column on the page. `indent` = 字下げ cells (already clamped). */
+/** A laid-out display line — one column on the page. `indent` = block 字下げ cells (already clamped). */
 export interface DisplayLine {
   readonly srcLine: number;
   /**
@@ -581,7 +581,7 @@ export function effectiveIndent(indent: number | undefined, charsPerLine: number
 
 /**
  * Hard-wraps one line row's units into display lines of at most `charsPerLine` cells. A unit
- * is atomic (never split) and an over-wide unit gets its own line. A 字下げ row narrows the
+ * is atomic (never split) and an over-wide unit gets its own line. A block-字下げ row narrows the
  * budget to `charsPerLine − N_eff` (N_eff = {@link effectiveIndent}) and stamps
  * the SAME N_eff onto every display line — the first AND each wrapped continuation are indented
  * alike, and class / CSS padding / wrap budget all derive from this one value so the column can
@@ -594,7 +594,8 @@ export function effectiveIndent(indent: number | undefined, charsPerLine: number
  * boundary, so cascades and the resulting reflow fall out naturally; the `> floor` guard keeps
  * a line's first real unit, so no line ever empties and a lone-char row stays as-is. Every
  * boundary test looks through zero-width units to the nearest real one. (禁則 walks unit text
- * only — the indent is CSS padding, not a unit, so the two never interact.)
+ * only — the block indent is CSS padding, not a unit, so the two never interact; the spaces of
+ * a ［＃○字下げ］ are units like typed ones.)
  */
 function wrapRow(
   row: Extract<Row, { kind: 'line' }>,

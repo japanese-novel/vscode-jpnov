@@ -196,7 +196,7 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
       const marked = i > runStart && src.startsWith(GAIJI_MARK, i - GAIJI_MARK.length);
       const char = marked ? gaijiChar(src.slice(i + ANNOTATION_OPEN.length, close)) : undefined;
       const annotation = char === undefined
-        ? classifyAnnotation(src, i, end, i === from, issues)
+        ? classifyAnnotation(src, i, end, issues)
         : gaijiNode(src, i - GAIJI_MARK.length, end, char);
       if (annotation.kind === (tcyOpen ? 'tcySpanEnd' : 'tcySpanStart')) {
         release(); // a 縦中横 span is one cell of its own: a ｜ base never crosses its edge

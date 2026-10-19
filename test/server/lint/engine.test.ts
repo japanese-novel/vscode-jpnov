@@ -206,15 +206,17 @@ test('indent flags a paragraph not starting with 字下げ / an opening bracket'
   assert.deepEqual(lint('「台詞行だ」', INDENT), []); // opening bracket counts
 });
 
-test('a line opened by ［＃N字下げ］ (N ≥ 1) is not flagged as un-indented', () => {
+test('a line opened by ［＃N字下げ］ (N ≥ 1) is not flagged as un-indented; one after the text is', () => {
   assert.deepEqual(lint('［＃２字下げ］引用の行だ。\n', INDENT), []);
+  assert.deepEqual(lint('　［＃２字下げ］引用の行だ。\n', INDENT), []); // after the auto-indent space
+  assert.deepEqual(lint('引用の行だ。［＃２字下げ］\n', INDENT), [{ code: 'lint.narration.indent', text: '引' }]);
 });
 
 test('［＃０字下げ］ renders un-indented, so the flag (and its insert fix) stays', () => {
   assert.equal(applied('［＃０字下げ］内容だ。\n', INDENT), '［＃０字下げ］　内容だ。\n');
 });
 
-test('a line-head 字下げ above INDENT_MAX is a comment: the line is un-indented, flag and insert fix included', () => {
+test('a 字下げ above INDENT_MAX is a comment: the line is un-indented, flag and insert fix included', () => {
   const over = indentAnnotation(INDENT_MAX + 1);
   assert.deepEqual(lint(`${over}内容だ。\n`, INDENT), [{ code: 'lint.narration.indent', text: '内' }]);
   assert.equal(applied(`${over}内容だ。\n`, INDENT), `${over}　内容だ。\n`);
@@ -793,7 +795,7 @@ test('shiftJisSafe leaves encodable prose alone, aliases included', () => {
   assert.deepEqual(lint('――〜−髙①ｱ。', SJIS), []);
 });
 
-test('shiftJisSafe leaves the six characters a Shift JIS text writes as 外字注記', () => {
+test('shiftJisSafe leaves the characters a Shift JIS text writes as 外字注記', () => {
   assert.deepEqual(lint('なに‼⁇⁈⁉¡¿《‼》［＃「に⁉」に傍点］', SJIS), []);
   assert.deepEqual(lint('なに※［＃感嘆符疑問符、1-8-78］', SJIS), []);
 });

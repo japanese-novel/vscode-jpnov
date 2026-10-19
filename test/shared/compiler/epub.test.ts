@@ -8,6 +8,7 @@ import { ocfZip } from '../../../src/shared/compiler/ocf.ts';
 import { BLANKS } from '../_kana.ts';
 import { assertWellFormedXml, assertXmlChars } from '../xml.ts';
 import { INDENT_MAX, VALUE_DEFAULTS, indentAnnotation } from '../../../src/shared/ast/notation.ts';
+import { blockOf } from '../ast/_shape.ts';
 import { CHARS_MIN, LAYOUT_DEFAULT } from '../../../src/shared/config/types.ts';
 
 const MODIFIED = '2026-08-04T00:00:00Z';
@@ -214,9 +215,9 @@ test('styles.css is built from the whole book’s used classes, kinsoku mapped t
   assert.match(css, /ruby\.ru\{/); // the both-side class used in chapter 2 only still lands
 });
 
-test('charsPerLine caps the 字下げ class and its one stylesheet rule', () => {
+test('charsPerLine caps the block 字下げ class and its one stylesheet rule', () => {
   const cap = String(CHARS_MIN - 1);
-  const book: BookInput = { files: [{ name: 'a.jpnov', src: `${indentAnnotation(INDENT_MAX)}文だ。` }] };
+  const book: BookInput = { files: [{ name: 'a.jpnov', src: `${blockOf(indentAnnotation(INDENT_MAX))}\n文だ。` }] };
   const out = members(book, 'vol1', CHARS_MIN);
   const css = contentOf(out, 'OEBPS/styles.css');
   assert.deepEqual(css.match(/\.indent-[^}]*\}/g), [`.indent-${cap}{padding-inline-start:${cap}em}`]);

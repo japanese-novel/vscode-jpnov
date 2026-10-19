@@ -92,7 +92,7 @@ export function renderMessage(msg: LocalizableMessage): string {
     case 'syntax.tcyTooLong':
       return vscode.l10n.t('縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)');
     case 'syntax.rubyBaseMissing':
-      return vscode.l10n.t('ruby reading 《{0}》 has no base text before it (it prints as typed)', s(0));
+      return vscode.l10n.t('ruby reading 《{0}》 has no base text before it (it prints as typed; for brackets, write the 二重山括弧 外字注記)', s(0));
     case 'syntax.rubyReadingEmpty':
       return vscode.l10n.t('empty ruby reading 《》 (it prints as typed)');
     case 'syntax.rubyInTcy':
@@ -112,7 +112,7 @@ export function renderMessage(msg: LocalizableMessage): string {
     case 'hover.blockEnd':
       return vscode.l10n.t('{0} end (block form)', s(0));
     case 'hover.indent':
-      return vscode.l10n.t('Indent by {0} (this line)', s(0));
+      return vscode.l10n.t('Indent by {0} ({0} full-width spaces here)', s(0));
     case 'hover.pageBreak':
       return vscode.l10n.t('Page break');
     case 'hover.value':

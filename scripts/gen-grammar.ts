@@ -63,8 +63,6 @@ interface Segment {
 interface Rule {
   readonly comment: string;
   readonly parts: readonly Segment[];
-  /** An anchor before the parts: `^` for the line-head 字下げ. */
-  readonly head?: string;
   /** A lookahead after the parts, outside every capture. */
   readonly tail?: string;
 }
@@ -127,7 +125,7 @@ const ANNOTATION: readonly Rule[] = [
     comment: 'Block START ［＃ここから…］: a 字下げ count in full-width digits up to the maximum; the 折り返して form is a comment.',
     parts: [OPEN, lit('scaffold', BLOCK_FROM), kw(`${INDENT_COUNT}|${BLOCK}`), CLOSE],
   },
-  { comment: 'Single-line ［＃○字下げ］ at the line head only; elsewhere it is a comment.', head: '^', parts: [OPEN, kw(INDENT_COUNT), CLOSE] },
+  { comment: 'Single-line ［＃○字下げ］: a count in full-width digits up to the maximum, anywhere on the line.', parts: [OPEN, kw(INDENT_COUNT), CLOSE] },
   { comment: '傍点／傍線 span END, before its START; the span form spells its left side 左に.', parts: [OPEN, LEFT, kw(DOT_LINE), END, CLOSE] },
   { comment: '傍点／傍線 span START.', parts: [OPEN, LEFT, kw(DOT_LINE), CLOSE] },
   { comment: '太字／斜体／縦中横／見出し span END, before its START.', parts: [OPEN, kw(PLAIN), END, CLOSE] },
@@ -178,7 +176,7 @@ const DIALOGUE: readonly Rule[] = [
 ];
 
 function pattern(rule: Rule): Pattern {
-  let match = rule.head ?? '';
+  let match = '';
   const captures: Record<string, { name: string }> = {};
   rule.parts.forEach((part, i) => {
     match += `(${part.re})${part.optional === true ? '?' : ''}`;

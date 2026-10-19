@@ -64,17 +64,10 @@ export function gaijiNode(src: string, start: number, end: number, char: string)
 }
 
 /**
- * The annotation at `[start, end)` of `src` (`［＃` … `］` inclusive). `atLineStart` is true iff
- * the ［ opens its line: the single-line ［＃○字下げ］ exists only there, matching the grammar's
- * `^` anchor. A 字下げ above the notation's maximum is a comment, and is reported to `issues`.
+ * The annotation at `[start, end)` of `src` (`［＃` … `］` inclusive). A 字下げ above the
+ * notation's maximum is a comment, and is reported to `issues`.
  */
-export function classifyAnnotation(
-  src: string,
-  start: number,
-  end: number,
-  atLineStart: boolean,
-  issues: ScanIssue[],
-): AnnotationNode {
+export function classifyAnnotation(src: string, start: number, end: number, issues: ScanIssue[]): AnnotationNode {
   const span = { start, end };
   const text = src.slice(start, end);
   const inner = src.slice(start + ANNOTATION_OPEN.length, end - ANNOTATION_CLOSE.length);
@@ -262,8 +255,8 @@ export function classifyAnnotation(
     return comment();
   }
 
-  // Single-line indent ［＃○字下げ］ — LINE-HEAD only.
-  const amount = atLineStart ? indentOf(inner) : null;
+  // Single-line ［＃○字下げ］: N full-width spaces where it stands (the resolver emits them).
+  const amount = indentOf(inner);
   if (amount !== null) {
     cut.take('keyword', inner.length);
     return { kind: 'indent', span, text, parts: close(), amount };
