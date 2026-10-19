@@ -7,7 +7,7 @@
  * Some of them (FOOTER_BAND, SIDE_PAD, EDGE_INSET, PREVIEW_MARGIN_LINES) are ALSO written as
  * plain literals in `styles/*.css`: a fixed geometry value lives in the fragments, and only
  * settings and per-document values go through css.ts's `rootVars()`; for the build sheet,
- * `@page` cannot read `var()` portably either (ruling: build output stays portable). The
+ * `@page` cannot read `var()` portably either. The
  * double home is guarded by `test/shared/compiler/styles-codegen.test.ts`, which asserts the
  * `.css` literals equal these constants. Change a value here WITHOUT updating the fragments
  * (or vice versa) and that test fails loudly. The line pitch is NOT a constant: the
@@ -44,7 +44,7 @@ export const SIDE_PAD = 1.5;
 export const EDGE_INSET = 0.35;
 /**
  * The preview's blank margin at the physical right (where the text starts), in lines of
- * `--pitch` (#123). Guard-only: the value is a preview.base.css literal, derived-asserted by
+ * `--pitch`. Guard-only: the value is a preview.base.css literal, derived-asserted by
  * styles-codegen.test.ts.
  */
 export const PREVIEW_MARGIN_LINES = 10;

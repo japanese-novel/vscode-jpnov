@@ -5,8 +5,6 @@
  * annotation target or a comment is composed, and loses its control characters, in every output
  * too. Every fix replaces or deletes characters in place; noControlChar withholds its fix for a
  * ruby base or reading it would empty.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import { COMBINING_KANA_MARKS, UNSHOWN, composeKana, isCjkIdeograph } from '../../../shared/chars.ts';
 

@@ -1,5 +1,5 @@
 /**
- * Pure half of the word commands (#155): where ⌥←/⌥→ and ⌥⌫/⌥⌦ stop on a line of a `.jpnov`.
+ * Pure half of the word commands: where ⌥←/⌥→ and ⌥⌫/⌥⌦ stop on a line of a `.jpnov`.
  * `Intl.Segmenter('ja')` cuts the line and neighboring segments join by character class. Only the
  * pair decides, so ← and → stop at the same places. vscode-free — the unit suite imports this
  * file directly; `wordCommands.ts` owns the editor wiring.

@@ -14,7 +14,7 @@ import { posix } from 'node:path';
 
 import * as vscode from 'vscode';
 
-import { INDENT_MAX } from '#/shared/ast/notation.ts';
+import { INDENT_MAX, VALUE_NAMES, valueAnnotation } from '#/shared/ast/notation.ts';
 import { bookTemplate, COVER_TEMPLATE, normalizeFileInput, type FileInputError } from '#/shared/book/create.ts';
 import {
   appendEntries,
@@ -120,7 +120,7 @@ export async function applyBookEdits(uri: vscode.Uri, replaces: readonly TextRep
   const name = lastPathSegment(uri.toString());
   if (!(await vscode.workspace.applyEdit(edit))) {
     void vscode.window.showErrorMessage(
-      vscode.l10n.t("Japanese Novel: couldn't edit {0}. {1}", name, ''),
+      vscode.l10n.t("Japanese Novel: couldn't edit {0}.", name),
     );
     return false;
   }
@@ -683,32 +683,36 @@ async function pickDivider(current: string | undefined): Promise<string | undefi
   return composeDividerValue(mark, indentOf(amount));
 }
 
+/** The header the picker offers ready-made: the book's title, as the value annotation. */
+const HEADER_TITLE = valueAnnotation(VALUE_NAMES.title);
+
 /**
- * One dialog for the footer: the typed line rides as the first item, so Enter takes it as is;
- * the default (the product's footer, written out) and no footer (`footer:`) stay listed below it.
+ * One dialog for the header or the footer: the typed line rides as the first item, so Enter
+ * takes it as is; a ready-made line (the title for the header, the product's footer) and none
+ * (`header:` / `footer:`) stay listed below it.
  */
-function pickFooter(current: string | undefined): Promise<string | undefined> {
-  type FooterItem = vscode.QuickPickItem & { readonly pick: 'typed' | 'default' | 'none' };
-  const fixed: FooterItem[] = [
-    { label: vscode.l10n.t('Default'), description: BUILD_CHROME_DEFAULT.footer, alwaysShow: true, pick: 'default' },
-    { label: vscode.l10n.t('No footer'), alwaysShow: true, pick: 'none' },
+function pickFurniture(key: 'header' | 'footer', current: string | undefined): Promise<string | undefined> {
+  type Item = vscode.QuickPickItem & { readonly value: string };
+  const offer = key === 'header'
+    ? { ready: vscode.l10n.t('Title'), value: HEADER_TITLE, none: vscode.l10n.t('No header'), placeholder: vscode.l10n.t('Type the header, or pick one below') }
+    : { ready: vscode.l10n.t('Default'), value: BUILD_CHROME_DEFAULT.footer, none: vscode.l10n.t('No footer'), placeholder: vscode.l10n.t('Type the footer, or pick one below') };
+  const fixed: Item[] = [
+    { label: offer.ready, description: offer.value, alwaysShow: true, value: offer.value },
+    { label: offer.none, alwaysShow: true, value: '' },
   ];
-  const qp = vscode.window.createQuickPick<FooterItem>();
-  qp.title = metaLabel('footer');
-  qp.placeholder = vscode.l10n.t('Type the footer, or pick one below');
+  const qp = vscode.window.createQuickPick<Item>();
+  qp.title = metaLabel(key);
+  qp.placeholder = offer.placeholder;
   const refresh = (): void => {
     const typed = qp.value.trim();
-    qp.items = typed === '' ? fixed : [{ label: typed, alwaysShow: true, pick: 'typed' }, ...fixed];
+    qp.items = typed === '' ? fixed : [{ label: typed, alwaysShow: true, value: typed }, ...fixed];
     qp.activeItems = qp.items.slice(0, 1);
   };
   qp.value = current ?? '';
   refresh();
   qp.onDidChangeValue(refresh);
 
-  return runQuickPick(qp, (): string | undefined => {
-    const item = qp.selectedItems[0];
-    return item === undefined ? undefined : item.pick === 'typed' ? item.label : item.pick === 'none' ? '' : BUILD_CHROME_DEFAULT.footer;
-  });
+  return runQuickPick(qp, (): string | undefined => qp.selectedItems[0]?.value);
 }
 
 async function editMeta(arg: unknown): Promise<void> {
@@ -720,8 +724,8 @@ async function editMeta(arg: unknown): Promise<void> {
   let value: string | undefined;
   if (node.metaKey === 'divider') {
     value = await pickDivider(node.value);
-  } else if (node.metaKey === 'footer') {
-    value = await pickFooter(node.value);
+  } else if (node.metaKey === 'header' || node.metaKey === 'footer') {
+    value = await pickFurniture(node.metaKey, node.value);
   } else if (isAlignKey(node.metaKey)) {
     const picked = await vscode.window.showQuickPick(
       FURNITURE_ALIGNS.map((v) => ({ label: alignLabel(v), description: v, value: v })),

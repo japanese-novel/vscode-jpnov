@@ -6,7 +6,7 @@
  *
  * Activation is two-phase because `onStartupFinished` activates this extension in EVERY window:
  *   Phase 1 `activate()`  — synchronous registrations only (commands, serializer, lazy-start
- *     listeners); no LanguageClient, no fork, no fs beyond one root readDirectory per folder.
+ *     listeners); no LanguageClient, no fork, no fs beyond the per-folder probe (`probe.ts`).
  *   Phase 2 `ensureStarted()` — single-flight; constructs the client + UI singletons and forks
  *     the server on the FIRST real demand (a jpnov/jpbook document, a jpnov command, a restored
  *     preview panel, or a probe hit on a workspace folder).
@@ -107,9 +107,6 @@ function ensureStarted(): void {
   // context.subscriptions at deactivate is a no-op.
   coldStartWatcher?.dispose();
   coldStartWatcher = undefined;
-  // Reveal the Books panel (gated on `jpnov.active`); its empty state shows the welcome guide.
-  // Never un-set for the session, like the `started` latch above.
-  void vscode.commands.executeCommand('setContext', 'jpnov.active', true);
   const context = extCtx;
 
   // Run the bundled server as a forked Node process over IPC. We deliberately do NOT set
@@ -315,6 +312,20 @@ export function activate(context: vscode.ExtensionContext): void {
         // would surface an "error restoring view" page instead).
         return Promise.resolve();
       },
+    }),
+  );
+
+  // The Books view is contributed in every window, so opening it is a start trigger: the
+  // provider built by ensureStarted() takes the view from here.
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(BooksViewProvider.viewId, {
+      resolveWebviewView: (view) => {
+        ensureStarted();
+        booksView?.resolveWebviewView(view);
+      },
+    }, {
+      // Keep the DOM (scroll / detail nav) alive while the view is hidden.
+      webviewOptions: { retainContextWhenHidden: true },
     }),
   );
 

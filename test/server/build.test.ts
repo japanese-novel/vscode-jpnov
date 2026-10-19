@@ -104,7 +104,7 @@ test('a pre-cancelled token skips the work and returns an empty result', async (
     format: 'txt',
     settings: SETTINGS,
     projectDirs: projectsFor(ws.uri),
-  }, undefined, CancellationToken.Cancelled);
+  }, CancellationToken.Cancelled);
 
   assert.deepEqual(result.artifacts, []);
   assert.deepEqual(result.outDirs, []);
@@ -417,10 +417,13 @@ test('two book files resolving to one output file error BOTH, with a diagnostic,
     assert.ok(conn.published.some((p) => p.uri === uri && p.diagnostics.some((d) => d.code === 'build.outPathCollision')), uri);
   }
 
-  // A selected book still errors when it collides with an UNSELECTED one.
+  // Only the books being built can collide: selected alone, the first builds; selected together, both fail.
   const selected = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri, { outDir: '${workspaceFolder}/dist' }), books: [first] });
-  assert.deepEqual(selected.errors.map((e) => e.code), ['build.outPathCollision']);
-  assert.deepEqual(selected.artifacts, []);
+  assert.deepEqual(selected.errors, []);
+  assert.deepEqual(selected.artifacts.map((a) => a.path), [`${ws.uri}/dist/index.txt`]);
+  const both = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri, { outDir: '${workspaceFolder}/dist' }), books: [first, second] });
+  assert.deepEqual(both.errors.map((e) => e.code), ['build.outPathCollision', 'build.outPathCollision']);
+  assert.deepEqual(both.artifacts, []);
 
   // An open book under no root counts too: here it aims its output at c/dist from outside.
   await using other = await makeTmpWorkspace();
@@ -1658,7 +1661,7 @@ test('build: the request token rides every readText call', async () => {
   });
   const token = new CancellationTokenSource().token;
 
-  await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) }, undefined, token);
+  await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) }, token);
   assert.equal(seen.length, 3); // the manifest + two chapters
   assert.ok(seen.every((t) => t === token));
 });

@@ -1,11 +1,9 @@
 /**
  * The rendering "chrome" vocabulary (page furniture): line numbers, edge rules, and the page
- * header and footer. Shared by the preview + build renderers, the wire
- * protocol, and the settings resolver. Import-free (no `#/`, no vscode) so it loads
- * anywhere, including Node's native test runner.
- *
- * The compiler OWNS this vocabulary; `protocol.ts` and `config/settings.ts` import from
- * here (never the other way round — the compiler must not depend on the wire).
+ * header and footer. Shared by the preview + build renderers, the wire protocol, and the
+ * settings resolver. Import-free: the compiler OWNS this vocabulary; `protocol.ts` and
+ * `config/settings.ts` import from here (never the other way round — the compiler must not
+ * depend on the wire).
  *
  * Every shape below is the RESOLVED form: all fields present, no optionals. The settings
  * resolver fills defaults and clamps, and composeBookChrome fills the build's header and footer

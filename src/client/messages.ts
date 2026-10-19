@@ -99,7 +99,6 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('ruby reading {0} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)', s(0));
     case 'syntax.indentTooLarge':
       return vscode.l10n.t('字下げ is too large (keep it to {0} or less for it to take effect)', s(0));
-    // prose lint (kept byte-identical to renderEnglish).
     case 'hover.postfix':
       return vscode.l10n.t('{0} (forward reference)', s(0));
     case 'hover.rubyLeft':
@@ -138,6 +137,8 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('Starts at {0} (line {1})', s(0), s(1));
     case 'hover.endMissing':
       return vscode.l10n.t('No end annotation');
+    case 'hover.replaced':
+      return vscode.l10n.t('Replaced by the 字下げ on line {0}', s(0));
     case 'hover.startMissing':
       return vscode.l10n.t('No start annotation');
     case 'hover.holds':

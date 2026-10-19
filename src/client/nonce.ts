@@ -8,17 +8,16 @@ export function makeNonce(): string {
 }
 
 /**
- * Strict CSP shared by the extension's webviews: only the nonce'd inline style/script run.
- * `remoteFonts` widens `font-src` to https/data for the preview, whose rendered document may
- * reference user-configured fonts; the Books panel loads only the bundled codicon font.
+ * Strict CSP shared by the extension's webviews: only the nonce'd inline style/script run, and
+ * nothing loads from outside the extension (the preview names fonts, it fetches none).
  */
-export function cspMeta(nonce: string, webview: vscode.Webview, remoteFonts = false): string {
+export function cspMeta(nonce: string, webview: vscode.Webview): string {
   const csp = [
     "default-src 'none'",
     `style-src 'nonce-${nonce}' ${webview.cspSource}`,
     `script-src 'nonce-${nonce}'`,
-    `img-src ${webview.cspSource} https: data:`,
-    `font-src ${webview.cspSource}${remoteFonts ? ' https: data:' : ''}`,
+    `img-src ${webview.cspSource}`,
+    `font-src ${webview.cspSource}`,
   ].join('; ');
   return `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
 }

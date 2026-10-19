@@ -34,7 +34,7 @@ interface WebviewModule {
   readonly jsExport: string;
   /** CSS files, each inlined verbatim (trimmed) as the string export `cssExport`. */
   readonly css?: readonly { readonly file: string; readonly cssExport: string }[];
-  /** The committed-shape `*.generated.ts` this module writes. */
+  /** The gitignored `*.generated.ts` this module writes. */
   readonly out: string;
 }
 

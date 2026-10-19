@@ -1,6 +1,6 @@
 /**
  * Answers the server's `jpnov/readText` with the text the editor shows: an open document's live
- * buffer (unsaved edits included, #87), else the disk decoded as VS Code would for the uri
+ * buffer (unsaved edits included), else the disk decoded as VS Code would for the uri
  * (`files.encoding`, `files.autoGuessEncoding`, a byte order mark).
  */
 import * as vscode from 'vscode';
@@ -16,7 +16,7 @@ function fsCode(err: unknown): string {
 }
 
 /**
- * The open document at `uri`: an exact `Uri.toString()` match (#76), else the same scheme,
+ * The open document at `uri`: an exact `Uri.toString()` match, else the same scheme,
  * authority and NFC-normalized `path` (an NFD file name against the NFC entry in the `.jpbook`;
  * `toString()` percent-encodes, so the compare runs on the decoded path).
  */

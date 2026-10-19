@@ -36,7 +36,7 @@ import {
 // Install the vscode mock ONCE, bound to a single shared state, BEFORE importing the
 // module under test (see _vscodeMock.resetMockState for the why).
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 const { Preview } = await import('../../src/client/preview/preview.ts');
 const { WIDGET_CSS } = await import('../../src/client/preview/webviewBundle.generated.ts');
@@ -192,11 +192,14 @@ test('the inline <style> carries a nonce that matches the CSP style-src', async 
   assert.equal(styleNonce[1], cspNonce[1], 'style nonce equals CSP nonce');
 });
 
-test('CSP allows the webview cspSource for styles/img/font', async () => {
+test('CSP allows the webview cspSource alone for styles, images and fonts: nothing remote, no data: URLs', async () => {
   const { panel } = await openPreviewWith(SERVER_HTML);
-  const html = panel.webview.html;
-  assert.match(html, /style-src [^;]*vscode-webview:\/\/test/);
-  assert.match(html, /img-src [^;]*vscode-webview:\/\/test/);
+  const csp = /Content-Security-Policy" content="([^"]+)"/.exec(panel.webview.html)?.[1];
+  assert.ok(csp, 'the CSP meta is there');
+  assert.match(csp, /style-src [^;]*vscode-webview:\/\/test/);
+  assert.match(csp, /img-src vscode-webview:\/\/test(;|$)/);
+  assert.match(csp, /font-src vscode-webview:\/\/test(;|$)/);
+  assert.doesNotMatch(csp, /https:|data:/);
 });
 
 test('the original document body survives hardening', async () => {
@@ -851,7 +854,7 @@ test('the render carries the layout widget: its nonced stylesheet and the settin
 
   const { layout } = readInit(panel);
   const { labels, ...values } = layout;
-  assert.deepEqual(values, { charsPerLine: 64, linesPerPage: 34, adjusted: false, min: 16, max: 64 });
+  assert.deepEqual(values, { charsPerLine: 64, linesPerPage: 34, adjusted: false, min: 15, max: 64 });
   assert.deepEqual(labels, {
     chars: 'chars',
     lines: 'lines',
@@ -898,7 +901,7 @@ test('malformed, out-of-range or unknown widget messages are dropped', async () 
   const { panel } = await openWith(client);
   const bogus: unknown[] = [
     layoutMessage('charsPerLine', 65),
-    layoutMessage('charsPerLine', 15),
+    layoutMessage('charsPerLine', 14),
     layoutMessage('charsPerLine', 40.5),
     layoutMessage('charsPerLine', '42'),
     layoutMessage('fontFamily', 42),

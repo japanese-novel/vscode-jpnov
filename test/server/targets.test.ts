@@ -6,16 +6,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TextDocument } from 'vscode-languageserver-textdocument';
-
 import { parse } from '../../src/shared/ast/parse.ts';
 import type { RawLintConfigWire } from '../../src/shared/protocol.ts';
 import { eligibleTargets, syncedTargets, targetEdits } from '../../src/server/targets.ts';
 import type { SyncedTarget } from '../../src/server/targets.ts';
 import { at, gaijiOf } from '../shared/ast/_shape.ts';
-import { applyFixAll, applyLintFixes } from './helpers.ts';
-
-const doc = (src: string): TextDocument => TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
+import { applyFixAll, applyLintFixes, openDoc as doc } from './helpers.ts';
 
 /** The 対象文字列 of each eligible postfix of `src`, a one-line manuscript, in source order. */
 const eligible = (src: string): string[] => eligibleTargets(parse(src), src, 0).map(({ node }) => node.target.text);

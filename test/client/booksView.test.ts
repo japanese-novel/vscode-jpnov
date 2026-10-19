@@ -27,7 +27,7 @@ import {
 } from './_vscodeMock.ts';
 
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 const { BooksViewProvider } = await import('../../src/client/book/view.ts');
 const { raceRequest } = await import('../../src/client/requests.ts');
@@ -101,10 +101,11 @@ async function setup(
   books: (ReturnType<typeof entry> | ReturnType<typeof openEntry>)[],
   buildResult?: unknown,
   fixAll?: (text: string) => unknown,
+  select = true, // nothing is checked by default; the build tests need a selection
 ) {
   const client = fakeClient(books, buildResult, fixAll);
   const provider = new BooksViewProvider(client as never, EXT as never);
-  await provider.refresh(); // populate books, default-checked
+  await provider.refresh(); // populate books, none checked
   const first = books[0];
   if (first?.rootUri != null) {
     state.workspaceFolders = [{ uri: Uri.parse(first.rootUri), name: 'ws', index: 0 }];
@@ -113,6 +114,10 @@ async function setup(
   provider.resolveWebviewView(view as never);
   view.webview.receive({ type: 'ready' });
   await tick();
+  if (select) {
+    view.webview.receive({ type: 'selectAll' });
+    await tick();
+  }
   return { provider, view, client };
 }
 
@@ -150,14 +155,14 @@ test('the inline style and script carry the CSP nonce', () => {
 
 // --- state ------------------------------------------------------------------
 
-test('the ready handshake posts the book list, all books checked by default', async () => {
+test('the ready handshake posts the book list, no book checked by default', async () => {
   const root = 'file:///ws';
-  const { view } = await setup([entry(root, 'vol1', 'Volume One'), entry(root, 'part1/vol2')]);
+  const { view } = await setup([entry(root, 'vol1', 'Volume One'), entry(root, 'part1/vol2')], undefined, undefined, false);
   const st = lastState(view);
   const groups = st.groups as { label: string | null; books: { title: string; fileRel: string; checked: boolean }[] }[];
   const books = groups.flatMap((g) => g.books);
   assert.equal(books.length, 2);
-  assert.ok(books.every((b) => b.checked));
+  assert.ok(books.every((b) => !b.checked));
   // single root -> flat (no section label); title falls back to the file name without `.jpbook`.
   const firstGroup = groups[0];
   assert.ok(firstGroup);
@@ -203,6 +208,8 @@ test('the list and the build carry the open books (with the outDir resolved for 
   const view = createFakeWebviewView();
   provider.resolveWebviewView(view as never);
   view.webview.receive({ type: 'ready' });
+  await tick();
+  view.webview.receive({ type: 'selectAll' });
   await tick();
   view.webview.receive({ type: 'build', format: 'txt' });
   await tick();
@@ -255,14 +262,14 @@ test('a toggle updates the selection without re-posting state', async () => {
 test('selectAll / deselectAll re-post the full selection', async () => {
   const root = 'file:///ws';
   const { view } = await setup([entry(root, 'a'), entry(root, 'b')]);
-  view.webview.receive({ type: 'deselectAll' });
-  await tick();
-  const cleared = lastState(view).groups as { books: { checked: boolean }[] }[];
-  assert.ok(cleared.flatMap((g) => g.books).every((b) => !b.checked));
   view.webview.receive({ type: 'selectAll' });
   await tick();
   const all = lastState(view).groups as { books: { checked: boolean }[] }[];
   assert.ok(all.flatMap((g) => g.books).every((b) => b.checked));
+  view.webview.receive({ type: 'deselectAll' });
+  await tick();
+  const cleared = lastState(view).groups as { books: { checked: boolean }[] }[];
+  assert.ok(cleared.flatMap((g) => g.books).every((b) => !b.checked));
 });
 
 // --- build ------------------------------------------------------------------
@@ -290,9 +297,7 @@ test('the retired html format is ignored: no request, no toast', async () => {
 
 test('build with an empty selection nudges and sends no request', async () => {
   const root = 'file:///ws';
-  const { view, client } = await setup([entry(root, 'a')]);
-  view.webview.receive({ type: 'deselectAll' });
-  await tick();
+  const { view, client } = await setup([entry(root, 'a')], undefined, undefined, false);
   view.webview.receive({ type: 'build', format: 'txt' });
   await tick();
   assert.equal(client.calls.build, null);
@@ -301,9 +306,7 @@ test('build with an empty selection nudges and sends no request', async () => {
 
 test('a build carrying a uri sends exactly that book and leaves the selection untouched', async () => {
   const root = 'file:///ws';
-  const { view, client } = await setup([entry(root, 'a'), entry(root, 'b')]);
-  view.webview.receive({ type: 'deselectAll' });
-  await tick();
+  const { view, client } = await setup([entry(root, 'a'), entry(root, 'b')], undefined, undefined, false);
   view.webview.receive({ type: 'build', format: 'epub', uri: `${root}/src/a.jpbook` });
   await tick();
   assert.ok(client.calls.build, 'fires despite the empty selection');
@@ -741,7 +744,7 @@ test('fixAllChapters: a refused edit is toasted and the chapter is left out of t
   );
   await provider.fixAllChapters();
   assert.deepEqual(saved, []);
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit ch1.jpnov. "]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit ch1.jpnov."]);
   assert.deepEqual(state.infoMessages, ['Japanese Novel: no auto-fixable problems in this book.']);
 });
 

@@ -1,5 +1,5 @@
 /**
- * `.jpbook` text for tests: the header line and the seven required keys at the book template's
+ * `.jpbook` text for tests: the header line and the seven keys at the book template's
  * values, any of them overridden or left out, then the closing `---`, so a fixture reads as
  * `meta() + 'a.jpnov\n'` and the keys stay out of its way. The template itself is pinned by
  * create.test.ts.

@@ -71,6 +71,12 @@ test('renderBook emits a paginated page/line skeleton document', () => {
   );
 });
 
+test('the head carries the first book\'s title, escaped; no title gives an empty <title>', () => {
+  const titled = renderBooks([{ files: [{ name: 'a.jpnov', src: '本文' }], title: 'A<B>&"C"' }]);
+  assert.match(titled, /<head><meta charset="utf-8"><title>A&lt;B&gt;&amp;&quot;C&quot;<\/title><style>/);
+  assert.match(render('本文'), /<head><meta charset="utf-8"><title><\/title><style>/);
+});
+
 test('renderBook hands the font setting to the stylesheet, the last rule before </style>', () => {
   // The rule itself is pinned by css.test.ts; here only that the setting arrives and ends the sheet.
   assert.match(render('本文'), /\.book\{font-family:[^;}]*\}<\/style>/);
@@ -746,7 +752,7 @@ test('cover: the sheet geometry and its reserved bands are cover-independent', (
 
 test('cover: an empty cover file list renders exactly the cover-less document', () => {
   const files = [{ name: 'a.jpnov', src: '本文' }];
-  const plain = renderBooks([{ files }]);
+  const plain = renderBooks([{ files, title: 't', author: 'a' }]);
   assert.equal(renderBooks([{ files, title: 't', author: 'a', cover: { files: [] } }]), plain);
   assert.doesNotMatch(plain, /class="page cover"/);
 });

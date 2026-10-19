@@ -1,9 +1,7 @@
 /**
  * The parse of each open manuscript, kept per (uri, version): the highlighter, the syntax
- * diagnostics, the prose lint and the preview of one edit share one scan and one resolve. This
- * is the editor's compile, the one parse those four read: no values.
- *
- * Relative imports only (native test loader); vscode-free.
+ * diagnostics, the prose lint, the annotation features and the preview of one edit share one
+ * scan and one resolve. This is the editor's compile: no values.
  */
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 

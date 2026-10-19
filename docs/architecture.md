@@ -48,6 +48,11 @@ The boundaries:
 - **A webview is a program of its own.** Its TypeScript compiles against the DOM
   alone, reads nothing of `src/` but `src/shared/utils/` and the types of its
   host's contract, and reaches its host as a string the host inlines.
+- **The website reads the server's modules.** `website/scripts/` imports the
+  lint engine, the syntax diagnostics, the annotation features and the
+  highlighter from `src/server/` to render its samples through the real
+  pipeline, so those exports carry an unstated stability duty. Accepted for
+  now; revisit when it starts breaking the site.
 
 esbuild produces two bundles, `dist/client/extension.js` and
 `dist/server/server.js`. The stylesheet fragments and the webview scripts become
@@ -55,7 +60,8 @@ generated modules first (`scripts/gen-styles.ts`, `scripts/gen-webview.ts`), and
 the TextMate grammar of `.jpnov` is generated from the notation and the colour of
 each part role (`scripts/gen-grammar.ts`); generated files are not committed.
 `npm run gen` (`scripts/gen.ts`) runs the three together, and every script that
-reads `src/` runs it first through its `pre*` hook.
+reads `src/` runs it first, through its `pre*` hook or, for the bundles, inside
+`esbuild.config.js`.
 
 ## The pipeline
 
@@ -163,7 +169,7 @@ Where things live today:
 | Which 「」『』 of the prose open and close an utterance, across lines | editor (`src/server/dialogue.ts`; the corner characters themselves in `src/shared/chars.ts`) | a convention of the manuscript over the prose nodes, read by the lint and the highlighter alike; an annotation's 「対象」 is not prose, and a listed name holds no corner |
 | A half-width pair (`!?`) with no 縦中横 annotation | editor | a manuscript convention, judged on what the AST holds; the fix replaces the pair with its character or writes the annotation, as the lint setting says |
 | What an annotation shows on hover, what lights up with it, renaming a 対象文字列 with the body it names, a fix rewriting the 「…」 of the postfix bound over it | editor (`src/server/annotations.ts`, `targets.ts`) | each reads what the postfix bound to and which start pairs with which end: the resolver's findings; the 「…」 is rewritten only where it is written as the body it bound to |
-| Writing `‼` `⁇` `⁈` `⁉` `¡` `¿` as 外字注記 in a Shift JIS text | client (`encodeTxt`) | the encoding is a client setting; the Scanner and the AST take none |
+| Writing `‼` `⁇` `⁈` `⁉` `¡` `¿` as 外字注記 in a Shift JIS text | client (`encodeTxt`, `src/shared/encoding.ts`) | the encoding is a client setting; the Scanner and the AST take none |
 
 ## The full pipeline, and why ours is shorter
 

@@ -8,7 +8,7 @@
  * artifact write (the server never touches `vscode.fs`; `readText.ts` answers its reads) and the
  * Print action's browser hand-off.
  * Form editing lives in `manage.ts`, reached by dispatching `jpbook.*` commands with a
- * synthesized node. Visibility is gated by the `jpnov.active` context key (extension.ts).
+ * synthesized node. extension.ts registers the view and hands it here once the server is started.
  */
 import * as vscode from 'vscode';
 
@@ -61,7 +61,6 @@ const LIST_REQUEST_TIMEOUT_MS = 30_000;
  * Opens a file URI in the OS. VS Code rebuilds a `Uri` target as `encodeURI(uri.toString(true))`,
  * which lets `#` and `?` through as fragment and query; a string target equal to its own
  * `Uri.toString()` is used as written, so the encoded form goes in despite the `Uri`-only type.
- * https://github.com/japanese-novel/vscode-jpnov/issues/111
  */
 function openExternally(uri: string): void {
   // openExternal resolves to false on failure rather than rejecting, so void is safe.
@@ -150,11 +149,6 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     };
 
     this.disposables.push(
-      vscode.window.registerWebviewViewProvider(BooksViewProvider.viewId, this, {
-        // Keep the DOM (scroll / detail nav) alive when the view is hidden; a ready->state
-        // handshake re-hydrates if VS Code disposes it anyway.
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
       watcher,
       // Fire-and-forget re-list: refresh() self-catches its sendRequest and is refreshSeq-serialized,
       // so a dropped result is safe.
@@ -226,7 +220,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /** Webview `selectAll`: tick every book. */
-  selectAll(): void {
+  private selectAll(): void {
     for (const b of this.books) {
       this.checked.add(b.uri);
     }
@@ -234,7 +228,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /** Webview `deselectAll`: clear every tick. */
-  deselectAll(): void {
+  private deselectAll(): void {
     this.checked.clear();
     this.postState();
   }
@@ -277,16 +271,10 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return; // a newer refresh already superseded this one
     }
 
-    const prev = new Set(this.books.map((b) => b.uri));
     const next = new Set(result.books.map((b) => b.uri));
     for (const uri of [...this.checked]) {
       if (!next.has(uri)) {
         this.checked.delete(uri);
-      }
-    }
-    for (const uri of next) {
-      if (!prev.has(uri)) {
-        this.checked.add(uri);
       }
     }
     this.books = result.books;

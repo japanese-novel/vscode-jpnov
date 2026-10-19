@@ -8,8 +8,6 @@
  *
  * An unclosed ［＃ is an Error, like an unterminated string literal; everything else is a Warning,
  * the markup being well-formed and the render lenient about it.
- *
- * Relative imports only (native test loader; see test/server/lint/syntaxDiagnostics.test.ts).
  */
 import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';

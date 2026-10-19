@@ -22,10 +22,7 @@ import { COVER_TEMPLATE } from '../../../src/shared/book/create.ts';
 import { renderEnglish } from '../../../src/shared/messages.ts';
 import { D } from '../../shared/_kana.ts';
 import { at, blockOf } from '../../shared/ast/_shape.ts';
-import { fixAllOf } from '../helpers.ts';
-
-const doc = (text: string): TextDocument =>
-  TextDocument.create('mem://x.jpnov', 'jpnov', 1, text);
+import { fixAllOf, openDoc as doc } from '../helpers.ts';
 
 /** The syntax findings of `document` over the editor's parse of it. */
 const annotationFindings = (document: TextDocument): Finding[] => syntaxFindings(document, parse(document.getText()));

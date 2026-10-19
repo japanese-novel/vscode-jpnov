@@ -2,8 +2,8 @@
 import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-export const ROOT = new URL('../../', import.meta.url);
-export const SITE = new URL('../', import.meta.url);
+const ROOT = new URL('../../', import.meta.url);
+const SITE = new URL('../', import.meta.url);
 
 export function rootPath(rel: string): string {
   return fileURLToPath(new URL(rel, ROOT));

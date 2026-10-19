@@ -13,7 +13,7 @@
  */
 import { posix } from 'node:path';
 
-import { entryPathOf, parseJpbook } from '../../shared/book/jpbook.ts';
+import { entryPathOf, parseJpbook } from '#/shared/book/jpbook.ts';
 
 /** One rename from the event, as normalized absolute paths. */
 export interface FileRename {

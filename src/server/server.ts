@@ -30,7 +30,6 @@ import type {
   CodeActionParams,
   InitializeParams,
   InitializeResult,
-  WorkDoneProgressReporter,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -107,7 +106,7 @@ const context: ServerContext = {
   highlight: createHighlightStore(), // empty until the client's first jpnov/listBooks
 };
 
-// Open-document tracker (so semantic-tokens requests have document text to highlight).
+// Open-document tracker: every editor feature reads its buffers.
 const documents = new TextDocuments(TextDocument);
 documents.listen(connection);
 
@@ -164,16 +163,8 @@ connection.onNotification(
   },
 );
 
-// Build: every root in the request's projectDirs. Progress flows over $/progress via the
-// request's work-done reporter (3rd handler arg), tied to the client's workDoneToken.
-connection.onRequest(
-  BuildRequest,
-  (
-    params: BuildParams,
-    token: CancellationToken,
-    workDone?: WorkDoneProgressReporter,
-  ): Promise<BuildResult> => handleBuild(context, params, workDone, token),
-);
+// Build: every root in the request's projectDirs; the client shows its own progress notification.
+connection.onRequest(BuildRequest, (params: BuildParams, token: CancellationToken): Promise<BuildResult> => handleBuild(context, params, token));
 
 // List books: enumerate every `.jpbook` of every root in the request's projectDirs map, then the
 // open books it names, and read each one through the client for its title (no diagnostics); the

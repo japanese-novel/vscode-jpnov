@@ -8,7 +8,7 @@ import type { HoverResult } from '../../src/shared/protocol.ts';
 import { buildVscode, createMockState, Hover, MarkdownString, Uri } from './_vscodeMock.ts';
 
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 const { registerAnnotationHover, renderHover } = await import('../../src/client/hover.ts');
 

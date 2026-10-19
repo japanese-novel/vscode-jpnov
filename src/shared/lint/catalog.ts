@@ -16,8 +16,7 @@
  * (`common` implementations read the whole prose view, `narration`/`dialogue` ones the matching
  * form, `ruby` the 読み).
  *
- * Pure data, import-free (it must load on Node's native test loader): no `#/` specifiers and no
- * `vscode`. Rule MODULES live server-side only — this file never references them.
+ * Pure data, import-free. Rule MODULES live server-side only — this file never references them.
  */
 
 /** Where the user toggles a rule: `common` applies to both 地の文 and セリフ; the engine's rule
@@ -69,9 +68,9 @@ export const RULES = [
     id: 'dash',
     scope: 'common',
     kind: 'enum',
-    // Mirrors DASH_MODES/DASH_BY_MODE (catalog.test.ts locks the pair; this file stays
-    // import-free). No 'off': the glyph also drives typesetting, and a foreign dash renders
-    // untranslated — the check must always run.
+    // Mirrors DASH_MODES/DASH_BY_MODE (catalog.test.ts locks the pair; this file imports nothing).
+    // No 'off': the glyph also drives typesetting, and a foreign dash renders untranslated — the
+    // check must always run.
     values: ['emDash', 'horizontalBar', 'boxDrawing'],
     default: 'horizontalBar',
   },

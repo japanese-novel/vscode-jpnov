@@ -3,6 +3,7 @@ import { VALUE_NAMES, closingAnnotations, indentAnnotation, spanChannel } from '
 import { parse } from '../ast/parse.ts';
 import { printLine } from '../ast/print.ts';
 import { dropUnshown } from '../chars.ts';
+import { escapeHtml } from '../utils/escape.ts';
 import type { DashMode, KinsokuMode, LinePitch } from '../config/types.ts';
 import type { BuildChrome } from './chrome.ts';
 import { emrProbe, stylesheet } from './css.ts';
@@ -172,7 +173,7 @@ const PRINT_BUTTON = '<button class="print" type="button" onclick="window.print(
  * shipped surface can send the query — OS browser hand-offs strip file:// queries and
  * fragments (macOS LaunchServices; Windows ShellExecute and GNOME gio can even fail on
  * them) — so this fires only on browser-internal navigations: an address-bar `?p=1`, a
- * bookmark, a local link.
+ * bookmark, a local link. The website's sample 印刷 link (`website/scripts/samples.ts`) is one.
  */
 const PRINT_AUTORUN =
   '<script>if(new URLSearchParams(location.search).get(\'p\')===\'1\')addEventListener(\'load\',()=>{window.print();});</script>';
@@ -302,7 +303,9 @@ export function renderBook(opts: {
     usedClasses: [...used].sort(),
   });
 
-  return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>${css}</style>${PRINT_AUTORUN}</head><body>${PRINT_BUTTON}${body}${emrProbe(used)}</body></html>`;
+  // The document title names the book: the browser's tab, and the name and Title a PDF saved from it get.
+  const title = escapeHtml(opts.books[0]?.title ?? '');
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>${title}</title><style>${css}</style>${PRINT_AUTORUN}</head><body>${PRINT_BUTTON}${body}${emrProbe(used)}</body></html>`;
 }
 
 /**

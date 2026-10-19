@@ -45,7 +45,7 @@ function bookIdentifier(outRel: string): string {
 
 /** The chapter file's own name (no directories, no `.jpnov`) — the nav label when the chapter
  *  has no 見出し; a blank one gives way to the spine id. */
-export function chapterStem(fileName: string): string {
+function chapterStem(fileName: string): string {
   const base = fileName.split('/').pop() ?? fileName;
   return base.replace(/\.jpnov$/i, '');
 }

@@ -79,7 +79,7 @@ export class Preview {
    * The editor the preview follows: the previewable editor most recently active, the one being
    * typed in. Unlike `window.activeTextEditor` it does not flip when the panel or a non-`.jpnov`
    * editor takes focus, so with the same document open in two groups the cursor reveals and the
-   * re-renders both read this one editor (#157).
+   * re-renders both read this one editor.
    */
   private followed: vscode.TextEditor | undefined;
   /**
@@ -157,7 +157,7 @@ export class Preview {
    *
    * Without a previewable active editor (the walkthrough page or the panel itself has focus),
    * a panel that already shows a document is only revealed; a new one shows the last `.jpnov`
-   * document, else the neutral shell (#88).
+   * document, else the neutral shell.
    */
   open(toSide: boolean): void {
     const active = vscode.window.activeTextEditor;
@@ -598,7 +598,7 @@ export class Preview {
     layout: PreviewLayoutInit,
   ): string {
     const nonce = makeNonce();
-    const meta = cspMeta(nonce, webview, true);
+    const meta = cspMeta(nonce, webview);
 
     // The compiler's document has one shape (shared/compiler/preview.ts) and its body text is
     // HTML-escaped, so the head's <style> and the 傍点 probe <script> are found by index; no
@@ -628,7 +628,7 @@ export class Preview {
     return [
       '<!DOCTYPE html>',
       '<html><head><meta charset="utf-8">',
-      cspMeta(nonce, webview, true),
+      cspMeta(nonce, webview),
       `<style nonce="${nonce}">body{font-family:sans-serif;padding:1rem;}${extraCss}</style>`,
       `</head><body>${bodyHtml}</body></html>`,
     ].join('');

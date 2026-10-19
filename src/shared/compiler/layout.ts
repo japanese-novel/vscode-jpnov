@@ -52,8 +52,8 @@ export interface Unit {
   readonly at: number;
   /**
    * Space-separated on-demand stylesheet classes baked inside `html` (tcy / rr / lr / br /
-   * rh-N) — not channels (invisible to unitKey); emitLine collects them into `used` so css.ts
-   * emits each rule only when actually present (zero dead rules).
+   * rh-N / hang / insep / ru) — not channels (invisible to unitKey); emitLine collects them into
+   * `used` so css.ts emits each rule only when actually present (zero dead rules).
    */
   cssClass?: string | undefined;
   /**
@@ -193,24 +193,6 @@ function rubyLane(r: RubyText, cells: number): string {
   return side + stretch;
 }
 
-/**
- * A ruby unit's markup for the REFLOW (EPUB) output: NATIVE `<ruby>` in every form — the
- * reading system owns spacing and overhang. A left-side reading rides `ruby.ru`
- * (class.ruby-u.css moves it to the under side); a both-side ruby nests, the HTML double-sided
- * pattern. The paginated lanes cannot serve here: Apple Books neutralizes position:absolute in
- * reflowable EPUB, dropping the absolutely positioned readings into the text flow.
- */
-export function reflowRubyHtml(r: RubyText): string {
-  if (r.left === undefined) {
-    return `<ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right ?? '')}</rt></ruby>`;
-  }
-  const left = `<rt>${escapeHtml(r.left)}</rt>`;
-  if (r.right === undefined) {
-    return `<ruby class="ru">${escapeHtml(r.base)}${left}</ruby>`;
-  }
-  return `<ruby class="ru"><ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right)}</rt></ruby>${left}</ruby>`;
-}
-
 /** The CSS class of a channel's mark; undefined = that channel is off. */
 function classOf(mark: Mark | undefined): string | undefined {
   return mark === undefined ? undefined : markClass(mark);
@@ -307,7 +289,7 @@ function settleRubyOverhang(units: Unit[]): void {
  * block-directive line holding no text paints no column; an empty line is a blank column,
  * except the `last`, which is only what follows the final newline.
  */
-export function rowShape(line: Line, last: boolean): { readonly line: boolean; readonly pagebreak: boolean } {
+function rowShape(line: Line, last: boolean): { readonly line: boolean; readonly pagebreak: boolean } {
   const any = line.content.length > 0;
   if (line.pageBreak) {
     return { line: any, pagebreak: true };
@@ -488,7 +470,7 @@ function lastReal(units: readonly Unit[], start: number, before: number): number
  * (full-width ！？ need no binding: they are 行頭禁則, so the 追い出し cascade already moves a
  * split pair whole).
  */
-export const INSEP_LEADER = new Set('…‥'); // U+2026 U+2025
+const INSEP_LEADER = new Set('…‥'); // U+2026 U+2025
 const INSEP_BANG = new Set('!?'); // half-width; exactly-2 runs only
 
 /**

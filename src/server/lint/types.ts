@@ -12,15 +12,12 @@
  *                   sentinel unit (`piece: null` — reported on, never fixed).
  *   - `dialogue()`  utterance interiors only, one '\n' separator unit between utterances.
  *
- * FIX SAFETY (a silent-data-loss class of bug — a fix once deleted the markup between two clean
- * characters, and an insert once landed inside a ruby): a replacement {@link FixSpec} names ONE
+ * FIX SAFETY: a replacement {@link FixSpec} names ONE
  * {@link SourceSlice}, a contiguous source slice by construction, so it cannot span elided
  * markup; an insert names a prose UNIT and a side, and the engine resolves the offset through
  * the piece's outer extents, past the markup wrapping that unit; an erase names whole blank
  * lines, which the engine verifies hold nothing but line terminators. The view-scan adapter adds
  * the same-piece test and refuses to delete a whole ruby base (rules/adapt.ts).
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import type { Ast, HeadingLevel, Span } from '../../shared/ast/nodes.ts';
 import type { ActiveRule } from '../../shared/lint/select.ts';

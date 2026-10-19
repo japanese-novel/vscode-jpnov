@@ -13,7 +13,7 @@ import type { ReadTextFailure } from '../../src/shared/protocol.ts';
 import { buildVscode, createMockState, doc, FileType, resetMockState } from './_vscodeMock.ts';
 
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 const { readText } = await import('../../src/client/book/readText.ts');
 

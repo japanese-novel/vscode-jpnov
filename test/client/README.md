@@ -21,7 +21,7 @@ Every test script passes `--import ./test/register.mjs`, which registers
 - bare `vscode` — there is no installable `vscode` package (the extension host injects it
   at runtime; esbuild marks it `external`), so the hook resolves it to the inert
   `_vscodeShim.mjs`. The shim only satisfies resolution;
-  `mock.module('vscode', { namedExports: buildVscode(state) })` layers the behavioral
+  `mock.module('vscode', { exports: buildVscode(state) })` layers the behavioral
   mock on top per test.
 
 `extension.test.ts` loads the entry module, the one module that value-imports

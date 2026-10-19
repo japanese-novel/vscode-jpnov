@@ -13,7 +13,7 @@ export type SpecimenName = (typeof SPECIMENS)[number];
  * The stage's 書式 (`jpnov.layout.charsPerLine` / `linesPerPage`): fewer cells than the 40×34
  * default, so the preview pane and the printed page read at a glance from across a desk.
  */
-export const STAGE_LAYOUT: Partial<LayoutSettings> = { charsPerLine: 25, linesPerPage: 25 };
+const STAGE_LAYOUT: Partial<LayoutSettings> = { charsPerLine: 25, linesPerPage: 25 };
 
 export interface PreviewSample {
   readonly name: SampleName;

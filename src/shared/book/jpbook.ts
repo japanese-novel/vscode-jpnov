@@ -22,7 +22,6 @@ import { FURNITURE_ALIGNS } from '../compiler/chrome.ts';
 import { indentAnnotation } from '../ast/notation.ts';
 import { scan } from '../ast/scan.ts';
 import { displayText } from '../chars.ts';
-import { nonBlank } from '../compiler/reflow.ts';
 import type { LocalizableMessage } from '../protocol.ts';
 import { pathSegments } from '../utils/uri.ts';
 import { nameIdentity, readName, type ListedName, type NameEntry } from './names.ts';
@@ -149,8 +148,8 @@ export function isEntryList(v: unknown): v is EntryList {
  * The recognized single-valued metadata keys (`title`, `headerAlign` and `footerAlign` required,
  * the others empty when unwritten); the page-furniture keys are
  * shared VERBATIM with {@link BuildChrome}'s field names. Adding a key: extend {@link JpbookMeta},
- * the book template (`create.ts`), handle it in the parser's key switch and — when it feeds the
- * render — in {@link composeBookChrome} for page furniture, or at the assembly seam
+ * the book template (`create.ts`), the parser's value checks (`isEmptiable`, `isAlignKey`) and —
+ * when it feeds the render — {@link composeBookChrome} for page furniture, or the assembly seam
  * (`renderBook`/`concatBookText`) for BODY content like `divider`, which is never chrome.
  */
 export const META_KEYS = ['title', 'author', 'header', 'headerAlign', 'footer', 'footerAlign', 'divider'] as const;
@@ -163,7 +162,7 @@ export type MetaKey = (typeof META_KEYS)[number];
  * {@link PARSERS}, and reports a version it has none for without reading further. Not a
  * `key: value` line, so no reader takes it for a key that could sit anywhere.
  */
-export const HEADER_PREFIX = 'jpbook/';
+const HEADER_PREFIX = 'jpbook/';
 export const JPBOOK_VERSION = '1';
 export const HEADER = `${HEADER_PREFIX}${JPBOOK_VERSION}`;
 
@@ -185,7 +184,7 @@ export const COVER_KEY = 'cover';
 const KEY_OF_LIST: Readonly<Record<KeyedList, string>> = { covers: COVER_KEY, characters: 'characters', keywords: 'keywords' };
 
 /** The list-valued keys, in writing order. */
-export const LIST_KEYS: readonly string[] = Object.values(KEY_OF_LIST);
+const LIST_KEYS: readonly string[] = Object.values(KEY_OF_LIST);
 
 export function listKeyOf(list: KeyedList): string {
   return KEY_OF_LIST[list];
@@ -199,9 +198,8 @@ function listOfKey(key: string): KeyedList | null {
 /** List-item markers; the `.jpbook` grammar derives its class from this (grammar-sync). */
 export const ITEM_MARKS = ['-', '－'] as const;
 
-/** True iff `ch` opens a list item. The ONE marker test — the completion router runs it at the
- *  cursor's path start, the parser at the head of a trimmed line. */
-export function isItemMark(ch: string): boolean {
+/** True iff `ch` opens a list item. */
+function isItemMark(ch: string): boolean {
   return (ITEM_MARKS as readonly string[]).includes(ch);
 }
 
@@ -376,9 +374,8 @@ function colonIndex(value: string): number {
   return full < 0 ? half : Math.min(half, full);
 }
 
-/** True iff `name` carries the manuscript extension, in any letter case (as the editor and the
- *  chapter picker match it). */
-export function hasJpnovExt(name: string): boolean {
+/** True iff `name` carries the manuscript extension, in any letter case. */
+function hasJpnovExt(name: string): boolean {
   return /\.jpnov$/i.test(name);
 }
 
@@ -573,7 +570,7 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
     const shape = itemAfter(value, colonIndex(value) + 1);
     const val = shape.item;
     // Blank once the characters no output can carry are dropped.
-    if (!isEmptiable(metaKey) && nonBlank(displayText(val)) === null) {
+    if (!isEmptiable(metaKey) && displayText(val).trim() === '') {
       return { kind: { error: emptyValue(metaKey) } };
     }
     if (isAlignKey(metaKey)) {

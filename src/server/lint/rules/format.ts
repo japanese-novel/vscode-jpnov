@@ -2,8 +2,6 @@
  * Format rules — 原稿作法 checks over line shape. Each rule is one `(ctx) => LineRule` factory;
  * line-form exemptions (見出し, directive-only, blank, multi-line utterance, ornament/list lines)
  * come from the walker's flags and the helpers below.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import type { Span } from '../../../shared/ast/nodes.ts';
 import { tcyAnnotation } from '../../../shared/ast/notation.ts';

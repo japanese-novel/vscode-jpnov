@@ -5,8 +5,7 @@
  * ONE synchronous pass: instantiate every enabled `line` rule, feed each {@link LintLine} from the
  * single-walk {@link walkLines} to every instance, flush with `end()`, then run the `raw` rules
  * over the source. Everything here is O(n) in the document — the walker is one pass over the
- * parsed manuscript and no rule does super-linear work per line (the invariant that lets this
- * stay synchronous; the per-line loop is the natural seam should a yield ever need to come back).
+ * parsed manuscript and no rule does super-linear work per line.
  *
  * Fix materialization is the only place a {@link FixSpec} becomes an LSP range. A `replace` names
  * one SLICE (contiguous source by construction, so a fix can never overwrite elided markup). An
@@ -21,9 +20,6 @@
  * often carries a fix, so it keeps that range — the raw finding is dropped where a rule it
  * `yieldsTo` already reports. Other rules sharing a range (字下げ on a first character) say
  * something else and hide nothing.
- *
- * Relative imports only (native test loader). The vscode-free invariant holds: nothing here
- * imports `vscode`; `selection` arrives as plain data from `select.ts`.
  */
 import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';

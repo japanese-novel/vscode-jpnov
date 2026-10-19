@@ -11,8 +11,6 @@
  * `perPieceScan` runs the scanner over each piece alone: a run interrupted by markup is two runs,
  * not one (the dash rule's contract — parity is per rendered run), and a fix is safe by
  * construction.
- *
- * Relative imports only (native test loader); vscode-free.
  */
 import type { PreScan } from '../prescan.ts';
 import type { Span } from '../../../shared/ast/nodes.ts';

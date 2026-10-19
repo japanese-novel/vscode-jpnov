@@ -8,7 +8,7 @@
  *
  * A fix that lands inside a 対象文字列 brings the edit of that 「…」 with it (`Fix.within`,
  * merged by `mergedEdits`): the quick-fix carries both, and the fix-all rewrites each 「…」 once,
- * from the fixes it kept. Relative imports (native test loader).
+ * from the fixes it kept.
  */
 import { CodeActionKind } from 'vscode-languageserver/node';
 import type { CodeAction, Position, Range, TextEdit } from 'vscode-languageserver/node';

@@ -1,5 +1,5 @@
 /**
- * Pure edit planners for the Books panel's tree-as-form editing: each returns LSP-style
+ * Pure edit planners for the Books view's editing: each returns LSP-style
  * range replacements against the CURRENT `.jpbook` text, which the client applies as one
  * `WorkspaceEdit` (text stays the single source of truth — the panel and code mode can
  * never disagree). Metadata is edited by KEY, not by line: setting a key leaves ONE line

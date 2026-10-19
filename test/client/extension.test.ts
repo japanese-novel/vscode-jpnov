@@ -15,6 +15,7 @@ import type { ErrorHandler, LanguageClientOptions } from 'vscode-languageclient/
 import { LintConfigChangedNotification, ListBooksRequest, RenderFileRequest, type RenderFileParams } from '../../src/shared/protocol.ts';
 import {
   buildVscode,
+  createFakeWebviewView,
   createMockState,
   doc,
   editorAt,
@@ -26,7 +27,7 @@ import {
 } from './_vscodeMock.ts';
 
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 /** vscode-languageclient's public `State`, `CloseAction` and `ErrorAction`. */
 const State = { Stopped: 1, Running: 2, Starting: 3, StartFailed: 4 } as const;
@@ -161,7 +162,7 @@ class FakeLanguageClient {
 }
 
 mock.module('vscode-languageclient/node', {
-  namedExports: {
+  exports: {
     CloseAction,
     ErrorAction,
     LanguageClient: FakeLanguageClient,
@@ -452,8 +453,18 @@ test('jpbook.open starts the server, then focuses the Books view (the walkthroug
 
   await state.registeredCommands.get('jpbook.open')?.();
   assert.ok(FakeLanguageClient.last, 'the command is a start trigger');
-  const order = state.executedCommands
-    .filter((c) => (c.command === 'setContext' && c.args[0] === 'jpnov.active') || c.command === 'jpnov.books.focus')
-    .map((c) => c.command);
-  assert.deepEqual(order, ['setContext', 'jpnov.books.focus'], 'the view is revealed before it is focused');
+  assert.ok(state.executedCommands.some((c) => c.command === 'jpnov.books.focus'), 'the view is focused');
+});
+
+test('opening the Books view starts the server (the view is there in every window)', () => {
+  state.workspaceFolders = [folder(A, 0)]; // no novel document, no project files: nothing started us
+  activateHost();
+  assert.equal(FakeLanguageClient.last, undefined);
+
+  const provider = state.registeredViewProviders.get('jpnov.books');
+  assert.ok(provider, 'the view provider is registered at activation');
+  const view = createFakeWebviewView();
+  provider.resolveWebviewView(view);
+  assert.ok(FakeLanguageClient.last, 'resolving the view is a start trigger');
+  assert.match(view.webview.html, /<div id="app">/, 'the Books view took the view');
 });

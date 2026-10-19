@@ -1,6 +1,6 @@
 /**
  * Class namespaces: every class the site defines is `jp-*`, the product fragments keep their bare
- * names, and Tailwind runs with source(none) so no utility can land on either (#70).
+ * names, and Tailwind runs with source(none) so no utility can land on either.
  */
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';

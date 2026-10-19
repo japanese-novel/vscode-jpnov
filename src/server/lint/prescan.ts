@@ -1,12 +1,10 @@
 /**
- * Pure, kuromoji-free character scanners. Each takes some text (plus the rule's resolved options)
+ * Pure character scanners. Each takes some text (plus the rule's resolved options)
  * and returns half-open `[start, end)` UTF-16 spans into THAT text; no scanner computes a source
  * position itself. Which text it gets is the binding's call (`modules.ts` / `rules/adapt.ts`): a
  * view-scanned rule sees one line view's prose and its spans are mapped through the view's units,
  * a per-piece rule sees one contiguous piece, and a `raw` rule sees the document source, so its
  * spans already ARE source offsets.
- *
- * Relative imports only (native test loader).
  */
 import { composeKana, isHiragana, isKatakana } from '../../shared/chars.ts';
 import { isDashMode } from '../../shared/config/types.ts';

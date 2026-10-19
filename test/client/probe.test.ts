@@ -15,7 +15,7 @@ import {
 } from './_vscodeMock.ts';
 
 const state = createMockState();
-mock.module('vscode', { namedExports: buildVscode(state) });
+mock.module('vscode', { exports: buildVscode(state) });
 
 const { folderIsNovelProject } = await import('../../src/client/probe.ts');
 
