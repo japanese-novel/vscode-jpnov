@@ -9,11 +9,11 @@
  *
  * Fix materialization is the only place a {@link FixSpec} becomes an LSP range. A `replace` names
  * one SLICE (contiguous source by construction, so a fix can never overwrite elided markup). An
- * insert names a prose UNIT and a side (zero-width; the offset is resolved through the piece's
- * outer extents, past a ruby's reading or a closing annotation, and never eats a newline). An
- * `erase` covers whole blank lines and is checked to hold nothing but line terminators.
- * Out-of-slice arithmetic, an insert on a synthetic unit, or an erase over content is a
- * programming error and throws.
+ * insert names a prose UNIT and a side (zero-width; the offset is resolved through the unit's
+ * carrier, past a ruby's reading or a closing annotation, and never eats a newline). An `erase`
+ * is checked against the AST to hold nothing but typed characters, whole ［＃○字下げ］
+ * annotations and the terminators of blank lines. Out-of-slice arithmetic, an insert on a
+ * synthetic unit, or an erase over anything else is a programming error and throws.
  *
  * A `raw` rule can restate a prose rule's finding over the same characters (an unencodable
  * character that is ALSO decomposed, invisible, …). The prose rule is the more specific one and
@@ -28,6 +28,7 @@ import type { Ast, Span } from '../../shared/ast/nodes.ts';
 import { isSelectionEmpty } from '../../shared/lint/select.ts';
 import type { ActiveRule, RuleSelection } from '../../shared/lint/select.ts';
 import type { LocalizableMessage } from '../../shared/protocol.ts';
+import { partitionPoint } from '../../shared/utils/lists.ts';
 
 import { diagnostic, finding } from '../diagnostics.ts';
 import type { Finding, Fix } from '../diagnostics.ts';
@@ -39,30 +40,64 @@ import { walkLines } from './walker.ts';
 
 const WARNING = DiagnosticSeverity.Warning;
 
-/** The source offset an insert anchored on `unit` resolves to: inside a piece the neighbour is
- *  source-adjacent; at an edge the piece's outer extent skips the markup wrapping it. */
+/** The source offset an insert anchored on `unit` resolves to: inside its carrier the neighbour
+ *  is where the unit was written; at an edge, and anywhere in an atomic cell (a ruby, a 縦中横),
+ *  the carrier's outer extent skips the markup wrapping it. */
 function insertOffset(unit: ProseUnit, side: 'before' | 'after'): number {
-  const piece = unit.piece;
-  if (piece === null) {
+  const carrier = unit.carrier;
+  if (carrier === null) {
     throw new Error(`lint fix anchors an insert on a synthetic unit at ${String(unit.src)}`);
   }
   if (side === 'before') {
-    return unit.indexInPiece > 0 ? unit.src : piece.outerStart;
+    return carrier.kind === 'cell' || unit.src === carrier.src ? carrier.outerStart : unit.src;
   }
-  return unit.indexInPiece + 1 < piece.text.length ? unit.src + 1 : piece.outerEnd;
+  return carrier.kind === 'cell' || unit.end === carrier.end ? carrier.outerEnd : unit.end;
+}
+
+function erasesMarkup(span: Span): never {
+  throw new Error(`lint fix erases markup: [${String(span.start)}, ${String(span.end)})`);
+}
+
+/** Throws unless `span` holds nothing but typed characters, whole ［＃○字下げ］ annotations and the terminators of blank lines. */
+function checkErase(span: Span, doc: TextDocument, ast: Ast): void {
+  let at = span.start;
+  for (let l = doc.positionAt(at).line; at < span.end; l += 1) {
+    const line = ast.lines[l];
+    if (line === undefined) {
+      erasesMarkup(span);
+    }
+    if (line.syntax.length === 0) {
+      at = Math.min(span.end, line.span.end + line.eol.length); // a blank line, its terminator included
+      continue;
+    }
+    for (let i = partitionPoint(line.syntax, (node) => node.span.end > at); at < span.end; i += 1) {
+      const node = line.syntax[i];
+      if (node === undefined || node.span.start > at) {
+        break;
+      }
+      if (node.kind === 'text') {
+        at = Math.min(span.end, node.span.end);
+      } else if (node.kind === 'indent' && node.span.start === at && node.span.end <= span.end) {
+        at = node.span.end;
+      } else {
+        erasesMarkup(span);
+      }
+    }
+    if (at < span.end && at >= line.span.end) {
+      erasesMarkup(span); // the terminator of a line that holds something
+    }
+  }
 }
 
 /** The source span a {@link FixSpec} edits and the text it writes there (see the module header
  *  for why the three shapes are the only safe ones). */
-function fixSpan(spec: FixSpec, doc: TextDocument): { span: Span; text: string } {
+function fixSpan(spec: FixSpec, doc: TextDocument, ast: Ast): { span: Span; text: string } {
   if ('insert' in spec) {
     const at = insertOffset(spec.insert, spec.side);
     return { span: { start: at, end: at }, text: spec.text };
   }
   if ('erase' in spec) {
-    if (!/^[\r\n]*$/.test(doc.getText(rangeOf(doc, spec.erase)))) {
-      throw new Error(`lint fix erases content: [${String(spec.erase.start)}, ${String(spec.erase.end)})`);
-    }
+    checkErase(spec.erase, doc, ast);
     return { span: spec.erase, text: '' };
   }
   const { slice, start, end } = spec.replace;
@@ -73,8 +108,8 @@ function fixSpan(spec: FixSpec, doc: TextDocument): { span: Span; text: string }
 }
 
 /** Materializes a {@link FixSpec} into source coordinates, with the 対象文字列 it lands inside. */
-function materializeFix(spec: FixSpec, doc: TextDocument, targets: TargetIndex): Fix {
-  const { span, text } = fixSpan(spec, doc);
+function materializeFix(spec: FixSpec, doc: TextDocument, ast: Ast, targets: TargetIndex): Fix {
+  const { span, text } = fixSpan(spec, doc, ast);
   const range = rangeOf(doc, span);
   return { range, newText: text, within: targets.within(doc, range.start.line, span, text) };
 }
@@ -107,7 +142,7 @@ export function computeLintFindings(doc: TextDocument, ast: Ast, selection: Rule
         report(span: Span, extra?: { message?: LocalizableMessage; fix?: FixSpec }): void {
           const range = rangeOf(doc, span);
           const message = extra?.message ?? { code: rule.code };
-          const fix = extra?.fix === undefined ? undefined : materializeFix(extra.fix, doc, targets);
+          const fix = extra?.fix === undefined ? undefined : materializeFix(extra.fix, doc, ast, targets);
           prose.push(finding(diagnostic(range, message, WARNING), fix));
           taken.add(`${rule.id}\n${rangeKey(range)}`);
         },

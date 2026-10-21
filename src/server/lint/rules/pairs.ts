@@ -6,12 +6,15 @@
  * them can only be guessed.
  *
  * A matched 《》 pair in prose is a base-less reading (the Scanner keeps it literal and reports
- * syntax.rubyBaseMissing) and balances here. An unmatched prose 《 or 》 is
- * always a broken ruby — flagging it here is the feature.
+ * syntax.rubyBaseMissing) and balances here, as the 二重山括弧 外字注記 do. An unmatched prose 《
+ * or 》 is always a broken ruby — flagging it here is the feature.
  */
+import type { Span } from '../../../shared/ast/nodes.ts';
 import { charClass } from '../../../shared/utils/regex.ts';
 
 import type { LineRule, LintLine, RuleContext } from '../types.ts';
+
+import { viewSpan } from './adapt.ts';
 
 const PAIRS: Readonly<Record<string, string>> = {
   '「': '」',
@@ -28,7 +31,7 @@ const CLOSERS = new Set(Object.values(PAIRS));
 const BRACKETS = new RegExp(`[${charClass([...Object.keys(PAIRS), ...CLOSERS])}]`, 'g');
 
 export function noUnmatchedPairRule(ctx: RuleContext): LineRule {
-  const open: { readonly expected: string; readonly src: number }[] = [];
+  const open: { readonly expected: string; readonly span: Span }[] = [];
   // How many of `open` await each closer: a dangling closer is known in one step, and the walk
   // down the stack below runs only when it ends in a match that removes what it passed.
   const awaiting = new Map<string, number>();
@@ -39,14 +42,11 @@ export function noUnmatchedPairRule(ctx: RuleContext): LineRule {
     line(line: LintLine): void {
       const v = line.prose();
       for (const m of v.text.matchAll(BRACKETS)) {
-        const src = v.units[m.index]?.src;
-        if (src === undefined) {
-          continue;
-        }
+        const span = viewSpan(v, m.index, m.index + 1); // a 外字注記's bracket: the whole annotation
         const ch = m[0];
         const expected = PAIRS[ch];
         if (expected !== undefined) {
-          open.push({ expected, src });
+          open.push({ expected, span });
           count(expected, 1);
           continue;
         }
@@ -54,7 +54,7 @@ export function noUnmatchedPairRule(ctx: RuleContext): LineRule {
           continue;
         }
         if ((awaiting.get(ch) ?? 0) === 0) {
-          ctx.report({ start: src, end: src + 1 }); // dangling closer
+          ctx.report(span); // dangling closer
           continue;
         }
         let at = open.length - 1;
@@ -64,14 +64,14 @@ export function noUnmatchedPairRule(ctx: RuleContext): LineRule {
         for (const o of open.splice(at)) {
           count(o.expected, -1);
           if (o.expected !== ch) {
-            ctx.report({ start: o.src, end: o.src + 1 }); // unclosed inner opener, skipped
+            ctx.report(o.span); // unclosed inner opener, skipped
           }
         }
       }
     },
     end(): void {
       for (const o of open) {
-        ctx.report({ start: o.src, end: o.src + 1 });
+        ctx.report(o.span);
       }
     },
   };

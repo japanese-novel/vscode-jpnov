@@ -5,19 +5,27 @@
  *
  * The shape of a document, as rules see it: one {@link LintLine} per SOURCE line (never merged —
  * a multi-line utterance stays one line per line). A line carries pieces + context flags + three
- * lazy prose VIEWS:
- *   - `prose()`     every prose character, in order — markup elided but ADJACENCY kept, so a rule
+ * lazy VIEWS of the line as its reader sees it (the AST's content: kana composed, values
+ * substituted, a 外字注記 as its character, the characters no output can carry gone):
+ *   - `prose()`     every character shown, in order — markup elided but ADJACENCY kept, so a rule
  *                   reading neighbours sees `聴覚視覚［＃太字］区分装置` as one 8-kanji run.
- *   - `narration()` depth-0 prose with each top-level utterance interior collapsed to one 〇
- *                   sentinel unit (`piece: null` — reported on, never fixed).
+ *   - `narration()` depth-0 units with each top-level utterance interior collapsed to one 〇
+ *                   sentinel unit (`piece: null`, `carrier: null` — reported on, never fixed).
  *   - `dialogue()`  utterance interiors only, one '\n' separator unit between utterances.
  *
- * FIX SAFETY: a replacement {@link FixSpec} names ONE
- * {@link SourceSlice}, a contiguous source slice by construction, so it cannot span elided
- * markup; an insert names a prose UNIT and a side, and the engine resolves the offset through
- * the piece's outer extents, past the markup wrapping that unit; an erase names whole blank
- * lines, which the engine verifies hold nothing but line terminators. The view-scan adapter adds
- * the same-piece test and refuses to delete a whole ruby base (rules/adapt.ts).
+ * Rules judge what is shown; a fix edits what was typed. A unit typed as body text names the
+ * {@link Piece} a replacement may rewrite; a unit an annotation shows (a value, a 外字注記, the
+ * spaces of a ［＃○字下げ］, an unclosed ［＃) names none. Every unit but a synthetic one names
+ * its {@link Carrier}, which says where an insert at its edge lands: outside the markup wrapping
+ * it; a ruby or a 縦中横 is atomic, so an insert anywhere in it lands outside the cell. The spaces
+ * of a ［＃○字下げ］ are the one thing shown that a deletion may take with it, the annotation whole.
+ *
+ * FIX SAFETY: a replacement {@link FixSpec} names ONE {@link SourceSlice}, a contiguous source
+ * slice by construction, so it cannot span elided markup; an insert names a prose UNIT and a
+ * side, and the engine resolves the offset through the unit's carrier; an erase names a source
+ * span the engine checks holds nothing but typed characters, whole ［＃○字下げ］ annotations and
+ * the terminators of blank lines. The view-scan adapter (rules/adapt.ts) builds each of them from
+ * a view hit and refuses the rest.
  */
 import type { Ast, HeadingLevel, Span } from '../../shared/ast/nodes.ts';
 import type { ActiveRule } from '../../shared/lint/select.ts';
@@ -35,34 +43,48 @@ export interface SourceSlice {
 }
 
 /**
- * A maximal run of prose that is CONTIGUOUS in the source and constant in dialogue depth. Piece
- * boundaries fall at elided markup (annotations, ruby readings, the ｜ base marker), at line
- * breaks, and at every depth change (an utterance corner).
+ * A maximal run of typed body text that is CONTIGUOUS in the source and constant in dialogue
+ * depth, verbatim: a character the view dropped or composed is still in `text`. Piece boundaries
+ * fall at markup, at what an annotation shows, at line breaks, and at every depth change (an
+ * utterance corner).
  */
 export interface Piece extends SourceSlice {
   /** Utterance nesting depth: 0 = 地の文 (top-level 「」『』 corners included), ≥1 = inside. */
   readonly depth: number;
-  /** Where an insert BEFORE `text.charAt(0)` goes: before the ｜ of an explicit ruby and any
-   *  opening markup (［＃傍点］, ［＃縦中横］, ［＃ここから太字］…) wrapping the piece; `srcStart`
-   *  when nothing does. */
-  readonly outerStart: number;
-  /** Where an insert AFTER the last character goes: past a ruby's 《reading》 and any closing or
-   *  postfix markup (［＃傍点終わり］, ［＃「…」に傍点］…) wrapping the piece; `srcStart +
-   *  text.length` when nothing does. */
-  readonly outerEnd: number;
-  /** True when a ruby reading follows the piece (its tail is the base), so deleting the whole
-   *  piece would strand the 《reading》 as literal text. */
-  readonly rubyBase: boolean;
 }
 
-/** One view character: its source offset and owning piece. `piece` is null for a synthetic unit
- *  (the narration 〇 sentinel, the dialogue '\n' separator) — synthetic units are never a fix
- *  carrier. */
+/**
+ * What a stretch of units is carried by, and where an insert at its edge lands: `run` one run of
+ * the content (typed text, or what an annotation shows), `cell` an atomic ruby or 縦中横 (every
+ * unit inside it, whatever shows it), `indent` the spaces of one ［＃○字下げ］ (the one carrier a
+ * deletion may take whole).
+ */
+export interface Carrier {
+  readonly kind: 'run' | 'cell' | 'indent';
+  /** Where it was written: the run, the annotation, the cell from its ｜ or base through its reading. */
+  readonly src: number;
+  readonly end: number;
+  /** Where an insert BEFORE its first unit goes: before the annotations wrapping it (a ｜, a
+   *  ［＃傍点］, a ［＃縦中横］ …); `src` when nothing does. */
+  readonly outerStart: number;
+  /** Where an insert AFTER its last unit goes: past a reading, a postfix, a closing annotation
+   *  wrapping it; `end` when nothing does. */
+  readonly outerEnd: number;
+}
+
+/**
+ * One view character. `src`/`end` is where it was written: one unit, or more for a kana composed
+ * from its mark and for a dropped character inside; the whole annotation for a character one
+ * shows. `piece` is the typed slice a replacement may edit (null for a character an annotation
+ * shows and for a synthetic unit); `carrier` is null for a synthetic unit only (the narration 〇
+ * sentinel, the dialogue '\n' separator), which is never a fix anchor.
+ */
 export interface ProseUnit {
   readonly src: number;
-  readonly piece: Piece | null;
-  readonly indexInPiece: number;
+  readonly end: number;
   readonly depth: number;
+  readonly piece: Piece | null;
+  readonly carrier: Carrier | null;
 }
 
 /** An index-aligned prose view: `text.charAt(k)` ↔ `units[k]`. */
@@ -73,9 +95,9 @@ export interface ProseView {
 
 /**
  * One source line, fully contextualized. `indent` and `heading` are the AST's; `directiveOnly`
- * marks a line whose nodes produce no prose (a ここから/ここで own-line directive, 改ページ, a
- * bare comment); `blank` marks a line with no nodes at all. `openDepthAtEnd` > 0 means the line
- * ends inside an utterance (a multi-line 台詞).
+ * marks a line that holds nodes but no typed body text (a ここから/ここで own-line directive,
+ * 改ページ, a bare comment, a lone ［＃○字下げ］); `blank` marks a line with no nodes at all.
+ * `openDepthAtEnd` > 0 means the line ends inside an utterance (a multi-line 台詞).
  */
 export interface LintLine {
   /** 0-based source line, as LSP counts lines. */
@@ -88,7 +110,7 @@ export interface LintLine {
    *  an annotation), one per run of text between them — what a rule scans when it must see the
    *  markup interiors every view elides. */
   readonly source: readonly SourceSlice[];
-  /** 字下げ the line opens with: the block's N plus any ［＃N字下げ］ before its first text. */
+  /** The block 字下げ in effect on the line (［＃ここから○字下げ］); a ［＃○字下げ］ is spaces in the views. */
   readonly indent: number;
   /** The line's 見出し level, when a heading postfix/span/block covers it. */
   readonly heading: HeadingLevel | undefined;
@@ -96,8 +118,6 @@ export interface LintLine {
   readonly blank: boolean;
   readonly openDepthAtEnd: number;
   readonly pieces: readonly Piece[];
-  /** The readings of the line's rubies (the 《…》 interiors). */
-  readonly rubies: readonly SourceSlice[];
   prose(): ProseView;
   narration(): ProseView;
   dialogue(): ProseView;
@@ -106,9 +126,9 @@ export interface LintLine {
 /**
  * An auto-fix, in the only three safe shapes: replace a range INSIDE one slice (cannot span
  * elided markup by construction), insert before or after one prose UNIT (zero-width; the engine
- * resolves the offset past the markup wrapping the unit, so it can never land inside a ruby or a
- * span), or erase whole blank lines (a span the engine checks holds nothing but line
- * terminators). A synthetic unit (`piece: null`) can never anchor an insert.
+ * resolves the offset through the unit's carrier, so it can never land inside a ruby or a span),
+ * or erase a span (which the engine checks holds nothing but typed characters, whole ［＃○字下げ］
+ * annotations and the terminators of blank lines). A synthetic unit can never anchor an insert.
  */
 export type FixSpec =
   | {

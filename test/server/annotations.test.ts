@@ -96,6 +96,9 @@ test('the hover of the other annotations, and of a ruby', () => {
   assert.deepEqual(hover('山田《やまだ》', 'やまだ'), { lines: ['hover.ruby(やまだ)', 'hover.rubyBase(山田)'], over: '《やまだ》', link: 'etc.html#ruby' });
   assert.deepEqual(hover('｜お茶の間《おちゃのま》', 'おちゃのま')?.lines, ['hover.ruby(おちゃのま)', 'hover.rubyBase(お茶の間)']);
   assert.deepEqual(hover('｜山［＃「山」に傍点］田《やまだ》', 'やまだ')?.lines, ['hover.ruby(やまだ)', 'hover.rubyBase(山田)']);
+  // A reading written in NFD shows composed, as the output shows it.
+  assert.deepEqual(hover('山田《やまた\u3099》', 'やまた')?.lines, ['hover.ruby(やまだ)', 'hover.rubyBase(山田)']);
+  assert.deepEqual(hover('山田［＃「山田」の左に「やまた\u3099」のルビ］', 'ルビ')?.lines, ['hover.rubyLeft(やまだ)', 'hover.target(山田)']);
   // A reading a 縦中横 took: no ruby, so no base line.
   assert.deepEqual(hover('［＃縦中横］１２《じゅうに》［＃縦中横終わり］', 'じゅうに')?.lines, ['hover.ruby(じゅうに)']);
   assert.equal(hover('山田《やまだ》', '山田'), null);

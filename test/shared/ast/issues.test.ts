@@ -264,7 +264,9 @@ test('縦中横: the held text is composed, its range stays in source offsets', 
 
 // --------------------------------------------------------------- ruby
 
-const missing = (start: number, end: number, reading: string): Issue => ({ kind: 'rubyBaseMissing', span: { start, end }, reading });
+/** `marked`: the span starts at the ｜ that opened the base. */
+const missing = (start: number, end: number, reading: string): Issue => ({ kind: 'rubyBaseMissing', span: { start, end }, reading, marked: false });
+const marked = (issue: Issue): Issue => (issue.kind === 'rubyBaseMissing' ? { ...issue, marked: true } : issue);
 const empty = (start: number, end: number): Issue => ({ kind: 'rubyReadingEmpty', span: { start, end } });
 
 /** `[source, expected findings]` — offsets are UTF-16 code units (every character here is BMP). */
@@ -319,7 +321,8 @@ const RUBY_CASES: readonly [string, Issue[]][] = [
 
 test('every 《…》 that made no ruby is reported: no base, or no reading', () => {
   for (const [src, expected] of RUBY_CASES) {
-    assert.deepEqual(issuesOf(src, 'rubyBaseMissing', 'rubyReadingEmpty'), expected, JSON.stringify(src));
+    const want = expected.map((issue) => (src.startsWith('｜', issue.span.start) ? marked(issue) : issue));
+    assert.deepEqual(issuesOf(src, 'rubyBaseMissing', 'rubyReadingEmpty'), want, JSON.stringify(src));
   }
 });
 

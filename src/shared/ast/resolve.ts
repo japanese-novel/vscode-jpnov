@@ -29,6 +29,8 @@ import type {
   Marks,
   PairedNode,
   PostfixNode,
+  Reading,
+  RubyLeftPostfixNode,
   RubyMarkNode,
   RubyReadingNode,
   Span,
@@ -107,6 +109,11 @@ export function paintsNothing(line: Line): boolean {
 /** The full-width spaces a ［＃○字下げ］ shows where it stands. */
 function spacesOf(node: IndentNode): string {
   return '　'.repeat(node.amount);
+}
+
+/** A reading as shown, where its node wrote it. */
+function reading(node: RubyReadingNode | RubyLeftPostfixNode): Reading {
+  return { text: displayText(node.reading.text), span: node.reading.span };
 }
 
 /** The mark a decoration sets on its channel. */
@@ -190,7 +197,7 @@ class LineResolver {
         this.chars(node, node.char, 'gaiji', tcy.cells);
         break;
       case 'indent':
-        this.chars(node, spacesOf(node), 'value', tcy.cells);
+        this.chars(node, spacesOf(node), 'indent', tcy.cells);
         break;
       default:
         return false;
@@ -244,7 +251,7 @@ class LineResolver {
         }
         break;
       case 'indent':
-        this.chars(node, spacesOf(node), 'value');
+        this.chars(node, spacesOf(node), 'indent');
         break;
       case 'pageBreak':
         this.pageBreak = true;
@@ -291,7 +298,7 @@ class LineResolver {
     this.cells.push({
       kind: 'ruby',
       base: textOfRuns(runs),
-      right: displayText(node.reading.text),
+      right: reading(node),
       span: { start: node.base.start, end: node.span.end },
       marks: this.flow.marks,
       runs,
@@ -315,7 +322,7 @@ class LineResolver {
       this.cells.push({
         kind: 'ruby',
         base,
-        right: displayText(node.reading.text),
+        right: reading(node),
         span: { start: open.mark.span.start, end: node.span.end },
         // The state at the 《, plus what a span closed inside the base had set.
         marks: withMarksOf(this.flow.marks, inside),
@@ -359,7 +366,7 @@ class LineResolver {
     const span = { start: spanOf(first).start, end: spanOf(last).end };
     const range = cells.items.slice(m.first, m.last + 1);
     const kept = range.filter((cell) => cell.kind === 'comment');
-    const marks = first.kind === 'comment' ? {} : first.marks;
+    const marks = first.kind === 'comment' ? {} : first.marks; // never a comment: a match never starts on a zero-width cell
     switch (node.kind) {
       case 'emphasisPostfix':
         for (let i = m.first; i <= m.last; i += 1) {
@@ -374,8 +381,8 @@ class LineResolver {
         // when the match is certain (see `judged`).
         for (const cell of judged ? range : []) {
           if (cell.kind === 'ruby') {
-            for (const reading of [cell.right, cell.left].filter((r) => r !== undefined)) {
-              this.ledger.issues.push({ kind: 'rubyInTcy', span: cell.span, reading });
+            for (const r of [cell.right, cell.left].filter((r) => r !== undefined)) {
+              this.ledger.issues.push({ kind: 'rubyInTcy', span: cell.span, reading: r.text });
             }
           }
         }
@@ -384,7 +391,7 @@ class LineResolver {
       case 'rubyLeftPostfix': {
         const real = range.filter((cell) => cell.kind !== 'comment');
         const single = real.length === 1 ? real[0] : undefined;
-        const left = displayText(node.reading.text);
+        const left = reading(node);
         if (single?.kind === 'ruby') {
           cells.set(cells.items.indexOf(single, m.first), { ...single, left }); // 両側ルビ
         } else if (real.every((cell) => cell.kind === 'chars')) {

@@ -46,9 +46,9 @@ export interface Unit {
   /** The displayed text the 禁則 classes read, a cluster classed by its first code point; '' for zero-width units (comments). */
   text: string;
   /**
-   * Where the unit was written: its UTF-16 offset in its source line. A value's characters come
-   * from their annotation and count as written where it ends, so the annotation belongs to the
-   * column before.
+   * Where the unit was written: its UTF-16 offset in its source line. A value's characters, and the
+   * spaces of a ［＃○字下げ］, come from their annotation and count as written where it ends, so the
+   * annotation belongs to the column before; a 外字注記 is written where its ※ is.
    */
   readonly at: number;
   /**
@@ -227,16 +227,18 @@ function unitsOf(item: Inline, want: string | undefined, lineStart: number): Uni
       const translate = item.origin !== 'broken';
       const clusters = graphemes(item.text);
       const starts = clusterStarts(item, clusters);
+      // A value and the spaces of a ［＃○字下げ］ count as written where their annotation ends; a 外字注記 where its ※ is.
+      const atEnd = item.origin === 'value' || item.origin === 'indent';
       return clusters.map((ch, k) => {
-        const written = item.origin === 'value' ? item.span.end : (starts[k] ?? item.span.start);
+        const written = atEnd ? item.span.end : (starts[k] ?? item.span.start);
         return mk(1, translate && ch === want ? DASH_GLYPH : escapeHtml(ch), ch, item.marks, written - lineStart);
       });
     }
     case 'ruby': {
       const ruby: RubyText = {
         base: item.base,
-        ...(item.right === undefined ? {} : { right: item.right }),
-        ...(item.left === undefined ? {} : { left: item.left }),
+        ...(item.right === undefined ? {} : { right: item.right.text }),
+        ...(item.left === undefined ? {} : { left: item.left.text }),
       };
       const cells = rubyCells(ruby); // safe whole-cell advance; the settle pass may tighten
       return [{ ...mk(cells, rubyHtml(ruby, cells), item.base, item.marks, at), ruby, cssClass: rubyLane(ruby, cells) }];

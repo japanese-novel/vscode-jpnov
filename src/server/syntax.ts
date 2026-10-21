@@ -107,9 +107,7 @@ function fixOf(issue: Issue, doc: TextDocument, ast: Ast): Fix | undefined {
       return edit(doc, issue.span, issue.expected);
     case 'rubyBaseMissing':
       // A span from a ｜: the author meant ruby, and nothing is offered.
-      return doc.getText().startsWith(RUBY_OPEN, issue.span.start)
-        ? edit(doc, issue.span, `${ANGLE_OPEN}${issue.reading}${ANGLE_CLOSE}`)
-        : undefined;
+      return issue.marked ? undefined : edit(doc, issue.span, `${ANGLE_OPEN}${issue.reading}${ANGLE_CLOSE}`);
     default:
       return undefined;
   }

@@ -6,7 +6,7 @@
  * a per-piece rule sees one contiguous piece, and a `raw` rule sees the document source, so its
  * spans already ARE source offsets.
  */
-import { composeKana, isHiragana, isKatakana } from '../../shared/chars.ts';
+import { isHiragana, isKatakana } from '../../shared/chars.ts';
 import { isDashMode } from '../../shared/config/types.ts';
 import { DASH_BY_MODE, DASH_CHARS } from '../../shared/dash.ts';
 import { unencodableChars } from '../../shared/encoding.ts';
@@ -189,14 +189,13 @@ function isAllKana(reading: string, mode: string): boolean {
 }
 
 /**
- * Flags ONE ruby reading (the whole input text) unless it is entirely the kana type chosen in the
- * setting (`{ mode: 'hiragana' | 'katakana' }`). Requiring all-hiragana or all-katakana also
- * rejects half-width kana, so one drop-down covers both; a decomposed (NFD) kana is composed
- * first and left to noNfd, which owns that report and its fix.
+ * Flags ONE ruby reading (the whole input text, as shown: its kana composed) unless it is entirely
+ * the kana type chosen in the setting (`{ mode: 'hiragana' | 'katakana' }`). Requiring
+ * all-hiragana or all-katakana also rejects half-width kana, so one drop-down covers both.
  */
 export const rubyKanaScan: PreScan = (text, options) => {
   const mode = modeOf(options);
-  if (mode === undefined || text === '' || isAllKana(composeKana(text), mode)) {
+  if (mode === undefined || text === '' || isAllKana(text, mode)) {
     return [];
   }
   return [{ start: 0, end: text.length }];

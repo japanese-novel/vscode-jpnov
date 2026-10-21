@@ -2,9 +2,10 @@
  * The page furniture of the paginated build: the header and the footer of a sheet, horizontal
  * lines outside the vertical engine. Pure + vscode-free.
  */
-import type { ValueLookup } from '../ast/nodes.ts';
+import type { Chars, Line, ValueFieldNode, ValueLookup } from '../ast/nodes.ts';
 import { VALUE_NAMES, valueOf } from '../ast/notation.ts';
-import { scan } from '../ast/scan.ts';
+import { parse } from '../ast/parse.ts';
+import { runsIn } from '../ast/span.ts';
 import type { BuildChrome, FurnitureAlign } from './chrome.ts';
 import { escapeHtml } from '../utils/escape.ts';
 
@@ -25,16 +26,23 @@ function furnitureSide(align: FurnitureAlign, pi: number): 'r' | 'l' | 'c' {
   }
 }
 
-/** A header or footer line cut into what it prints: a value to look up by name, or text as typed. */
+/** A header or footer line cut into what it prints: a value to look up by name, or text as shown. */
 type FurnitureSlot = string | { readonly name: string };
 
+/** The name a value run shows: that of the ［＃ここに「…」の値を表示］ written where the run is. */
+function fieldOf(line: Line, run: Chars): string {
+  const field = line.syntax.find((node): node is ValueFieldNode => node.kind === 'valueField' && node.span.start === run.span.start);
+  return field?.name.text ?? '';
+}
+
 /**
- * The slots of a header or footer line. Only ［＃ここに「…」の値を表示］ is interpreted; every
- * other node — prose, ruby, any other annotation — prints as its source characters.
+ * The slots of a header or footer line, cut from the AST's content: a value run names its field
+ * (looked up per page), wherever it sits; every other run prints its characters, a ruby's base
+ * and a 縦中横's text among them, since the furniture is plain text; a comment prints nothing.
  */
 function furnitureSlots(text: string): readonly FurnitureSlot[] {
-  return scan(text).lines.flatMap((line): FurnitureSlot[] => [
-    ...line.syntax.map((node) => (node.kind === 'valueField' ? { name: node.name.text } : node.text)),
+  return parse(text).lines.flatMap((line): FurnitureSlot[] => [
+    ...runsIn(line.content).map((run): FurnitureSlot => (run.origin === 'value' ? { name: fieldOf(line, run) } : run.text)),
     line.eol,
   ]);
 }

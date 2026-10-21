@@ -1,283 +1,109 @@
 /**
- * The lint walker: one pass over the AST that yields one {@link LintLine} per source line. It
- * drives the shared dialogue stack and owns the piece/sentinel bookkeeping; the line's 字下げ and
- * 見出し are the AST's.
+ * The lint walker: one pass over the AST that yields one {@link LintLine} per source line. The
+ * views are the line as its reader sees it, the AST's content (shown.ts): what is judged is what
+ * is shown, and each unit remembers where it was written. The pieces, the carriers and the
+ * dialogue depth are the walker's; the line's 字下げ and 見出し are the AST's.
  *
  * Semantics (each guarded by walker.test.ts):
- *   - The dialogue stack is dialogue.ts's, shared with the highlighter, and is driven from PROSE
- *     characters only — Aozora's ［＃「対象」に傍点］ carries its 「対象」 inside an annotation
- *     node, so it can never be mistaken for a quote (the Aozora trap).
- *   - A broken ［＃ (unclosed) contributes no prose; only a scan of the source slices (noNfd) sees
- *     inside it.
- *   - Outer extents: an opener (［＃傍点］, ［＃縦中横］, a ruby's ｜) pulls the next piece's
- *     `outerStart` before it; a postfix, a value field, a 外字注記, a ruby's 《reading》 or a span
- *     end pushes the open piece's `outerEnd` past it. What renders as text with no piece before it
- *     on the line (a value field, a 外字注記, a ruby whose base is a value field alone) leads the
- *     next piece instead. Openers and span ends pair per channel (one slot each for 傍点, 傍線,
- *     太字, 斜体, 見出し and 縦中横), as the AST pairs them; a span end whose own opener is still
- *     pending is an empty span, unless the channel was open before that opener. Extents are per
- *     line.
+ *   - The dialogue stack is dialogue.ts's, shared with the highlighter, and is fed the PROSE runs
+ *     only — the 「対象」 of ［＃「対象」に傍点］, a 「 inside an unclosed ［＃ and whatever a value
+ *     shows never open an utterance (the Aozora trap). What an annotation shows takes the depth
+ *     where it sits.
+ *   - A unit typed as body text names its piece (verbatim, contiguous, one depth); a unit an
+ *     annotation shows names none. Every unit names its carrier: its run, the atomic cell it is
+ *     inside (a ruby, a 縦中横), or the ［＃○字下げ］ that shows it.
+ *   - A carrier's outer extents say where an insert at its edge lands: outside the decorations
+ *     wrapping it. Backward, an insert passes the span starts whose channel decorates the carrier
+ *     (its marks, the 縦中横 it is, the line's 見出し). Forward, it passes every postfix, reading
+ *     and dangling end, and the paired ends of those channels; it passes other span starts and
+ *     ends only while such an end is still to come on the line. A comment is transparent both
+ *     ways. The walk starts only where the carrier's edge is a node edge.
  *   - Offsets are per UTF-16 unit (astral chars = two consecutive units), matching
- *     `TextDocument.positionAt`.
+ *     `TextDocument.positionAt`; a composed kana is one unit whose source is two.
  *
  * Lines are NEVER merged: a multi-line utterance yields one line per source line with
  * `openDepthAtEnd` > 0, and the 〇 sentinel lands on the line holding the utterance's first
- * interior character. The 字下げ a line opens with reaches rules only as `LintLine.indent`. No LSP types:
- * offsets only.
+ * interior unit. No LSP types: offsets only.
  */
-import type { Ast, Line, SyntaxNode } from '../../shared/ast/nodes.ts';
-import { spanChannel } from '../../shared/ast/notation.ts';
+import type { Ast, Line, Marks, Ruby, Span, SpanCloserNode, SyntaxNode, Tcy, TcySpanEndNode } from '../../shared/ast/nodes.ts';
+import type { Channel } from '../../shared/ast/notation.ts';
+import { isFixedOrigin } from '../../shared/ast/span.ts';
+import { partitionPoint } from '../../shared/utils/lists.ts';
 import { DialogueStack } from '../dialogue.ts';
+import { clusterSpans, shownRuns } from '../shown.ts';
 
-import type { LintLine, Piece, ProseUnit, ProseView, SourceSlice } from './types.ts';
+import type { Carrier, LintLine, Piece, ProseUnit, ProseView, SourceSlice } from './types.ts';
 
-/** The narration placeholder for a collapsed utterance interior. The lint scans class U+3007 〇
- *  as neither kanji nor kana, so it cannot trip a run/width rule. */
+/** The narration placeholder for a collapsed utterance interior: never in the prose view, so it
+ *  joins no run; one square to a sentence rule. */
 const SENTINEL = '〇';
 
-/** What a node does to the outer extents: `open` wraps the piece after it (a span start, a
- *  ruby's ｜); `attach` (a postfix, a value field, a 外字注記) extends the piece before it; `close` (a span end)
- *  does too unless its own opener is still pending; `reading` (a ruby's 《…》) extends it and marks
- *  a ruby base; `neutral` binds nothing (a ［＃N字下げ］ is no prose).
- *  Exhaustive: a new node kind is a compile error. */
-type ExtentRole = 'open' | 'close' | 'attach' | 'reading' | 'neutral';
-const EXTENT_ROLE: Record<SyntaxNode['kind'], ExtentRole> = {
-  text: 'neutral',
-  rubyMark: 'open',
+/** What a node is to an insert walking over it. Exhaustive: a new node kind is a compile error. */
+type Role = 'start' | 'end' | 'postfix' | 'reading' | 'comment' | 'other';
+const ROLE: Record<SyntaxNode['kind'], Role> = {
+  text: 'other',
+  rubyMark: 'start',
   rubyReading: 'reading',
-  rubyLeftPostfix: 'attach',
-  emphasisPostfix: 'attach',
-  emphasisSpanStart: 'open',
-  emphasisSpanEnd: 'close',
-  tcyPostfix: 'attach',
-  tcySpanStart: 'open',
-  tcySpanEnd: 'close',
-  headingPostfix: 'attach',
-  headingSpanStart: 'open',
-  headingSpanEnd: 'close',
-  comment: 'neutral',
-  brokenAnnotation: 'neutral',
-  pageBreak: 'neutral',
-  indent: 'neutral',
-  indentBlockStart: 'neutral',
-  indentBlockEnd: 'neutral',
-  valueField: 'attach',
-  gaiji: 'attach',
+  rubyLeftPostfix: 'postfix',
+  emphasisPostfix: 'postfix',
+  emphasisSpanStart: 'start',
+  emphasisSpanEnd: 'end',
+  tcyPostfix: 'postfix',
+  tcySpanStart: 'start',
+  tcySpanEnd: 'end',
+  headingPostfix: 'postfix',
+  headingSpanStart: 'start',
+  headingSpanEnd: 'end',
+  comment: 'comment',
+  brokenAnnotation: 'other',
+  pageBreak: 'other',
+  indent: 'other',
+  indentBlockStart: 'other',
+  indentBlockEnd: 'other',
+  valueField: 'other',
+  gaiji: 'other',
 };
 
-/** The pending key of a ruby's ｜, dropped by its 《reading》 (see LineBuilder.reading). */
-const RUBY_KEY = 'ruby';
+/** What a span start or end wraps: a decoration channel, the 見出し, the 縦中横. */
+type Wrap = Channel | 'heading' | 'tcy';
 
-/** The key of the 縦中横 slot, which closes with its line. */
-const TCY_KEY = 'tcy';
-
-/** The pairing key of an opener or span end: its channel — one slot per decoration channel, one
- *  for the heading levels, one for 縦中横, {@link RUBY_KEY} for a ruby's ｜. */
-function spanKey(node: SyntaxNode): string {
+function wrapOf(node: SyntaxNode): Wrap | null {
   switch (node.kind) {
-    case 'rubyMark':
-      return RUBY_KEY;
     case 'emphasisSpanStart':
     case 'emphasisSpanEnd':
+      return node.channel;
     case 'headingSpanStart':
     case 'headingSpanEnd':
-      return spanChannel(node);
+      return 'heading';
     case 'tcySpanStart':
     case 'tcySpanEnd':
-      return TCY_KEY;
+      return 'tcy';
     default:
-      return node.kind;
+      return null;
   }
 }
 
-/** One entry of a view plan: a whole piece, the 〇 sentinel, or the dialogue '\n' separator. */
-type PlanItem =
-  | { readonly kind: 'piece'; readonly piece: Piece }
-  | { readonly kind: 'sentinel'; readonly src: number }
-  | { readonly kind: 'sep' };
-
-/** Materializes a plan into an index-aligned {@link ProseView}. A separator's offset is just past
- *  the previous unit (it separates two utterances, so a previous unit always exists). */
-function materialize(plan: readonly PlanItem[]): ProseView {
-  let text = '';
-  const units: ProseUnit[] = [];
-  for (const item of plan) {
-    if (item.kind === 'piece') {
-      const piece = item.piece;
-      text += piece.text;
-      for (let k = 0; k < piece.text.length; k += 1) {
-        units.push({ src: piece.srcStart + k, piece, indexInPiece: k, depth: piece.depth });
-      }
-    } else if (item.kind === 'sentinel') {
-      text += SENTINEL;
-      units.push({ src: item.src, piece: null, indexInPiece: 0, depth: 0 });
-    } else {
-      const prev = units[units.length - 1];
-      text += '\n';
-      units.push({ src: (prev?.src ?? -1) + 1, piece: null, indexInPiece: 0, depth: 0 });
-    }
-  }
-  return { text, units };
+function isSpanEnd(node: SyntaxNode): node is SpanCloserNode | TcySpanEndNode {
+  return ROLE[node.kind] === 'end';
 }
 
-/** Accumulates one line, then freezes into a {@link LintLine} with lazily memoized views. */
-class LineBuilder {
-  readonly pieces: Piece[] = [];
-  readonly prosePlan: PlanItem[] = [];
-  readonly narrPlan: PlanItem[] = [];
-  readonly diaPlan: PlanItem[] = [];
-  readonly rubies: SourceSlice[] = [];
-  sawAnnotation = false;
-  /** Utterance serial of the last dialogue piece on THIS line (separator bookkeeping). */
-  lastDiaSerial: number | undefined = undefined;
-
-  // The piece under construction, with its outer extents (unset = the piece's own edges).
-  private curText = '';
-  private curStart = 0;
-  private curDepth = 0;
-  /** Set before the piece opens too: a rendered node with no piece to extend leads the next one. */
-  private curBefore: number | undefined = undefined;
-  private curAfter: number | undefined = undefined;
-  private curRubyBase = false;
-  /** Openers since the last piece, by pairing key; the earliest becomes the next `outerStart`. */
-  private readonly pending = new Map<string, { readonly at: number; readonly reopens: boolean }>();
-
-  /** An opening node at `at`; `reopens` says its channel was open already. */
-  open(key: string, at: number, reopens: boolean): void {
-    if (!this.pending.has(key)) {
-      this.pending.set(key, { at, reopens });
-    }
-  }
-
-  /** A postfix, value field or 外字注記 at [start, end) renders as text: it extends the open piece,
-   *  unless a pending opener sealed it (inside a ｜ base, the reading attaches the whole ruby).
-   *  With no piece open it leads the next one. */
-  attach(start: number, end: number): void {
-    if (this.pending.size !== 0) {
-      return;
-    }
-    if (this.curText !== '') {
-      this.curAfter = end;
-    } else {
-      this.curBefore ??= start;
-    }
-  }
-
-  /** A ruby's 《reading》 ending at `end`: the base's last piece takes it. A ｜ still pending means
-   *  no piece opened inside the base, so the base is a value field or 外字注記 alone and the whole
-   *  ruby attaches like one. Whatever else is pending was opened inside the base and belongs to
-   *  the ruby, never to the piece after it. */
-  reading(end: number): void {
-    const mark = this.pending.get(RUBY_KEY);
-    this.pending.clear();
-    if (mark !== undefined) {
-      this.attach(mark.at, end);
-    } else if (this.curText !== '') {
-      this.curAfter = end;
-      this.curRubyBase = true;
-    }
-  }
-
-  /** A span end at `end` extends the open piece, unless it ends an empty span (its own opener
-   *  pending, its channel not open before); another channel's pending opener does not seal it. */
-  close(key: string, end: number): void {
-    const own = this.pending.get(key);
-    this.pending.delete(key);
-    if (own?.reopens === false) {
-      return;
-    }
-    if (this.curText !== '') {
-      this.curAfter = end;
-    }
-  }
-
-  /** Appends a stretch of prose, closing the open piece at a source gap or a depth change. */
-  push(stretch: string, at: number, depth: number, serial: number): void {
-    if (this.curText !== '' && (at !== this.curStart + this.curText.length || depth !== this.curDepth)) {
-      this.closePiece(serial);
-    }
-    if (this.curText === '') {
-      this.curStart = at;
-      this.curDepth = depth;
-      let before = this.curBefore;
-      for (const { at: openerAt } of this.pending.values()) {
-        if (before === undefined || openerAt < before) {
-          before = openerAt;
-        }
-      }
-      this.curBefore = before;
-      this.pending.clear();
-    }
-    this.curText += stretch;
-  }
-
-  /** Closes the open piece into `pieces` and registers it on its view plans. */
-  closePiece(serial: number): void {
-    if (this.curText === '') {
-      return;
-    }
-    const piece: Piece = {
-      text: this.curText,
-      srcStart: this.curStart,
-      depth: this.curDepth,
-      outerStart: this.curBefore ?? this.curStart,
-      outerEnd: this.curAfter ?? this.curStart + this.curText.length,
-      rubyBase: this.curRubyBase,
-    };
-    this.pieces.push(piece);
-    const item: PlanItem = { kind: 'piece', piece };
-    this.prosePlan.push(item);
-    if (piece.depth === 0) {
-      this.narrPlan.push(item);
-    } else {
-      if (this.lastDiaSerial !== undefined && this.lastDiaSerial !== serial) {
-        this.diaPlan.push({ kind: 'sep' });
-      }
-      this.diaPlan.push(item);
-      this.lastDiaSerial = serial;
-    }
-    this.curText = '';
-    this.curBefore = undefined;
-    this.curAfter = undefined;
-    this.curRubyBase = false;
-  }
-
-  freeze(
-    meta: Pick<
-      LintLine,
-      'srcLine' | 'srcStart' | 'srcEnd' | 'source' | 'indent' | 'heading' | 'openDepthAtEnd'
-    >,
-  ): LintLine {
-    const { pieces, prosePlan, narrPlan, diaPlan } = this;
-    let proseView: ProseView | undefined;
-    let narrView: ProseView | undefined;
-    let diaView: ProseView | undefined;
-    return {
-      ...meta,
-      directiveOnly: pieces.length === 0 && this.sawAnnotation,
-      blank: pieces.length === 0 && !this.sawAnnotation,
-      pieces,
-      rubies: this.rubies,
-      prose: () => (proseView ??= materialize(prosePlan)),
-      narration: () => (narrView ??= materialize(narrPlan)),
-      dialogue: () => (diaView ??= materialize(diaPlan)),
-    };
-  }
+/** A carrier while its line is built: the extents are set once the line's units are known. */
+interface OpenCarrier extends Carrier {
+  outerStart: number;
+  outerEnd: number;
+  /** The decorations on it, any of which an insert must get out of: a run's own, a cell's and its runs'. */
+  readonly marks: readonly Marks[];
+  readonly tcy: boolean;
 }
 
-/** The 字下げ a line opens with: the block's N plus every ［＃N字下げ］ before its first text. */
-function indentAtHead(line: Line): number {
-  let n = line.indent;
-  for (const node of line.syntax) {
-    if (node.kind === 'text') {
-      return n;
-    }
-    if (node.kind === 'indent') {
-      n += node.amount;
-    }
-  }
-  return n;
+/** Cross-line state: the top-level utterance count (dialogue separator bookkeeping) and whether the current one has emitted its 〇 yet. */
+interface Flow {
+  serial: number;
+  placeheld: boolean;
 }
+
+/** One entry of a view plan: a unit of the prose view by index, the 〇 sentinel, or the dialogue '\n' separator. */
+type PlanItem = number | { readonly kind: 'sentinel'; readonly src: number } | { readonly kind: 'sep' };
 
 /** The line as source slices: every markup node on its own, the text between them joined. */
 function slicesOf(nodes: readonly SyntaxNode[]): SourceSlice[] {
@@ -295,78 +121,297 @@ function slicesOf(nodes: readonly SyntaxNode[]): SourceSlice[] {
   return out;
 }
 
+/** Materializes a plan over `prose` into an index-aligned {@link ProseView}. A separator sits just
+ *  past the previous unit (it separates two utterances, so a previous unit always exists). */
+function materialize(prose: ProseView, plan: readonly PlanItem[]): ProseView {
+  let text = '';
+  const units: ProseUnit[] = [];
+  for (let i = 0; i < plan.length;) {
+    const item = plan[i];
+    if (typeof item === 'number') {
+      let j = i + 1; // the run of consecutive units from `item`
+      while (plan[j] === item + (j - i)) {
+        j += 1;
+      }
+      text += prose.text.slice(item, item + (j - i));
+      for (let k = item; k < item + (j - i); k += 1) {
+        const unit = prose.units[k];
+        if (unit !== undefined) {
+          units.push(unit);
+        }
+      }
+      i = j;
+      continue;
+    }
+    if (item?.kind === 'sentinel') {
+      text += SENTINEL;
+      units.push({ src: item.src, end: item.src, depth: 0, piece: null, carrier: null });
+    } else {
+      const at = units[units.length - 1]?.end ?? 0;
+      text += '\n';
+      units.push({ src: at, end: at, depth: 0, piece: null, carrier: null });
+    }
+    i += 1;
+  }
+  return { text, units };
+}
+
+/** Builds one line: its units with their pieces and carriers, and the three view plans. */
+class LineBuilder {
+  private readonly line: Line;
+  private readonly ast: Ast;
+  private text = '';
+  private readonly units: ProseUnit[] = [];
+  private readonly pieces: Piece[] = [];
+  private readonly carriers: OpenCarrier[] = [];
+  private readonly narrPlan: PlanItem[] = [];
+  private readonly diaPlan: PlanItem[] = [];
+  /** Whether any unit sits inside an utterance: without one, the narration is the prose view itself. */
+  private spoken = false;
+  /** Utterance serial of the last dialogue unit on THIS line (separator bookkeeping). */
+  private lastDiaSerial: number | undefined = undefined;
+
+  /** The piece under construction: the object its units name, its text growing until it closes. */
+  private open: { text: string; readonly srcStart: number; readonly depth: number } | null = null;
+  /** The cursor over the line's nodes: `nodes[cursor]` is the first node not ending before the last unit placed. */
+  private cursor = 0;
+
+  constructor(line: Line, ast: Ast) {
+    this.line = line;
+    this.ast = ast;
+  }
+
+  /** The text node holding `[src, end)` whole, or null. Units come in source order, so the cursor only advances. */
+  private textNodeAt(src: number, end: number): SyntaxNode | null {
+    const nodes = this.line.syntax;
+    while ((nodes[this.cursor]?.span.end ?? Infinity) <= src) {
+      this.cursor += 1;
+    }
+    const node = nodes[this.cursor];
+    return node?.kind === 'text' && node.span.start <= src && end <= node.span.end ? node : null;
+  }
+
+  private closePiece(): void {
+    if (this.open !== null) {
+      this.pieces.push(this.open);
+      this.open = null;
+    }
+  }
+
+  /** The piece a typed unit at `[src, end)` names: the open one when it continues it, else a new one; null when no text node holds it whole. */
+  private pieceFor(src: number, end: number, depth: number): Piece | null {
+    const node = this.textNodeAt(src, end);
+    if (node === null) {
+      this.closePiece();
+      return null;
+    }
+    const slice = node.text.slice(src - node.span.start, end - node.span.start);
+    if (this.open === null || this.open.srcStart + this.open.text.length !== src || this.open.depth !== depth) {
+      this.closePiece();
+      this.open = { text: slice, srcStart: src, depth };
+    } else {
+      this.open.text += slice;
+    }
+    return this.open;
+  }
+
+  private carrier(kind: Carrier['kind'], span: Span, marks: readonly Marks[], tcy: boolean): OpenCarrier {
+    const carrier: OpenCarrier = { kind, src: span.start, end: span.end, outerStart: span.start, outerEnd: span.end, marks, tcy };
+    this.carriers.push(carrier);
+    return carrier;
+  }
+
+  /** Places one unit of the prose view, and on the narration or the dialogue plan by its depth. */
+  private place(ch: string, src: number, end: number, depth: number, piece: Piece | null, carrier: OpenCarrier, flow: Flow): void {
+    const index = this.units.length;
+    this.text += ch;
+    this.units.push({ src, end, depth, piece, carrier });
+    if (depth === 0) {
+      this.narrPlan.push(index);
+      return;
+    }
+    this.spoken = true;
+    if (!flow.placeheld) {
+      this.narrPlan.push({ kind: 'sentinel', src }); // the utterance's first interior unit
+      flow.placeheld = true;
+    }
+    if (this.lastDiaSerial !== undefined && this.lastDiaSerial !== flow.serial) {
+      this.diaPlan.push({ kind: 'sep' });
+    }
+    this.diaPlan.push(index);
+    this.lastDiaSerial = flow.serial;
+  }
+
+  run(dialogue: DialogueStack, flow: Flow): void {
+    let inCell = null as { readonly cell: Ruby | Tcy; readonly carrier: OpenCarrier } | null;
+    for (const { run, cell } of shownRuns(this.line)) {
+      let carrier: OpenCarrier;
+      if (cell === null) {
+        inCell = null;
+        carrier = this.carrier(run.origin === 'indent' ? 'indent' : 'run', run.span, [run.marks], false);
+      } else {
+        if (inCell?.cell !== cell) {
+          inCell = { cell, carrier: this.carrier('cell', cell.span, [cell.marks, ...cell.runs.map((r) => r.marks)], cell.kind === 'tcy') };
+        }
+        carrier = inCell.carrier;
+      }
+      const prose = run.origin === 'prose';
+      const fixed = isFixedOrigin(run.origin); // every character sits at its annotation
+      const clusters = fixed ? null : clusterSpans(run);
+      const segments = prose ? dialogue.feed(run.text) : [{ kind: 'prose', from: 0, to: run.text.length, depth: dialogue.depth } as const];
+      let cluster = 0;
+      let offset = 0; // display units into the current cluster
+      for (const seg of segments) {
+        for (let k = seg.from; k < seg.to; k += 1) {
+          let src = run.span.start;
+          let end = run.span.end;
+          if (clusters !== null) {
+            let c = clusters[cluster];
+            while (c !== undefined && offset >= c.text.length) {
+              cluster += 1;
+              offset = 0;
+              c = clusters[cluster];
+            }
+            src = (c?.start ?? run.span.end) + offset;
+            end = c?.text.length === offset + 1 ? c.end : src + 1;
+            offset += 1;
+          } else if (!fixed) {
+            src = run.span.start + k;
+            end = src + 1;
+          }
+          const piece = prose ? this.pieceFor(src, end, seg.depth) : null;
+          this.place(run.text.charAt(k), src, end, seg.depth, piece, carrier, flow);
+        }
+        if (seg.kind === 'open' && seg.depth === 0) {
+          flow.serial += 1; // a new top-level utterance; its 〇 is emitted lazily
+          flow.placeheld = false;
+        }
+      }
+    }
+    this.closePiece();
+    this.extend();
+  }
+
+  /** Whether `wrap` decorates `carrier`: an insert at its edge must get out of it. */
+  private decorates(carrier: OpenCarrier, wrap: Wrap): boolean {
+    switch (wrap) {
+      case 'tcy':
+        return carrier.tcy;
+      case 'heading':
+        return this.line.heading !== undefined;
+      default:
+        return carrier.marks.some((marks) => marks[wrap] !== undefined);
+    }
+  }
+
+  /** Sets the outer extents of every carrier (see the file header). */
+  private extend(): void {
+    const nodes = this.line.syntax;
+    const { pairs } = this.ast;
+    /** Per wrap, the index of the last paired end on the line: whether an end is still to come. */
+    const lastEnd = new Map<Wrap, number>();
+    for (const [i, node] of nodes.entries()) {
+      const wrap = wrapOf(node);
+      if (wrap !== null && isSpanEnd(node) && pairs.has(node)) {
+        lastEnd.set(wrap, i);
+      }
+    }
+    for (const carrier of this.carriers) {
+      // Backward, over the span starts that decorate the carrier.
+      const before = partitionPoint(nodes, (node) => node.span.start >= carrier.src);
+      if (nodes[before]?.span.start === carrier.src) {
+        let at = carrier.src;
+        for (let i = before - 1; i >= 0; i -= 1) {
+          const node = nodes[i];
+          if (node === undefined) {
+            break;
+          }
+          const role = ROLE[node.kind];
+          if (role === 'comment' || role === 'postfix' || (isSpanEnd(node) && !pairs.has(node))) {
+            continue; // transparent
+          }
+          const wrap = wrapOf(node);
+          if (role === 'start' && (wrap === null || this.decorates(carrier, wrap))) {
+            at = node.span.start; // a ｜ (no wrap) sits inside its cell's span, so it is never met here
+            continue;
+          }
+          break;
+        }
+        carrier.outerStart = at;
+      }
+
+      // Forward, over the postfixes, the readings and the ends of the channels still to close.
+      const after = partitionPoint(nodes, (node) => node.span.start >= carrier.end);
+      if (nodes[after - 1]?.span.end === carrier.end) {
+        let want: Set<Wrap> | null = null; // the wraps to get out of, built at the first span node met
+        let at = carrier.end;
+        for (let i = after; i < nodes.length; i += 1) {
+          const node = nodes[i];
+          if (node === undefined) {
+            break;
+          }
+          const role = ROLE[node.kind];
+          if (role === 'comment') {
+            continue;
+          }
+          if (role === 'postfix' || role === 'reading' || (isSpanEnd(node) && !pairs.has(node))) {
+            at = node.span.end;
+            continue;
+          }
+          if (role !== 'start' && role !== 'end') {
+            break;
+          }
+          want ??= new Set([...lastEnd].filter(([wrap, last]) => last >= after && this.decorates(carrier, wrap)).map(([wrap]) => wrap));
+          const wrap = wrapOf(node);
+          if (role === 'end' && wrap !== null && want.has(wrap)) {
+            want.delete(wrap);
+            at = node.span.end;
+            continue;
+          }
+          if (want.size === 0) {
+            break;
+          }
+        }
+        carrier.outerEnd = at;
+      }
+    }
+  }
+
+  freeze(openDepthAtEnd: number): LintLine {
+    const { line, pieces, narrPlan, diaPlan, spoken } = this;
+    const prose: ProseView = { text: this.text, units: this.units };
+    let narrView: ProseView | undefined;
+    let diaView: ProseView | undefined;
+    const blank = line.syntax.length === 0;
+    return {
+      srcLine: line.index,
+      srcStart: line.span.start,
+      srcEnd: line.span.end,
+      source: slicesOf(line.syntax),
+      indent: line.indent,
+      heading: line.heading,
+      directiveOnly: !blank && pieces.length === 0,
+      blank,
+      openDepthAtEnd,
+      pieces,
+      prose: () => prose,
+      narration: () => (spoken ? (narrView ??= materialize(prose, narrPlan)) : prose),
+      dialogue: () => (diaView ??= materialize(prose, diaPlan)),
+    };
+  }
+}
+
 /**
  * Walks `ast` and yields one {@link LintLine} per source line, INCLUDING the final line (even
  * when empty — the line after the final terminator; what it means is each rule's call). Line
  * numbers are the AST's, which are LSP's.
  */
 export function* walkLines(ast: Ast): Generator<LintLine, void, undefined> {
-  // Cross-line state (the "big state machine").
   const dialogue = new DialogueStack();
-  let placeheld = false; // has the current top-level utterance emitted its 〇 yet?
-  let serial = 0; // increments per top-level utterance (dialogue separator bookkeeping)
-  const live = new Set<string>(); // the channels a span start opened and no end has closed
-  let builder = new LineBuilder();
-
+  const flow: Flow = { serial: 0, placeheld: false };
   for (const line of ast.lines) {
-    for (const node of line.syntax) {
-      const role = EXTENT_ROLE[node.kind];
-      if (role === 'open') {
-        const key = spanKey(node);
-        builder.open(key, node.span.start, live.has(key)); // before the piece it wraps is pushed
-        if (key !== RUBY_KEY) {
-          live.add(key);
-        }
-      }
-      switch (node.kind) {
-        case 'text': // a ruby base too: it is prose
-          for (const seg of dialogue.feed(node.text)) {
-            const at = node.span.start + seg.from;
-            if (seg.depth > 0 && !placeheld) {
-              builder.closePiece(serial); // the 〇 sits between the depth-0 piece and the interior
-              builder.narrPlan.push({ kind: 'sentinel', src: at });
-              placeheld = true;
-            }
-            builder.push(node.text.slice(seg.from, seg.to), at, seg.depth, serial);
-            if (seg.kind === 'open' && seg.depth === 0) {
-              serial += 1; // a new top-level utterance; its 〇 is emitted lazily
-              placeheld = false;
-            }
-          }
-          break;
-        case 'rubyMark': // opened above; the base nodes follow as themselves
-          break;
-        case 'rubyReading': // the base pieces are already pushed
-          builder.rubies.push({ text: node.reading.text, srcStart: node.reading.span.start });
-          break;
-        default:
-          // An annotation contributes no prose (a 左ルビ reading lives only inside its annotation;
-          // a value field's substituted text is never author prose; a 外字注記 is not the
-          // character it shows); the gap it leaves alone breaks piece contiguity.
-          builder.sawAnnotation = true;
-          break;
-      }
-      // after the switch: a ruby's reading attaches to the base just pushed
-      if (role === 'close') {
-        builder.close(spanKey(node), node.span.end);
-        live.delete(spanKey(node));
-      } else if (role === 'attach') {
-        builder.attach(node.span.start, node.span.end);
-      } else if (role === 'reading') {
-        builder.reading(node.span.end);
-      }
-    }
-    builder.closePiece(serial);
-    live.delete(TCY_KEY);
-    yield builder.freeze({
-      srcLine: line.index,
-      srcStart: line.span.start,
-      srcEnd: line.span.end,
-      source: slicesOf(line.syntax),
-      indent: indentAtHead(line),
-      heading: line.heading,
-      openDepthAtEnd: dialogue.depth,
-    });
-    builder = new LineBuilder();
+    const builder = new LineBuilder(line, ast);
+    builder.run(dialogue, flow);
+    yield builder.freeze(dialogue.depth);
   }
 }

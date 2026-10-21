@@ -13,7 +13,8 @@
  * A fix may WRITE markup of its own (questionExclamationMarks writes the 縦中横 annotation in
  * its `tcy` mode): what it wrote
  * is set aside by where it landed, must read back as the markup it is, and counts as an insert
- * where it sits in the edit.
+ * where it sits in the edit. A fix may REMOVE a ［＃○字下げ］ whole with the spaces it shows
+ * (noIndent, noTrailingSpace): the one markup a deletion may take, and only those rules.
  *
  * `FIX_CORPUS` is a `Record<CatalogId, …>`, so adding a catalog rule without deciding its entry is
  * a COMPILE error: list at least one corpus that produces a fix, or declare `null` (rule has no
@@ -96,6 +97,9 @@ interface Markup {
   readonly span: Span;
 }
 
+/** The rules whose deletion may take a ［＃○字下げ］ with the spaces it shows. */
+const ERASES_INDENT: ReadonlySet<CatalogId> = new Set(['noIndent', 'noTrailingSpace']);
+
 /** What a rule's fix may change inside markup: kana composition, unless the rule is listed here. */
 const NORMALIZE: Partial<Record<CatalogId, (text: string) => string>> = {
   noControlChar: (text) => Array.from(text).filter((ch) => !isControlChar(ch.codePointAt(0) ?? 0)).join(''),
@@ -162,6 +166,7 @@ const WEDGES: readonly Wedge[] = [
   { open: '［＃「z」に傍点］', close: '', wraps: 0 },
   { open: '', close: (inner) => `［＃「${inner}」に傍点］`, wraps: 1 },
   { open: '［＃メモ］', close: '', wraps: 0 },
+  { open: '［＃１字下げ］', close: '', wraps: 0 },
   { open: gaijiOf('⁉'), close: '', wraps: 0 },
   { open: '［＃ここに「タイトル」の値を表示］', close: '', wraps: 0 },
   { open: '｜［＃ここに「タイトル」の値を表示］《z》', close: '', wraps: 0 }, // a ruby over a value field alone
@@ -213,9 +218,11 @@ for (const rule of RULES) {
               landed.some((at) => at.span.start <= span.start && span.end <= at.span.end);
             const bound = boundOf(variant);
             const after = markup(out, normalize);
+            const erased = ({ label: what, span }: Markup): boolean =>
+              ERASES_INDENT.has(rule.id) && what.startsWith('indent:') && edits.some((ed) => ed.t === '' && ed.s <= span.start && span.end <= ed.e);
             assert.deepEqual(
               labels(after.filter((node) => !written(node)), bound),
-              labels(markup(variant, normalize), bound),
+              labels(markup(variant, normalize).filter((node) => !erased(node)), bound),
               `${label} — markup changed`,
             );
             // (d) a postfix that bound still binds, unless an edit took the whole body it named:

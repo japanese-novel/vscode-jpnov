@@ -1,27 +1,32 @@
 /**
- * Walker tests: the per-line model (pieces, views, flags) — the Aozora trap, astral per-unit
- * offsets, the 字下げ/見出し line state (the AST's: what it is for each form is
- * test/shared/ast/resolve.test.ts's subject), zero-prose broken markup.
+ * Walker tests: the per-line model (units, pieces, carriers, views, flags) — the views are the
+ * line as shown, the Aozora trap, astral and composed per-unit offsets, the 字下げ/見出し line
+ * state (the AST's: what it is for each form is test/shared/ast/resolve.test.ts's subject), what
+ * an annotation shows as read-only units, and the carrier extents an insert is placed by.
  * Pure + import-light, so they run on Node's native test loader.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { walkLines } from '../../../src/server/lint/walker.ts';
-import type { LintLine, ProseView } from '../../../src/server/lint/types.ts';
+import type { Carrier, LintLine, ProseView } from '../../../src/server/lint/types.ts';
+import { VALUE_NAMES, valueAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
-import { D } from '../../shared/_kana.ts';
+import { gaijiOf } from '../../shared/ast/_shape.ts';
+import { BEL, D } from '../../shared/_kana.ts';
 
 function lines(src: string): LintLine[] {
   return [...walkLines(parse(src))];
 }
 
-/** The source text a view span `[a, b)` covers (start unit to last-included unit, inclusive). */
+/** The source text a view span `[a, b)` covers: from where its first unit was written to where its last one ends. */
 function covered(src: string, view: ProseView, a: number, b: number): string {
   const start = view.units[a]?.src ?? 0;
-  const end = (view.units[b - 1]?.src ?? 0) + 1;
+  const end = view.units[b - 1]?.end ?? start;
   return src.slice(start, end);
 }
+
+const TITLE = valueAnnotation(VALUE_NAMES.title);
 
 test('plain narration: one line, one piece, prose is identity', () => {
   const [l] = lines('あいうえお。');
@@ -32,6 +37,8 @@ test('plain narration: one line, one piece, prose is identity', () => {
   assert.equal(l.dialogue().text, '');
   assert.equal(l.blank, false);
   assert.equal(l.openDepthAtEnd, 0);
+  // every unit names its piece and a carrier of typed text
+  assert.ok(l.prose().units.every((u) => u.piece === l.pieces[0] && u.carrier?.kind === 'run'));
 });
 
 test('dialogue interior collapses to 〇 in the narration view and fills the dialogue view', () => {
@@ -45,9 +52,10 @@ test('dialogue interior collapses to 〇 in the narration view and fills the dia
   const n = l.narration();
   const i = n.text.indexOf('太郎');
   assert.equal(covered(src, n, i, i + 2), '太郎');
-  // the 〇 sentinel is synthetic: no piece, mapped at the interior's first unit
+  // the 〇 sentinel is synthetic: no piece, no carrier, mapped at the interior's first unit
   const s = n.units[n.text.indexOf('〇')];
   assert.equal(s?.piece, null);
+  assert.equal(s.carrier, null);
   assert.equal(s.src, src.indexOf('ヤ'));
 });
 
@@ -65,14 +73,13 @@ test('depth: top-level corners are 地の文 (0), interiors ≥ 1, nested corner
   assert.equal(depthAt('文'), 0);
 });
 
-test('ruby: the base flows into prose (merging with adjacent text), the reading into rubies', () => {
+test('ruby: the base flows into prose (merging with adjacent text); the reading shows nothing', () => {
   const src = 'この太郎《たろう》は言った。';
   const [l] = lines(src);
   assert.ok(l);
   assert.equal(l.narration().text, 'この太郎は言った。');
   // この + 太郎 are source-contiguous at the same depth -> ONE piece; は… starts after 《たろう》
   assert.deepEqual(l.pieces.map((p) => p.text), ['この太郎', 'は言った。']);
-  assert.deepEqual(l.rubies, [{ text: 'たろう', srcStart: src.indexOf('たろう') }]);
 });
 
 test('explicit ｜ ruby: base starts after the marker; the marker splits the piece', () => {
@@ -84,15 +91,13 @@ test('explicit ｜ ruby: base starts after the marker; the marker splits the pie
     ['太郎', src.indexOf('太郎')],
     ['は', src.lastIndexOf('は')], // the prose は after 》 — not the one inside the reading
   ]);
-  assert.deepEqual(l.rubies, [{ text: 'たろう', srcStart: src.indexOf('たろう') }]);
 });
 
-test('ruby inside dialogue: base -> dialogue view, reading -> rubies, narration 〇', () => {
+test('ruby inside dialogue: base -> dialogue view, narration 〇', () => {
   const [l] = lines('「漢字《かんじ》」');
   assert.ok(l);
   assert.equal(l.narration().text, '「〇」');
   assert.equal(l.dialogue().text, '漢字');
-  assert.deepEqual(l.rubies.map((r) => r.text), ['かんじ']);
 });
 
 test('［＃「対象」に傍点］ is an annotation, not dialogue (the Aozora trap)', () => {
@@ -111,16 +116,21 @@ test('an unclosed opener: the line ends inside the utterance', () => {
   assert.equal(l.openDepthAtEnd, 1);
 });
 
-test('a broken ［＃ contributes no prose (malformed markup is not linted)', () => {
+test('a broken ［＃ is shown as typed: read-only units, no piece', () => {
   const [l0, l1] = lines('地の文［＃こわれ\n次の行');
-  assert.equal(l0?.prose().text, '地の文');
+  assert.equal(l0?.prose().text, '地の文［＃こわれ');
+  assert.deepEqual(l0.pieces.map((p) => p.text), ['地の文']);
+  const broken = l0.prose().units[4];
+  assert.equal(broken?.piece, null);
+  assert.equal(broken.carrier?.kind, 'run');
   assert.equal(l1?.prose().text, '次の行');
 });
 
 test('a 「 swallowed by a broken ［＃ never enters the dialogue stack', () => {
   const ls = lines('［＃「未\nあと');
-  assert.equal(ls[0]?.dialogue().text, '');
-  assert.equal(ls[0].directiveOnly, true); // the broken annotation is a token with no prose
+  assert.equal(ls[0]?.prose().text, '［＃「未');
+  assert.equal(ls[0].dialogue().text, '');
+  assert.equal(ls[0].directiveOnly, true); // nothing typed as body text
   assert.equal(ls[1]?.prose().text, 'あと');
   assert.equal(ls[1].openDepthAtEnd, 0);
 });
@@ -132,6 +142,7 @@ test('consecutive utterances are separator-joined in the dialogue view', () => {
   const d = l.dialogue();
   assert.equal(d.text, 'A\nBC');
   assert.equal(d.units[1]?.piece, null); // the separator is synthetic
+  assert.equal(d.units[1].carrier, null);
   assert.equal(covered(src, d, 2, 4), 'BC');
 });
 
@@ -156,6 +167,17 @@ test('astral chars occupy two units with consecutive offsets (positionAt-compati
   assert.equal(n.text, '𠮷さん');
   assert.equal(covered(src, n, 0, 2), '𠮷'); // the two units cover exactly the astral char
   assert.equal(covered(src, n, 0, 3), '𠮷《よし》さ'); // spanning the elided ruby covers the gap
+});
+
+test('a composed kana is one unit whose source is two; a dropped character leaves the view and widens the unit before it', () => {
+  const src = `か${D}き${BEL}く`;
+  const [l] = lines(src);
+  assert.ok(l);
+  const v = l.prose();
+  assert.equal(v.text, 'がきく');
+  assert.deepEqual(v.units.map((u) => [u.src, u.end]), [[0, 2], [2, 4], [4, 5]]);
+  assert.deepEqual(l.pieces.map((p) => [p.text, p.srcStart]), [[src, 0]]); // the piece is the source, verbatim
+  assert.equal(covered(src, v, 0, 1), `か${D}`);
 });
 
 test('one LintLine per source line; a multi-line utterance stays split', () => {
@@ -186,20 +208,22 @@ test('the final line is always yielded — trailing blanks are real lines', () =
   assert.equal(ls[2]?.blank, true);
 });
 
-test('blank vs directive-only: a token-less line is blank, a ここから/改ページ line is not', () => {
-  const ls = lines('あ。\n\n［＃ここから２字下げ］\n［＃改ページ］\nい。');
+test('blank vs directive-only: a node-less line is blank; a line with nodes but nothing typed is directive-only', () => {
+  const ls = lines('あ。\n\n［＃ここから２字下げ］\n［＃改ページ］\nい。\n［＃３字下げ］\n※［＃感嘆符疑問符、1-8-78］');
   assert.deepEqual(ls.map((l) => [l.blank, l.directiveOnly]), [
     [false, false],
     [true, false],
     [false, true],
     [false, true],
     [false, false],
+    [false, true], // shows three spaces, typed none
+    [false, true], // shows ⁉, typed none
   ]);
 });
 
 // --- the line state is the AST's ---
 
-test('heading is the AST line\'s; indent adds the ［＃N字下げ］ before the line\'s first text to the block\'s', () => {
+test('heading and indent are the AST line\'s: the block 字下げ; a ［＃N字下げ］ is spaces in the view', () => {
   const src = [
     '＊冒頭は字下げなし。',
     '　字面の空白で始まる行。',
@@ -226,8 +250,9 @@ test('heading is the AST line\'s; indent adds the ［＃N字下げ］ before the
     [...walkLines(ast)].map((l) => [l.srcLine, l.indent, l.heading]),
     ast.lines.map((l) => [l.index, l.indent, l.heading]),
   );
-  // After the first text it is content, not an opening: the line still opens with its block's N.
-  assert.deepEqual(lines('本文［＃３字下げ］\n　［＃３字下げ］本文\n［＃ここから１字下げ］\n［＃２字下げ］本文').map((l) => l.indent), [0, 0, 0, 3]);
+  const ls = lines('本文［＃３字下げ］\n　［＃３字下げ］本文\n［＃ここから１字下げ］\n［＃２字下げ］本文');
+  assert.deepEqual(ls.map((l) => l.indent), [0, 0, 0, 1]);
+  assert.deepEqual(ls.map((l) => l.prose().text), ['本文　　　', '　　　　本文', '', '　　本文']);
 });
 
 test('a heading postfix whose target is missing leaves its line plain prose', () => {
@@ -236,22 +261,76 @@ test('a heading postfix whose target is missing leaves its line plain prose', ()
   assert.equal(ls[0]?.directiveOnly, false); // the format rules read it
 });
 
-// --- outer extents: where an insert before/after a piece lands (#72) ---
+// --- what an annotation shows: in the view, read-only ---
 
-/** Each piece of line `n` as [its text, the source its outer extents cover]. */
+test('a value, a 外字注記 and the spaces of a ［＃N字下げ］ are units with no piece, written at their annotation', () => {
+  const mark = '※［＃感嘆符疑問符、1-8-78］';
+  const src = `なに${mark}次${TITLE}と［＃２字下げ］末`;
+  const [l] = lines(src);
+  assert.ok(l);
+  const v = l.prose();
+  assert.equal(v.text, `なに⁉次${VALUE_NAMES.title}と　　末`);
+  assert.deepEqual(l.pieces.map((p) => p.text), ['なに', '次', 'と', '末']);
+  const gaiji = v.units[2];
+  assert.equal(gaiji?.piece, null);
+  assert.equal(gaiji.carrier?.kind, 'run');
+  assert.equal(src.slice(gaiji.src, gaiji.end), mark);
+  const value = v.units[4];
+  assert.equal(value?.piece, null);
+  assert.equal(src.slice(value.src, value.end), TITLE);
+  const space = v.units[v.text.indexOf('　')];
+  assert.equal(space?.piece, null);
+  assert.equal(space.carrier?.kind, 'indent');
+  assert.equal(src.slice(space.src, space.end), '［＃２字下げ］');
+  assert.equal(v.units[v.text.indexOf('　') + 1]?.carrier, space.carrier); // one carrier for the annotation's spaces
+});
+
+test('what an annotation shows never opens an utterance, and takes the depth where it sits', () => {
+  const mark = gaijiOf('《');
+  const [l] = lines(`「${mark}あ」${TITLE}`);
+  assert.ok(l);
+  assert.equal(l.prose().text, `「《あ」${VALUE_NAMES.title}`);
+  assert.equal(l.narration().text, `「〇」${VALUE_NAMES.title}`); // the 〇 sits on the 外字注記, the utterance's first unit
+  assert.equal(l.dialogue().text, '《あ');
+  assert.equal(l.prose().units[1]?.depth, 1);
+  assert.equal(l.narration().units[1]?.src, 1);
+});
+
+// --- carrier extents: where an insert before/after a unit lands ---
+
+/** Each carrier of line `n` in order, as [the text its units show, the source its outer extents cover]. */
 function outer(src: string, n = 0): [string, string][] {
   const l = lines(src)[n];
   assert.ok(l);
-  return l.pieces.map((p) => [p.text, src.slice(p.outerStart, p.outerEnd)]);
+  const v = l.prose();
+  const out: [string, string][] = [];
+  let last: Carrier | null = null;
+  for (const [k, unit] of v.units.entries()) {
+    if (unit.carrier === null) {
+      continue;
+    }
+    if (unit.carrier === last) {
+      const item = out[out.length - 1];
+      if (item !== undefined) {
+        item[0] += v.text.charAt(k);
+      }
+    } else {
+      out.push([v.text.charAt(k), src.slice(unit.carrier.outerStart, unit.carrier.outerEnd)]);
+      last = unit.carrier;
+    }
+  }
+  return out;
 }
 
-test('a ruby reading extends the base piece; an explicit ｜ pulls its start before the marker', () => {
-  assert.deepEqual(outer('　彼は山田《やまだ》'), [['　彼は山田', '　彼は山田《やまだ》']]);
+test('a ruby is one carrier from its ｜ or base through the reading; the text around it is its own', () => {
+  assert.deepEqual(outer('　彼は山田《やまだ》'), [['　彼は', '　彼は'], ['山田', '山田《やまだ》']]);
   assert.deepEqual(outer('｜大人《おとな》は笑った。'), [['大人', '｜大人《おとな》'], ['は笑った。', 'は笑った。']]);
   assert.deepEqual(outer('「山田《やまだ》」'), [['「', '「'], ['山田', '山田《やまだ》'], ['」', '」']]);
+  const [l] = lines('｜大人《おとな》');
+  assert.equal(l?.prose().units[0]?.carrier?.kind, 'cell');
 });
 
-test('a span wraps the piece inside it; stacked and postfix closers all extend it', () => {
+test('a span wraps the carrier inside it; stacked and postfix closers all extend it', () => {
   assert.deepEqual(outer('［＃縦中横］12［＃縦中横終わり］年'), [['12', '［＃縦中横］12［＃縦中横終わり］'], ['年', '年']]);
   assert.deepEqual(outer('［＃傍点］青空文庫［＃傍点終わり］で読書しよう'), [
     ['青空文庫', '［＃傍点］青空文庫［＃傍点終わり］'],
@@ -270,7 +349,7 @@ test('a span wraps the piece inside it; stacked and postfix closers all extend i
   assert.deepEqual(outer(both), [['山田', both]]);
 });
 
-test('an opener seals the piece before it; an empty span in between is transparent', () => {
+test('an insert gets out of the decorations on its carrier and no further', () => {
   assert.deepEqual(outer('　驚いた！｜山田《やまだ》'), [['　驚いた！', '　驚いた！'], ['山田', '｜山田《やまだ》']]);
   assert.deepEqual(outer('　すごい！［＃ここから太字］そして［＃ここで太字終わり］'), [
     ['　すごい！', '　すごい！'],
@@ -278,23 +357,26 @@ test('an opener seals the piece before it; an empty span in between is transpare
   ]);
   const inner = '［＃傍点］12［＃太字］［＃太字終わり］［＃傍点終わり］';
   assert.deepEqual(outer(inner), [['12', inner]]);
+  // an empty span before or after decorates nothing
   assert.deepEqual(outer('［＃傍点］［＃傍点終わり］山田'), [['山田', '山田']]);
-  // a postfix is not a span end: it neither ends the pending opener nor reaches the sealed piece
+  assert.deepEqual(outer('山田［＃傍点］［＃傍点終わり］'), [['山田', '山田']]);
+  // a postfix is passed; a start of another channel after the carrier is not
   assert.deepEqual(outer('山田［＃太字］［＃「山田」に傍点］太郎'), [['山田', '山田'], ['太郎', '［＃太字］［＃「山田」に傍点］太郎']]);
 });
 
-test('spans pair per channel: another channel in between neither seals a piece nor ends an opener', () => {
+test('an end of another channel is passed only on the way out of a decoration that is still open', () => {
   assert.deepEqual(outer('［＃傍点］すごい！［＃太字］［＃傍点終わり］そして［＃太字終わり］'), [
     ['すごい！', '［＃傍点］すごい！［＃太字］［＃傍点終わり］'],
-    ['そして', '［＃太字］［＃傍点終わり］そして［＃太字終わり］'],
+    ['そして', 'そして［＃太字終わり］'], // before そして the 傍点 is still open: the insert stays after its end
   ]);
-  assert.deepEqual(outer('［＃傍点］［＃太字終わり］本文'), [['本文', '［＃傍点］［＃太字終わり］本文']]);
+  assert.deepEqual(outer('［＃傍点］［＃太字終わり］本文'), [['本文', '［＃傍点］［＃太字終わり］本文']]); // a dangling end is transparent
   assert.deepEqual(outer('［＃傍点］［＃丸傍点終わり］本文'), [['本文', '本文']]); // the 傍点 variants share one channel
   assert.deepEqual(outer('［＃大見出し］［＃中見出し終わり］題'), [['題', '題']]); // the heading levels share one slot
-  assert.deepEqual(outer('全［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］頁'), [['全', '全'], ['頁', '頁']]);
+  const counted = '全［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］頁';
+  assert.deepEqual(outer(counted), [['全', '全'], ['0', '［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］'], ['頁', '頁']]);
 });
 
-test('a start on a channel already open wraps nothing new: the end after it closes what wraps the piece', () => {
+test('a start on a channel already open wraps nothing new: the end after it closes what decorates the carrier', () => {
   const variant = '彼は［＃傍点］行く［＃丸傍点］［＃傍点終わり］';
   assert.deepEqual(outer(variant), [['彼は', '彼は'], ['行く', '［＃傍点］行く［＃丸傍点］［＃傍点終わり］']]);
   const same = '彼は［＃太字］行く［＃太字］［＃太字終わり］';
@@ -311,44 +393,37 @@ test('a start on a channel already open wraps nothing new: the end after it clos
     ['あ', '［＃傍点］あ［＃傍点終わり］'],
     ['行く', '行く'],
   ]);
-  // A start that opened after the piece still wraps nothing, whatever follows it.
+  // A start that opened after the carrier decorates it not at all, whatever follows it.
   assert.deepEqual(outer('山田［＃傍点］［＃太字］［＃傍点終わり］'), [['山田', '山田']]);
 });
 
-test('neutral markup binds nothing: a 字下げ is outside every piece, a comment is transparent', () => {
+test('neutral markup binds nothing: a ０字下げ shows nothing, a comment is transparent, a dangling end is passed', () => {
   assert.deepEqual(outer('［＃０字下げ］本文'), [['本文', '本文']]);
   assert.deepEqual(outer('［＃０字下げ］［＃傍点］内容だ［＃傍点終わり］'), [['内容だ', '［＃傍点］内容だ［＃傍点終わり］']]);
   assert.deepEqual(outer('山田［＃メモ］［＃傍点終わり］'), [['山田', '山田［＃メモ］［＃傍点終わり］']]);
+  assert.deepEqual(outer('山田［＃メモ］'), [['山田', '山田']]);
   assert.deepEqual(outer('［＃傍点終わり］山田'), [['山田', '山田']]);
   assert.deepEqual(outer('［＃縦中横］12'), [['12', '［＃縦中横］12']]); // unterminated: nothing to skip
 });
 
-test('a value field is rendered text: it extends the piece before it, like a postfix', () => {
-  const field = '［＃ここに「タイトル」の値を表示］';
-  assert.deepEqual(outer(`本文${field}次`), [['本文', `本文${field}`], ['次', '次']]);
-  assert.deepEqual(outer(`［＃傍点］${field}本文［＃傍点終わり］`), [['本文', `［＃傍点］${field}本文［＃傍点終わり］`]]);
-  // With no piece before it on the line, it leads the next one (a 字下げ goes before it).
-  assert.deepEqual(outer(`${field}本文`), [['本文', `${field}本文`]]);
-  assert.deepEqual(outer(`${field}${field}本文`), [['本文', `${field}${field}本文`]]);
-  assert.deepEqual(outer(`［＃メモ］${field}本文`), [['本文', `${field}本文`]]);
-});
-
-test('a 外字注記 is an annotation to the lint: no prose, and it extends the piece before it', () => {
-  const mark = '※［＃感嘆符疑問符、1-8-78］';
-  const [l] = lines(`なに${mark}次`);
-  assert.ok(l);
-  assert.equal(l.prose().text, 'なに次');
-  assert.deepEqual(outer(`なに${mark}次`), [['なに', `なに${mark}`], ['次', '次']]);
-  assert.deepEqual(outer(`${mark}次`), [['次', `${mark}次`]]);
-  assert.equal(lines(mark)[0]?.directiveOnly, true);
-});
-
-test('a depth change inside a span splits the extents across the corner pieces', () => {
-  assert.deepEqual(outer('［＃傍点］「山田」［＃傍点終わり］'), [
-    ['「', '［＃傍点］「'],
-    ['山田', '山田'],
-    ['」', '」［＃傍点終わり］'],
+test('what an annotation shows is a carrier of its own: an insert at its edge lands outside the annotation', () => {
+  assert.deepEqual(outer(`本文${TITLE}次`), [['本文', '本文'], [VALUE_NAMES.title, TITLE], ['次', '次']]);
+  assert.deepEqual(outer(`［＃傍点］${TITLE}本文［＃傍点終わり］`), [
+    [VALUE_NAMES.title, `［＃傍点］${TITLE}`],
+    ['本文', '本文［＃傍点終わり］'],
   ]);
+  assert.deepEqual(outer(`［＃メモ］${TITLE}本文`), [[VALUE_NAMES.title, TITLE], ['本文', '本文']]);
+  const mark = '※［＃感嘆符疑問符、1-8-78］';
+  assert.deepEqual(outer(`なに${mark}次`), [['なに', 'なに'], ['⁉', mark], ['次', '次']]);
+  assert.deepEqual(outer(`${mark}［＃「⁉」に傍点］次`), [['⁉', `${mark}［＃「⁉」に傍点］`], ['次', '次']]);
+  assert.deepEqual(outer('文［＃２字下げ］次'), [['文', '文'], ['　　', '［＃２字下げ］'], ['次', '次']]);
+});
+
+test('a depth change inside a span does not cut the carrier: the pieces are cut, the extents are the run\'s', () => {
+  const src = '［＃傍点］「山田」［＃傍点終わり］';
+  assert.deepEqual(outer(src), [['「山田」', src]]);
+  const [l] = lines(src);
+  assert.deepEqual(l?.pieces.map((p) => p.text), ['「', '山田', '」']);
 });
 
 test('extents are per line: an opener never reaches the next line; CRLF and astral chars are plain', () => {
@@ -356,38 +431,33 @@ test('extents are per line: an opener never reaches the next line; CRLF and astr
   assert.deepEqual(outer(src, 0), []);
   assert.deepEqual(outer(src, 1), [['山田', '山田［＃傍点終わり］']]);
   const astral = '　彼は𠮷《よし》\r\n次';
-  assert.deepEqual(outer(astral, 0), [['　彼は𠮷', '　彼は𠮷《よし》']]);
+  assert.deepEqual(outer(astral, 0), [['　彼は', '　彼は'], ['𠮷', '𠮷《よし》']]);
   assert.deepEqual(outer(astral, 1), [['次', '次']]);
 });
 
-test('a ｜ base holding annotations: its pieces sit inside ｜…《》, the last one takes the reading', () => {
+test('a ｜ base holding annotations: one cell carrier, its pieces cut at the markup inside', () => {
   const postfix = '｜山田［＃「山田」に傍点］《やまだ》';
   assert.deepEqual(outer(postfix), [['山田', postfix]]);
   const split = 'あ｜山田［＃x］太郎《やまだたろう》は';
-  assert.deepEqual(outer(split), [
-    ['あ', 'あ'],
-    ['山田', '｜山田'],
-    ['太郎', '太郎《やまだたろう》'],
-    ['は', 'は'],
-  ]);
+  assert.deepEqual(outer(split), [['あ', 'あ'], ['山田太郎', '｜山田［＃x］太郎《やまだたろう》'], ['は', 'は']]);
   const [l] = lines(split);
   assert.ok(l);
-  assert.deepEqual(l.pieces.map((p) => p.rubyBase), [false, false, true, false]);
-  assert.deepEqual(l.rubies, [{ text: 'やまだたろう', srcStart: split.indexOf('やまだたろう') }]);
+  assert.deepEqual(l.pieces.map((p) => p.text), ['あ', '山田', '太郎', 'は']);
 });
 
-test('a ｜ base of a value field alone renders as text: the ruby attaches like the field would', () => {
-  const ruby = '｜［＃ここに「タイトル」の値を表示］《た》';
-  assert.deepEqual(outer(`あ${ruby}は`), [['あ', `あ${ruby}`], ['は', 'は']]);
-  assert.deepEqual(outer(`${ruby}は`), [['は', `${ruby}は`]]);
+test('a ｜ base of a value field alone: the value is the cell, read-only', () => {
+  const ruby = `｜${TITLE}《た》`;
+  assert.deepEqual(outer(`あ${ruby}は`), [['あ', 'あ'], [VALUE_NAMES.title, ruby], ['は', 'は']]);
   const [l] = lines(`あ${ruby}は`);
   assert.ok(l);
-  assert.deepEqual(l.pieces.map((p) => p.rubyBase), [false, false]); // あ is not the base
+  assert.deepEqual(l.pieces.map((p) => p.text), ['あ', 'は']);
+  assert.equal(l.prose().units[1]?.piece, null);
+  assert.equal(l.prose().units[1]?.carrier?.kind, 'cell');
   // A base of a comment alone is no ruby to the Scanner (rubyBaseMissing): the ｜ and 《た》 are prose.
   assert.deepEqual(outer('あ｜［＃メモ］《た》は'), [['あ｜', 'あ｜'], ['《た》は', '《た》は']]);
 });
 
-test('an opener inside a ｜ base belongs to the ruby, never to the piece after it', () => {
+test('an opener inside a ｜ base belongs to the ruby, never to the carrier after it', () => {
   assert.deepEqual(outer('｜山田［＃傍点］《やまだ》太郎［＃傍点終わり］'), [
     ['山田', '｜山田［＃傍点］《やまだ》'],
     ['太郎', '太郎［＃傍点終わり］'],
@@ -423,11 +493,11 @@ test('source cuts the line at its markup: each markup node alone, the text betwe
   }
 });
 
-test('NFD: an implicit ruby over a decomposed kana keeps its source offsets (the syntax layer never composes)', () => {
+test('NFD: the view shows the kana composed; the piece keeps the source and its offsets', () => {
   const src = `カ${D}ラス《か${D}らす》`;
   const [l] = lines(src);
   assert.ok(l);
+  assert.equal(l.prose().text, 'ガラス');
   assert.deepEqual(l.pieces.map((p) => [p.text, p.srcStart]), [[`カ${D}ラス`, 0]]);
-  assert.deepEqual(l.rubies, [{ text: `か${D}らす`, srcStart: src.indexOf(`か${D}らす`) }]);
-  assert.deepEqual(outer(src), [[`カ${D}ラス`, src]]);
+  assert.deepEqual(outer(src), [['ガラス', src]]);
 });
