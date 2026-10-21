@@ -22,7 +22,7 @@
 import { createRecognizer } from './recognizer.ts';
 import { longestPrefixRoot, normalizeRootUri, uriKey } from '../fsUri.ts';
 import type { NameList, ParsedJpbook } from '#/shared/book/jpbook.ts';
-import { nameSurfaces, type ListedName } from '#/shared/book/names.ts';
+import { keywordSurface, nameSurfaces, type ListedName } from '#/shared/book/names.ts';
 
 import type { Recognizer } from './recognizer.ts';
 
@@ -127,7 +127,7 @@ export function createHighlightStore(): HighlightStore {
         const keywords = union(entry.books, 'keywords');
         entry.recognizer = characters.length === 0 && keywords.length === 0
           ? null
-          : createRecognizer(characters.flatMap(nameSurfaces), keywords.map((k) => k.text));
+          : createRecognizer(characters.flatMap(nameSurfaces), keywords.map(keywordSurface));
       }
       return entry.recognizer ?? undefined;
     },

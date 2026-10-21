@@ -15,7 +15,7 @@
  *
  * Pure + vscode-free.
  */
-import { graphemes, isCjkIdeograph, isHiragana, isKatakana, isUnshown } from '../chars.ts';
+import { graphemes, isHiragana, isKanji, isKatakana, isUnshown } from '../chars.ts';
 
 import { classifyAnnotation, gaijiNode } from './classify.ts';
 import { append } from '../utils/lists.ts';
@@ -26,15 +26,6 @@ import { Cutter } from './parts.ts';
 // Implicit ruby-base detection
 
 type CharClass = 'kanji' | 'hiragana' | 'katakana' | 'alnum' | null;
-
-/**
- * Kanji: CJK Unified Ideographs (+ extensions) plus 々〆〇ヶ — the spec treats 「仝々〆〇ヶ」 as
- * kanji for the ｜ rule (仝 U+4EDD already sits in the unified block).
- * https://www.aozora.gr.jp/annotation/etc.html#ruby
- */
-function isKanji(cp: number): boolean {
-  return isCjkIdeograph(cp) || cp === 0x3005 || cp === 0x3006 || cp === 0x3007 || cp === 0x30f6;
-}
 
 /** ASCII and full-width Latin letters + digits, as a single class. */
 function isAlnum(cp: number): boolean {

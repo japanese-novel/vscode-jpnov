@@ -10,7 +10,8 @@ import { parse } from '../../../src/shared/ast/parse.ts';
 import { printSource } from '../../../src/shared/ast/print.ts';
 import { scan } from '../../../src/shared/ast/scan.ts';
 
-import { at, boundOf, charStarts, contentOf, gaijiOf, heldOf, issuesOf } from './_shape.ts';
+import { clusterStarts } from '../../../src/shared/ast/span.ts';
+import { at, boundOf, contentOf, gaijiOf, heldOf, issuesOf } from './_shape.ts';
 import { BEL, D, UNSHOWN } from '../_kana.ts';
 import { inLinearTime } from '../_timing.ts';
 
@@ -223,6 +224,28 @@ test('NFD: content is composed, whatever the source spelling', () => {
   assert.deepEqual(content(`｜か［＃x］${D}《よみ》`), ['ruby が《よみ》', 'comment x']); // …and so does a base
 });
 
+test('a ruby and a 縦中横 carry the runs they were joined from, each written where it was', () => {
+  /** The runs of the one-line `src`'s first atomic cell, as `[origin text, source it was written at]`. */
+  const runs = (src: string): [string, string][] => {
+    const cell = parse(src).lines[0]?.content.find((item) => item.kind === 'ruby' || item.kind === 'tcy');
+    assert.ok(cell?.kind === 'ruby' || cell?.kind === 'tcy');
+    return cell.runs.map((run) => [`${run.origin} ${run.text}`, src.slice(run.span.start, run.span.end)]);
+  };
+  assert.deepEqual(runs('山田《やまだ》'), [['prose 山田', '山田']]);
+  assert.deepEqual(runs('｜山田太郎《やまだたろう》'), [['prose 山田太郎', '山田太郎']]);
+  // Markup inside a ｜ base cuts the runs; a value and a 外字注記 are runs of their origin.
+  assert.deepEqual(runs('｜山［＃「山」に傍点］田《やまだ》'), [['prose 山', '山'], ['prose 田', '田']]);
+  const value = valueAnnotation(VALUE_NAMES.title);
+  assert.deepEqual(runs(`｜山${value}田《やまだ》`), [['prose 山', '山'], [`value ${VALUE_NAMES.title}`, value], ['prose 田', '田']]);
+  assert.deepEqual(runs(`［＃縦中横］１${gaijiOf('⁉')}［＃縦中横終わり］`), [['prose １', '１'], ['gaiji ⁉', gaijiOf('⁉')]]);
+  // A swallowed reading is no run; a kana composed across a comment is one run over both.
+  assert.deepEqual(runs('［＃縦中横］１２《じゅうに》［＃縦中横終わり］'), [['prose １２', '１２']]);
+  assert.deepEqual(runs(`｜か［＃x］${D}《が》`), [['prose が', `か［＃x］${D}`]]);
+  // A 左ルビ or a 縦中横 postfix keeps the runs of what it covered.
+  assert.deepEqual(runs('王都［＃「王都」の左に「おうと」のルビ］'), [['prose 王都', '王都']]);
+  assert.deepEqual(runs('１２［＃「１２」は縦中横］'), [['prose １２', '１２']]);
+});
+
 test('NFD: a pair split by markup outside a cell stays two characters', () => {
   assert.deepEqual(content(`か［＃x］${D}`), ['chars か', 'comment x', `chars ${D}`]);
   // Two runs never rejoin across nodes, so nothing composes behind the resolver's back.
@@ -279,7 +302,7 @@ test('unshown: a run spans its kept characters, each knowing where it was writte
   assert.ok(run?.kind === 'chars');
   assert.equal(run.text, '王都が');
   assert.deepEqual(run.span, at(src, `王${BEL}都か${BEL}${D}`));
-  assert.deepEqual(charStarts(run), [at(src, '王').start, at(src, '都').start, at(src, 'か').start]);
+  assert.deepEqual(clusterStarts(run), [at(src, '王').start, at(src, '都').start, at(src, 'か').start]);
 });
 
 test('a run maps back to the source it came from', () => {
@@ -310,7 +333,7 @@ test('each character of a run maps back to where it was written', () => {
         return [];
       }
       const chars = Array.from(item.text);
-      return charStarts(item).map((start, i): [string, number] => [chars[i] ?? '', start]);
+      return clusterStarts(item).map((start, i): [string, number] => [chars[i] ?? '', start]);
     });
   // A composed kana sits at its kana and what follows it past its mark: after a character of two
   // units, and in a piece a postfix cut off.

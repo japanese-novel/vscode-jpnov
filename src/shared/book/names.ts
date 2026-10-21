@@ -126,11 +126,17 @@ export function sameWriting(a: ListedName, b: ListedName): boolean {
 }
 
 /**
- * The surfaces a character is recognised by: the text as written (a Western name keeps its
- * space), the parts joined (how a full Japanese name is typeset), and each part alone.
+ * The surfaces a character is recognised by, as the body shows them ({@link displayText}): the
+ * text as written (a Western name keeps its space), the parts joined (how a full Japanese name is
+ * typeset), and each part alone.
  */
 export function nameSurfaces(name: ListedName): string[] {
-  return [name.text, nameBase(name), ...name.parts.map((p) => p.base)];
+  return [name.text, nameBase(name), ...name.parts.map((p) => p.base)].map(displayText);
+}
+
+/** The surface a keyword is recognised by, as the body shows it: the text as written. */
+export function keywordSurface(name: ListedName): string {
+  return displayText(name.text);
 }
 
 /** Another book's list, labelled for the message. */

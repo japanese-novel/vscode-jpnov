@@ -2,13 +2,14 @@
  * The cells of a line while it is being resolved: what a corner-target postfix is matched
  * against and rewrites, and what becomes the line's content.
  */
-import { displayChars, displayText, isClusterBoundary } from '../chars.ts';
+import { composeKana, displayChars, displayText, isClusterBoundary } from '../chars.ts';
 import type { ComposedChar } from '../chars.ts';
 
 import { partitionPoint } from '../utils/lists.ts';
-import type { CharsOrigin, CommentInline, Inline, Mark, Marks, Ruby, Span, SyntaxNode, Tcy } from './nodes.ts';
+import type { Chars, CharsOrigin, CommentInline, Inline, Mark, Marks, Ruby, Span, SyntaxNode, Tcy } from './nodes.ts';
 import { CHANNELS } from './notation.ts';
 import type { Channel } from './notation.ts';
+import { clusterStarts, runsIn } from './span.ts';
 
 /** Where a run of display characters came from, shared by the pieces it is cut into. */
 interface Source {
@@ -307,4 +308,40 @@ export function contentOf(cells: readonly Cell[]): Inline[] {
     const starts = startsOf(run);
     return { kind: 'chars', text: run.text, span: spanOf(run), origin: run.origin, marks: run.marks, ...(starts === null ? {} : { starts }) };
   });
+}
+
+/**
+ * `a` then `b` as one run when a kana ending `a` composes with a mark opening `b`: the cell shows
+ * them as one character, whatever markup sat between. Null when they stay two runs.
+ */
+function composed(a: Chars, b: Chars): Chars | null {
+  const text = composeKana(a.text + b.text);
+  if (text.length === a.text.length + b.text.length) {
+    return null;
+  }
+  const starts = [...clusterStarts(a), ...clusterStarts(b).slice(1)];
+  return { kind: 'chars', text, span: { start: a.span.start, end: b.span.end }, origin: a.origin, marks: a.marks, starts };
+}
+
+/**
+ * The runs of `cells` as an atomic cell joins them: its own runs, those of a ruby or a 縦中横 among
+ * them, and a kana and its mark composed across a boundary.
+ */
+export function runsOf(cells: readonly Cell[]): Chars[] {
+  const runs: Chars[] = [];
+  for (const run of runsIn(contentOf(cells))) {
+    const last = runs[runs.length - 1];
+    const joined = last === undefined ? null : composed(last, run);
+    if (joined === null) {
+      runs.push(run);
+    } else {
+      runs[runs.length - 1] = joined;
+    }
+  }
+  return runs;
+}
+
+/** The text of `runs` joined: what an atomic cell shows. */
+export function textOfRuns(runs: readonly Chars[]): string {
+  return runs.map((run) => run.text).join('');
 }

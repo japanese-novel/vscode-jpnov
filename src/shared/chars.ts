@@ -9,6 +9,15 @@ export function isCjkIdeograph(cp: number): boolean {
   return (cp >= 0x3400 && cp <= 0x9fff) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0x20000 && cp <= 0x2ffff);
 }
 
+/**
+ * Kanji as the notation counts them for a ruby base: the CJK ideographs plus 々〆〇ヶ — the spec
+ * treats 「仝々〆〇ヶ」 as kanji for the ｜ rule (仝 U+4EDD already sits in the unified block).
+ * https://www.aozora.gr.jp/annotation/etc.html#ruby
+ */
+export function isKanji(cp: number): boolean {
+  return isCjkIdeograph(cp) || cp === 0x3005 || cp === 0x3006 || cp === 0x3007 || cp === 0x30f6;
+}
+
 /** Hiragana block (U+3041..U+3096); the small ヶ is intentionally NOT hiragana. */
 export function isHiragana(cp: number): boolean {
   return cp >= 0x3041 && cp <= 0x3096;

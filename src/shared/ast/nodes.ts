@@ -261,7 +261,11 @@ export interface Chars {
   readonly marks: Marks;
 }
 
-/** A base with its readings; atomic. */
+/**
+ * A base with its readings; atomic. `runs` are the runs `base` was joined from, each with where
+ * it was written (a value or a 外字注記 inside the base is a run of its origin); their marks are
+ * what was in effect inside, the ruby's `marks` are what shows.
+ */
 export interface Ruby {
   readonly kind: 'ruby';
   readonly base: string;
@@ -269,14 +273,19 @@ export interface Ruby {
   readonly left?: string;
   readonly span: Span;
   readonly marks: Marks;
+  readonly runs: readonly Chars[];
 }
 
-/** A 縦中横 cell; atomic, one cell whatever it holds. `span` is where that was written, its annotations aside. */
+/**
+ * A 縦中横 cell; atomic, one cell whatever it holds. `span` is where that was written, its
+ * annotations aside; `runs` are the runs `text` was joined from, as a ruby's.
+ */
 export interface Tcy {
   readonly kind: 'tcy';
   readonly text: string;
   readonly span: Span;
   readonly marks: Marks;
+  readonly runs: readonly Chars[];
 }
 
 /** An annotation that takes no effect: zero-width, undecorated. `inner` is a display string. */

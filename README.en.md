@@ -525,11 +525,12 @@ keywords:
   are all recognised. A character is highlighted only where it reads as a
   **subject**: a name (optionally with one honorific such as `さん` / `先生` /
   `ちゃん`) immediately followed by `は` or `が` — e.g. `太郎は`, `山田さんが`.
-  Ten built-in pronouns (`私` `僕` `俺` `彼` `彼女` `あたし` `わたくし` `わし`
-  `少年` `少女`) are recognised the same way without being listed. Dialogue inside `「」` / `『』` is left in the body colour; only narration
-  is scanned. Matching reads the body's base text, so `山田花子は` and
-  `山田《やまだ》花子《はなこ》は` are the same; a reading that differs from the book's
-  is never flagged.
+  A listed word directly after a kanji (`山田は` inside `小山田は`) is not
+  matched, for characters and keywords alike. Dialogue inside `「」` / `『』` is
+  left in the body colour; only narration is scanned. Matching reads the body as
+  shown, so `山田花子は`, `山田《やまだ》花子《はなこ》は` and a name an annotation
+  cuts (`山［＃「山」に傍点］田は`) are the same; a reading that differs from the
+  book's is never flagged.
 - **`keywords`** — coined terms (a fantasy noun, a place, …) are **bolded**
   wherever they appear in narration, without changing colour. If a surface is
   in both lists, the subject form wins.

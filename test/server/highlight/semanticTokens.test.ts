@@ -14,6 +14,7 @@ import { createRecognizer } from '../../../src/server/highlight/recognizer.ts';
 import { tokenTypeIndex } from '../../../src/server/semanticTokens.ts';
 import { INDENT_MAX, VALUE_NAMES, indentAnnotation, valueAnnotation } from '../../../src/shared/ast/notation.ts';
 import { blockOf, innerOf } from '../../shared/ast/_shape.ts';
+import { D } from '../../shared/_kana.ts';
 import { at, buildSemanticTokens, covers, decode, doc, cast } from './tokens.ts';
 
 // A small project: 山田 太郎 as cast, 聖剣 as a coined keyword.
@@ -71,6 +72,46 @@ test('a recognised span splits across a ruby reading hole', () => {
   assert.equal(at(toks, 0, 0)?.type, CHARACTER); // 太
   assert.equal(at(toks, 0, 4)?.type, CHARACTER); // 郎, across the 《た》 hole
   assert.ok(!covers(toks, 2, CHARACTER)); // the reading た is not coloured
+});
+
+test('a word the markup cuts is recognised whole and coloured piece by piece (#229)', () => {
+  const r = createRecognizer(cast('山田　太郎'), ['新帝都', '帝都']);
+  // 新(0) ［＃「新」に傍点］(1..9) 帝(10) 都(11): the keyword 新帝都, not 帝都 alone.
+  let toks = decode(buildSemanticTokens(doc('新［＃「新」に傍点］帝都'), r).data);
+  assert.deepEqual(at(toks, 0, 0), { line: 0, char: 0, len: 1, type: KEYWORD });
+  assert.deepEqual(at(toks, 0, 10), { line: 0, char: 10, len: 2, type: KEYWORD });
+  // ｜(0) 山(1) ［＃「山」に傍点］(2..10) 田(11) 《やまだ》(12..16) は(17): the name across the base's markup.
+  toks = decode(buildSemanticTokens(doc('｜山［＃「山」に傍点］田《やまだ》は'), r).data);
+  assert.deepEqual(at(toks, 0, 1), { line: 0, char: 1, len: 1, type: CHARACTER });
+  assert.deepEqual(at(toks, 0, 11), { line: 0, char: 11, len: 1, type: CHARACTER });
+  assert.deepEqual(at(toks, 0, 17), { line: 0, char: 17, len: 1, type: CHARACTER });
+});
+
+test('the body is matched as shown: a decomposed kana reads as its composed keyword, coloured with its mark', () => {
+  const r = createRecognizer([], ['だんご']);
+  const toks = decode(buildSemanticTokens(doc(`た${D}んこ${D}を`), r).data);
+  for (let unit = 0; unit < 5; unit += 1) {
+    assert.ok(covers(toks, unit, KEYWORD), `unit ${String(unit)} of た゛んこ゛`); // the marks included
+  }
+  assert.ok(!covers(toks, 5, KEYWORD)); // を
+});
+
+test('what an annotation shows is read for neighbours but never coloured', () => {
+  const r = createRecognizer(cast('山田　太郎'), ['王都']);
+  // A value field's text precedes the name: no kanji before it, so the name stands; the value is not coloured.
+  const value = valueAnnotation(VALUE_NAMES.title);
+  let toks = decode(buildSemanticTokens(doc(`${value}太郎は`), r).data);
+  assert.deepEqual(at(toks, 0, value.length), { line: 0, char: value.length, len: 3, type: CHARACTER });
+  assert.ok(!covers(toks, 1, CHARACTER));
+  // Inside a broken ［＃ nothing is coloured.
+  toks = decode(buildSemanticTokens(doc('［＃王都'), r).data);
+  assert.ok(!covers(toks, 2, KEYWORD));
+});
+
+test('a ruby reading is a hole, not a cut: the kanji before it still guards the name', () => {
+  // 美(0) 《(1) び(2) 》(3) 太(4) 郎(5) は(6): the run reads 美太郎は, so 太郎 follows a kanji.
+  const toks = decode(buildSemanticTokens(doc('美《び》太郎は'), rec).data);
+  assert.ok(!covers(toks, 4, CHARACTER));
 });
 
 // ----------------------------------------------------------------------- markup (unchanged)

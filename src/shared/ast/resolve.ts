@@ -13,7 +13,8 @@
  */
 import { displayText } from '../chars.ts';
 
-import { LineCells, charsCell, contentOf, spanOf, textOf, withMark, withMarksOf } from './cells.ts';
+import { LineCells, charsCell, contentOf, runsOf, spanOf, textOfRuns, withMark, withMarksOf } from './cells.ts';
+import type { Cell, CharsCell } from './cells.ts';
 import type {
   Ast,
   CharsOrigin,
@@ -79,10 +80,10 @@ interface OpenBase {
   readonly postfixes: { readonly node: PostfixNode; readonly judged: boolean }[];
 }
 
-/** A ［＃縦中横］ span under construction: its text becomes one cell. */
+/** A ［＃縦中横］ span under construction: the cells it joins become one. */
 interface OpenTcy {
   readonly opener: TcySpanStartNode;
-  text: string;
+  readonly cells: Cell[];
   readonly contentStart: number;
   contentEnd: number;
 }
@@ -172,8 +173,10 @@ class LineResolver {
     }
     switch (node.kind) {
       case 'text':
+        this.chars(node, node.text, 'prose', tcy.cells);
+        break;
       case 'brokenAnnotation':
-        tcy.text += node.text;
+        this.chars(node, node.text, 'broken', tcy.cells);
         break;
       case 'rubyMark':
         break;
@@ -181,13 +184,13 @@ class LineResolver {
         this.ledger.issues.push({ kind: 'rubyInTcy', span: node.span, reading: displayText(node.reading.text) });
         break;
       case 'valueField':
-        tcy.text += this.value(node);
+        this.chars(node, this.value(node), 'value', tcy.cells);
         break;
       case 'gaiji':
-        tcy.text += node.char;
+        this.chars(node, node.char, 'gaiji', tcy.cells);
         break;
       case 'indent':
-        tcy.text += spacesOf(node);
+        this.chars(node, spacesOf(node), 'value', tcy.cells);
         break;
       default:
         return false;
@@ -231,7 +234,7 @@ class LineResolver {
         break;
       case 'tcySpanStart':
         // A start inside an open span changes nothing.
-        this.tcy ??= { opener: node, text: '', contentStart: node.span.end, contentEnd: node.span.end };
+        this.tcy ??= { opener: node, cells: [], contentStart: node.span.end, contentEnd: node.span.end };
         break;
       case 'tcySpanEnd':
         if (this.tcy === null) {
@@ -265,10 +268,11 @@ class LineResolver {
     }
   }
 
-  private chars(node: SyntaxNode, raw: string, origin: CharsOrigin): void {
+  /** The cell of `raw` as `node` shows it, onto the line — or onto `into`, an open 縦中横's cells. */
+  private chars(node: SyntaxNode, raw: string, origin: CharsOrigin, into: { push(cell: CharsCell): void } = this.cells): void {
     const cell = charsCell(node, raw, origin, this.flow.marks);
     if (cell !== null) {
-      this.cells.push(cell);
+      into.push(cell);
     }
   }
 
@@ -278,12 +282,19 @@ class LineResolver {
   }
 
   private implicitRuby(node: RubyReadingNode, at: number): void {
+    const base = this.line.syntax[at - 1];
+    const cells: Cell[] = [];
+    if (base !== undefined) {
+      this.chars(base, base.text, 'prose', cells);
+    }
+    const runs = runsOf(cells);
     this.cells.push({
       kind: 'ruby',
-      base: displayText(this.line.syntax[at - 1]?.text ?? ''),
+      base: textOfRuns(runs),
       right: displayText(node.reading.text),
       span: { start: node.base.start, end: node.span.end },
       marks: this.flow.marks,
+      runs,
     });
   }
 
@@ -294,7 +305,8 @@ class LineResolver {
     }
     this.base = null;
     const inside = this.cells.truncate(open.start);
-    const base = displayText(inside.map(textOf).join(''));
+    const runs = runsOf(inside);
+    const base = textOfRuns(runs);
     if (base === '') {
       // Nothing visible (an empty value): the markup prints as typed.
       this.chars(open.mark, open.mark.text, 'markup');
@@ -307,6 +319,7 @@ class LineResolver {
         span: { start: open.mark.span.start, end: node.span.end },
         // The state at the 《, plus what a span closed inside the base had set.
         marks: withMarksOf(this.flow.marks, inside),
+        runs,
       });
     }
     for (const cell of inside.filter((cell) => cell.kind === 'comment')) {
@@ -366,7 +379,7 @@ class LineResolver {
             }
           }
         }
-        cells.replace(m.first, range.length, [{ kind: 'tcy', text: target, span, marks }, ...kept]);
+        cells.replace(m.first, range.length, [{ kind: 'tcy', text: target, span, marks, runs: runsOf(range) }, ...kept]);
         break;
       case 'rubyLeftPostfix': {
         const real = range.filter((cell) => cell.kind !== 'comment');
@@ -375,7 +388,7 @@ class LineResolver {
         if (single?.kind === 'ruby') {
           cells.set(cells.items.indexOf(single, m.first), { ...single, left }); // 両側ルビ
         } else if (real.every((cell) => cell.kind === 'chars')) {
-          cells.replace(m.first, range.length, [{ kind: 'ruby', base: target, left, span, marks }, ...kept]);
+          cells.replace(m.first, range.length, [{ kind: 'ruby', base: target, left, span, marks, runs: runsOf(range) }, ...kept]);
         } else {
           miss(); // a reading or a cell inside would be silently destroyed
           return;
@@ -467,7 +480,8 @@ class LineResolver {
     } else {
       pair(this.ledger.pairs, tcy.opener, closer);
     }
-    const text = displayText(tcy.text);
+    const runs = runsOf(tcy.cells);
+    const text = textOfRuns(runs);
     this.ledger.held.set(tcy.opener, { text, span: { start: tcy.contentStart, end: tcy.contentEnd } });
     if (text !== '') {
       this.cells.push({
@@ -475,6 +489,7 @@ class LineResolver {
         text,
         span: { start: tcy.contentStart, end: tcy.contentEnd },
         marks: this.flow.marks,
+        runs,
       });
     }
   }

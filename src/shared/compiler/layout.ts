@@ -20,6 +20,7 @@
  */
 import type { Ast, HeadingLevel, Inline, Line, Mark, Marks, ValueLookup } from '../ast/nodes.ts';
 import { paintsNothing } from '../ast/resolve.ts';
+import { clusterStarts } from '../ast/span.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
 import { graphemeCount, graphemes, headChar } from '../chars.ts';
 import { DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../dash.ts';
@@ -224,14 +225,12 @@ function unitsOf(item: Inline, want: string | undefined, lineStart: number): Uni
   switch (item.kind) {
     case 'chars': {
       const translate = item.origin !== 'broken';
-      const units: Unit[] = [];
-      let offset = item.span.start;
-      for (const ch of graphemes(item.text)) {
-        const written = item.origin === 'value' ? item.span.end : (item.starts?.[units.length] ?? offset);
-        units.push(mk(1, translate && ch === want ? DASH_GLYPH : escapeHtml(ch), ch, item.marks, written - lineStart));
-        offset += ch.length;
-      }
-      return units;
+      const clusters = graphemes(item.text);
+      const starts = clusterStarts(item, clusters);
+      return clusters.map((ch, k) => {
+        const written = item.origin === 'value' ? item.span.end : (starts[k] ?? item.span.start);
+        return mk(1, translate && ch === want ? DASH_GLYPH : escapeHtml(ch), ch, item.marks, written - lineStart);
+      });
     }
     case 'ruby': {
       const ruby: RubyText = {
