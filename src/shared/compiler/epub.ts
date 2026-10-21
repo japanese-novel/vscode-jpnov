@@ -6,9 +6,9 @@
  * where the divider is suppressed by the same rule `chapterGlue` applies at ［＃改ページ］.
  *
  * `epubMembers` is pure and deterministic given `modified` (the injected build timestamp):
- * the identifier derives from `outRel`, the book's output stem (its file name), so rebuilding
- * a book keeps its identity and readers treat it as an update, not a new book; two books of
- * one file name in different folders share it.
+ * the identifier derives from `outRel`, the book's output stem (its file name, or its path
+ * from the workspace folder under the default outDir), so rebuilding a book keeps its identity
+ * and readers treat it as an update, not a new book.
  * Pure + vscode-free.
  */
 import { createHash } from 'node:crypto';

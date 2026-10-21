@@ -205,8 +205,11 @@ count from there, as an `import` counts from its module: `../` goes up, and
 nothing stops it at a workspace folder. Its output folder is that directory
 joined with `jpnov.layout.outDir` (a `${workspaceFolder}/…` value, the default
 included, joins onto the book's root instead, and onto the book's directory
-when it has none), and its output name is its own file name.
-The same file means the same book whichever folder is open, and with none.
+when it has none), and its output name is its path from that base without
+`.jpbook`, `-` for `/`: the bare file name under a book-relative `outDir`, the
+folders joined under `${workspaceFolder}/…`, so two folders of one root may
+each hold a `原稿.jpbook`. The same file means the same book whichever folder
+is open, and with none.
 
 A root is a workspace folder, and a folder nested in another is a root of its
 own. A root decides five things: which `.jpbook` files discovery finds

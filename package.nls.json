@@ -129,7 +129,7 @@
   "jpnov.layout.txt.encoding.utf8.description": "Every character is written as typed.",
   "jpnov.layout.txt.encoding.utf8Bom.label": "UTF-8 with BOM",
   "jpnov.layout.txt.encoding.utf8Bom.description": "UTF-8 with a byte order mark at the start. Windows apps open it as UTF-8.",
-  "jpnov.layout.outDir.description": "Folder where built `.html` / `.epub` / `.txt` books are written. `${workspaceFolder}/…` counts from the book's workspace folder (from the book's own folder when it has none); any other value counts from the folder of each `.jpbook` (`dist` puts the output beside the book, `../dist` one level up). An absolute path, a `~` path or an empty value is not accepted and falls back to the default.",
+  "jpnov.layout.outDir.description": "Folder where built `.html` / `.epub` / `.txt` books are written. `${workspaceFolder}/…` counts from the book's workspace folder (from the book's own folder when it has none) and names the file by the book's path from there, `-` for `/`; any other value counts from the folder of each `.jpbook` (`dist` puts the output beside the book, `../dist` one level up). An absolute path, a `~` path or an empty value is not accepted and falls back to the default.",
   "jpnov.editor.updateRefsOnFileMove.description": "When a chapter file, a folder, or a book file (`.jpbook`) is renamed or moved inside VS Code, update the paths listed in the book files so they keep pointing at the same chapters. A path that no longer resolves is flagged in the editor.",
   "jpnov.editor.updateRefsOnFileMove.prompt.label": "Ask each time",
   "jpnov.editor.updateRefsOnFileMove.prompt.description": "Show a prompt before updating.",

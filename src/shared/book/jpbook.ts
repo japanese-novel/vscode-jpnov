@@ -379,7 +379,7 @@ function hasJpnovExt(name: string): boolean {
   return /\.jpnov$/i.test(name);
 }
 
-/** A book file's name without `.jpbook` (any letter case): its output name and its label when it has no title. */
+/** A book file's name (or path) without `.jpbook` (any letter case): the base of its output name and its label when it has no title. */
 export function jpbookStem(name: string): string {
   return name.replace(/\.jpbook$/i, '');
 }

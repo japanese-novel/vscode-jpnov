@@ -73,12 +73,14 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
 
 Chapters and book files can live anywhere: a path counts from the `.jpbook`'s
 folder and may leave the workspace folder. Each book builds into the output
-folder, named after its file: `books/volume1.jpbook` builds to
-`dist/volume1.html`. The folder is `jpnov.layout.outDir`, default
-`${workspaceFolder}/dist` — the workspace folder's `dist`, whatever the book's
-depth. Any other value counts from the `.jpbook`'s own folder: `dist` puts the
-output beside the book, `../dist` one level up. A book under no workspace
-folder counts from its own folder either way. Dot-folders, `node_modules` and
+folder, `jpnov.layout.outDir`, default `${workspaceFolder}/dist` — the
+workspace folder's `dist`, whatever the book's depth, the file named by the
+book's path from that folder with `-` for `/`: `books/volume1.jpbook` builds
+to `dist/books-volume1.html`, so two folders' `volume1.jpbook` land apart.
+Any other value counts from the `.jpbook`'s own folder and names the file
+after the book alone: `dist` puts `volume1.html` beside the book, `../dist`
+one level up. A book under no workspace folder counts from its own folder
+either way. Dot-folders, `node_modules` and
 a nested workspace folder (a root of its own) are never scanned for books. A workspace folder is
 optional: a `.jpbook` open in the editor is listed under **Open files** when
 no folder contains it. The extension activates once the window has finished
