@@ -6,8 +6,9 @@
  * - two book files that resolve to the same output file are a build error and neither is written;
  * - everything about a book comes from its own directory: its entries resolve against it, as the
  *   live editor features resolve them, and its output lands in `<dir>/<outDir>/<stem>.<ext>`,
- *   the stem being the `.jpbook`'s file name (a `${workspaceFolder}/…` outDir, the default
- *   included, counts from the book's root instead, when it has one);
+ *   the stem being the book's path from the folder `outDir` counts from, `/` written `-` (a
+ *   `${workspaceFolder}/…` outDir, the default included, counts from the book's root instead,
+ *   when it has one);
  * - a `.jpbook` with an Error line, an unterminated metadata block, or a required key empty or
  *   unwritten fails as a whole: `checkJpbook` reports the first of these in document order;
  * - page furniture comes from each book's OWN metadata (`composeBookChrome`), so one batch build
@@ -63,9 +64,11 @@ interface ProjectRoot {
   readonly rootDirs: ReadonlySet<string>;
 }
 
-/** One book to list or build: a {@link BookEntry} discovered under a root or sent open, with its resolved output directory. */
+/** One book to list or build: a {@link BookEntry} discovered under a root or sent open, with its resolved output directory and stem. */
 interface BookTarget extends Omit<BookEntry, 'title'> {
   readonly outDirUri: string;
+  /** The output file name without extension ({@link targetOf}). */
+  readonly stem: string;
 }
 
 /**
@@ -93,13 +96,18 @@ function outDirOf(value: string): OutDir {
 }
 
 /**
- * A book's output directory: `outDir` from its workspace folder when the value says so and it has
- * one, else from its own directory. A validated `rel` always encodes, so the null arm is never
- * taken; an empty `rel` (`.`) resolves to the base with a trailing slash, which dirs never carry.
+ * A listed book with its output directory and stem. The directory is `outDir` from the book's
+ * workspace folder when the value says so and it has one, else from its own directory; the stem
+ * is the book's path from that same base without `.jpbook`, `/` written `-`, so two same-named
+ * books of one root land apart while a book-relative `outDir` keeps the bare file name. A
+ * validated `rel` always encodes, so the null arm is never taken; an empty `rel` (`.`) resolves
+ * to the base with a trailing slash, which dirs never carry.
  */
-function outDirUriOf(bookUri: string, rootUri: string | null, outDir: OutDir): string {
-  const base = outDir.fromRoot && rootUri !== null ? rootUri : parentUri(bookUri);
-  return normalizeRootUri(resolveUri(base, outDir.rel) ?? base);
+function targetOf(entry: Omit<BookTarget, 'outDirUri' | 'stem'>, outDir: OutDir): BookTarget {
+  const fromRoot = outDir.fromRoot && entry.rootUri !== null;
+  const base = fromRoot ? entry.rootUri : parentUri(entry.uri);
+  const stem = jpbookStem(fromRoot ? entry.fileRel : entry.fileRel.slice(entry.fileRel.lastIndexOf('/') + 1)).replaceAll('/', '-');
+  return { ...entry, outDirUri: normalizeRootUri(resolveUri(base, outDir.rel) ?? base), stem };
 }
 
 /**
@@ -114,7 +122,7 @@ function outDirUriOf(bookUri: string, rootUri: string | null, outDir: OutDir): s
 async function discoverJpbooks(root: ProjectRoot): Promise<BookTarget[]> {
   const found = await Array.fromAsync(walkJpbooks(root.rootUri, fileURLToPath(root.rootUri), '', root.rootDirs));
   found.sort((a, b) => (a.fileRel < b.fileRel ? -1 : a.fileRel > b.fileRel ? 1 : 0));
-  return found.map(({ uri, fileRel }) => ({ uri, rootUri: root.rootUri, fileRel, outDirUri: outDirUriOf(uri, root.rootUri, root.outDir) }));
+  return found.map((entry) => targetOf({ ...entry, rootUri: root.rootUri }, root.outDir));
 }
 
 /** The recursive walk behind {@link discoverJpbooks}; yields matches depth-first in `readdir` order. */
@@ -164,23 +172,13 @@ function targetRoots(projectDirs: ProjectDirsMap): ProjectRoot[] {
 async function bookTargets(params: ListBooksParams): Promise<{ roots: ProjectRoot[]; books: BookTarget[] }> {
   const roots = targetRoots(params.projectDirs);
   const discovered = await Promise.all(roots.map(discoverJpbooks));
-  const open = (params.openBooks ?? []).map((book): BookTarget => ({
-    uri: book.uri,
-    rootUri: null,
-    fileRel: baseName(book.uri),
-    outDirUri: outDirUriOf(book.uri, null, outDirOf(book.outDir)),
-  }));
+  const open = (params.openBooks ?? []).map((book) => targetOf({ uri: book.uri, rootUri: null, fileRel: baseName(book.uri) }, outDirOf(book.outDir)));
   return { roots, books: [...discovered.flat(), ...open] };
-}
-
-/** The output stem of a book: its file name without `.jpbook`. */
-function stemOf(uri: string): string {
-  return jpbookStem(baseName(uri));
 }
 
 /** The output file (no extension) a book's artifacts share: what two books must not resolve alike. */
 function outPathOf(book: BookTarget): string {
-  return childUri(book.outDirUri, stemOf(book.uri));
+  return childUri(book.outDirUri, book.stem);
 }
 
 /**
@@ -374,7 +372,7 @@ async function buildBook(
       author: meta.author,
       ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
     };
-    return { kind: 'artifact', outDir: book.outDirUri, artifact: emitArtifact(book.outDirUri, selection, stemOf(book.uri), input, meta) };
+    return { kind: 'artifact', outDir: book.outDirUri, artifact: emitArtifact(book.outDirUri, selection, book.stem, input, meta) };
   } catch (cause) {
     return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...toBuildMessage(cause) } };
   }

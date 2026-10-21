@@ -314,7 +314,7 @@ test('projectDirs overrides outDir per root', async () => {
   assert.equal(result.artifacts[0]?.path, `${ws.uri}/vol1/out/vol1.txt`);
 });
 
-test('outDir ${workspaceFolder}/… counts from the book\'s root whatever its depth; a book under no root counts from itself', async () => {
+test('outDir ${workspaceFolder}/… counts from the book\'s root whatever its depth, naming the file by its path; a book under no root counts from itself', async () => {
   await using ws = await makeTmpWorkspace();
   const { ctx } = boot();
   await writeUnder(ws.dir, 'proj/vol1.jpbook', meta() + 'a.jpnov');
@@ -333,7 +333,7 @@ test('outDir ${workspaceFolder}/… counts from the book\'s root whatever its de
   });
 
   assert.deepEqual(result.errors, []);
-  assert.deepEqual(result.artifacts.map((a) => a.path), [`${root}/out/vol2.txt`, `${root}/out/vol1.txt`, `${ws.uri}/alone/out/hon.txt`]);
+  assert.deepEqual(result.artifacts.map((a) => a.path), [`${root}/out/books-deep-vol2.txt`, `${root}/out/vol1.txt`, `${ws.uri}/alone/out/hon.txt`]);
   assert.deepEqual(result.outDirs, [`${root}/out`, `${ws.uri}/alone/out`]);
 });
 
@@ -352,7 +352,7 @@ test('outDir `.` lands the output beside the book, `${workspaceFolder}` alone in
 
   const root = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri, { outDir: '${workspaceFolder}' }) });
   assert.deepEqual(root.errors, []);
-  assert.deepEqual(root.artifacts.map((a) => a.path), [`${ws.uri}/vol1.txt`, `${ws.uri}/vol2.txt`]);
+  assert.deepEqual(root.artifacts.map((a) => a.path), [`${ws.uri}/books-vol1.txt`, `${ws.uri}/dist-vol2.txt`]);
   assert.deepEqual(root.outDirs, [ws.uri]);
 });
 
@@ -391,29 +391,46 @@ test('an invalid outDir silently falls back to the default: the root\'s dist, wh
     });
 
     assert.equal(result.ok, true, outDir);
-    assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/vol1.txt`], outDir);
+    assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/vol1-vol1.txt`], outDir);
   }
   assert.deepEqual(outDirSubpath(PROJECT_DEFAULT.outDir), { fromRoot: true, rel: 'dist' });
+});
+
+test('same-named books in different folders build apart under ${workspaceFolder}/…: the file is named by the path (#227)', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, '○○賞/原稿.jpbook', meta() + 'x.jpnov');
+  await writeUnder(ws.dir, '○○賞/x.jpnov', 'A');
+  await writeUnder(ws.dir, '△△賞/原稿.jpbook', meta() + 'y.jpnov');
+  await writeUnder(ws.dir, '△△賞/y.jpnov', 'B');
+  await writeUnder(ws.dir, '原稿.jpbook', meta() + '○○賞/x.jpnov');
+
+  const result = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri, { outDir: '${workspaceFolder}/dist' }) });
+
+  assert.deepEqual(result.errors, []);
+  const dist = `${ws.uri}/dist`;
+  assert.deepEqual(result.artifacts.map((a) => a.path), ['△△賞-原稿', '○○賞-原稿', '原稿'].map((stem) => `${dist}/${encodeURIComponent(stem)}.txt`));
 });
 
 test('two book files resolving to one output file error BOTH, with a diagnostic, and emit neither', async () => {
   await using ws = await makeTmpWorkspace();
   const { ctx, conn } = boot();
-  await writeUnder(ws.dir, 'a/index.jpbook', meta() + 'x.jpnov');
-  await writeUnder(ws.dir, 'a/x.jpnov', 'A');
-  await writeUnder(ws.dir, 'b/index.jpbook', meta() + 'y.jpnov');
-  await writeUnder(ws.dir, 'b/y.jpnov', 'B');
+  // `-` joins the path, so a `-` in a folder name can still meet one in a file name.
+  await writeUnder(ws.dir, 'a-b/index.jpbook', meta() + 'x.jpnov');
+  await writeUnder(ws.dir, 'a-b/x.jpnov', 'A');
+  await writeUnder(ws.dir, 'a/b-index.jpbook', meta() + 'y.jpnov');
+  await writeUnder(ws.dir, 'a/y.jpnov', 'B');
   await writeUnder(ws.dir, 'c/other.jpbook', meta() + 'z.jpnov');
   await writeUnder(ws.dir, 'c/z.jpnov', 'C');
-  const first = `${ws.uri}/a/index.jpbook`;
-  const second = `${ws.uri}/b/index.jpbook`;
+  const first = `${ws.uri}/a-b/index.jpbook`;
+  const second = `${ws.uri}/a/b-index.jpbook`;
 
   const result = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri, { outDir: '${workspaceFolder}/dist' }) });
 
   assert.equal(result.ok, false);
-  const collision = ['build.outPathCollision', [`${ws.uri}/dist/index`, 'a/index.jpbook, b/index.jpbook']];
+  const collision = ['build.outPathCollision', [`${ws.uri}/dist/a-b-index`, 'a-b/index.jpbook, a/b-index.jpbook']];
   assert.deepEqual(result.errors.map((e) => [e.uri, e.code, e.args]), [[first, ...collision], [second, ...collision]]);
-  assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/other.txt`]);
+  assert.deepEqual(result.artifacts.map((a) => a.path), [`${ws.uri}/dist/c-other.txt`]);
   for (const uri of [first, second]) {
     assert.ok(conn.published.some((p) => p.uri === uri && p.diagnostics.some((d) => d.code === 'build.outPathCollision')), uri);
   }
@@ -421,7 +438,7 @@ test('two book files resolving to one output file error BOTH, with a diagnostic,
   // Only the books being built can collide: selected alone, the first builds; selected together, both fail.
   const selected = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri, { outDir: '${workspaceFolder}/dist' }), books: [first] });
   assert.deepEqual(selected.errors, []);
-  assert.deepEqual(selected.artifacts.map((a) => a.path), [`${ws.uri}/dist/index.txt`]);
+  assert.deepEqual(selected.artifacts.map((a) => a.path), [`${ws.uri}/dist/a-b-index.txt`]);
   const both = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri, { outDir: '${workspaceFolder}/dist' }), books: [first, second] });
   assert.deepEqual(both.errors.map((e) => e.code), ['build.outPathCollision', 'build.outPathCollision']);
   assert.deepEqual(both.artifacts, []);
