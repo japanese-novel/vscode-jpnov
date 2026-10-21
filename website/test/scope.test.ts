@@ -5,7 +5,7 @@ import { parse } from '../../src/shared/ast/parse.ts';
 import { renderBook } from '../../src/shared/compiler/document.ts';
 import { EDGE_INSET, fitPaper, HEADER_BAND, LINENUM_BAND, PREVIEW_MARGIN_LINES } from '../../src/shared/compiler/geometry.ts';
 import { renderPreview } from '../../src/shared/compiler/preview.ts';
-import { BUILD_CHROME_DEFAULT } from '../../src/shared/config/settings.ts';
+import { META_DEFAULTS } from '../../src/shared/book/jpbook.ts';
 import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
 import { scopeFragment } from '../scripts/scope.ts';
 
@@ -19,7 +19,7 @@ const book = (): string => renderBook({
   ...LAYOUT_DEFAULT,
   paperSize: 'a4',
   paperOrientation: 'auto',
-  chrome: { lineNumbers: true, edgeLine: 'red', footerAlign: 'right', footer: BUILD_CHROME_DEFAULT.footer, header: '作品名　一', headerAlign: 'center' },
+  chrome: { lineNumbers: true, edgeLine: 'red', footerAlign: 'right', footer: META_DEFAULTS.footer, header: '作品名　一', headerAlign: 'center' },
 });
 
 test('a preview fragment keeps every rule under its scope and no root or viewport dependency', () => {
