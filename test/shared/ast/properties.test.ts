@@ -16,7 +16,7 @@ import { scan } from '../../../src/shared/ast/scan.ts';
 import { displayText, graphemes } from '../../../src/shared/chars.ts';
 
 import { manuscripts, withEol } from './_fuzz.ts';
-import { clusterStarts } from '../../../src/shared/ast/span.ts';
+import { clusterStarts, isFixedOrigin } from '../../../src/shared/ast/span.ts';
 import { isPostfix, nodesIn } from './_shape.ts';
 
 const CORPUS = manuscripts();
@@ -153,13 +153,13 @@ test('every character of the content knows where it was written', () => {
         if (item.kind !== 'chars') {
           continue;
         }
-        if (item.origin === 'value') {
-          assert.equal(item.starts, undefined, JSON.stringify(src)); // a value has no place of its own
-          continue;
-        }
-        if (item.origin === 'gaiji') {
+        if (isFixedOrigin(item.origin)) {
+          // What an annotation shows has no place of its own: every character sits at the annotation.
           assert.equal(item.starts, undefined, JSON.stringify(src));
-          assert.equal(src.slice(item.span.start, item.span.end), gaijiAnnotation(item.text), JSON.stringify(src));
+          assert.deepEqual(clusterStarts(item), graphemes(item.text).map(() => item.span.start), JSON.stringify(src));
+          if (item.origin === 'gaiji') {
+            assert.equal(src.slice(item.span.start, item.span.end), gaijiAnnotation(item.text), JSON.stringify(src));
+          }
           continue;
         }
         const starts = clusterStarts(item);

@@ -8,10 +8,11 @@
  *
  * Identity is the base text, readings and separators aside: two items with one identity are one
  * entry, and a different writing of it (a reading, a split) is the conflict the book diagnostics
- * report. Pure and vscode-free; reads the Scanner's nodes like `parseDividerValue`.
+ * report. Pure and vscode-free; the Scanner's nodes gate what the item may hold, the AST's content
+ * gives the bases and readings.
  */
 import { ANNOTATION_CLOSE, ANNOTATION_OPEN, BASE_MARK, RUBY_CLOSE, RUBY_OPEN } from '../ast/notation.ts';
-import { scan } from '../ast/scan.ts';
+import { parse } from '../ast/parse.ts';
 import { CORNERS, displayText } from '../chars.ts';
 
 /** One part of a name: its base text and the reading written for it, if any. */
@@ -20,7 +21,7 @@ export interface NamePart {
   readonly reading: string | null;
 }
 
-/** A list item as read: `text` is the base text as written (readings and ｜ stripped, spaces kept). */
+/** A list item as read: `text` is the base text as shown (readings and ｜ stripped, spaces kept). */
 export interface ListedName {
   readonly text: string;
   readonly parts: readonly NamePart[];
@@ -50,49 +51,29 @@ const NOT_PLAIN: ReadName = { ok: false, error: 'notPlain' };
 
 /** Reads one item. Never throws. */
 export function readName(text: string): ReadName {
-  const { lines, issues } = scan(text);
+  const { lines, issues } = parse(text);
   if (issues.length > 0) {
     return NOT_PLAIN; // a 《》 or a reading with no base: not a name as written
   }
+  for (const node of lines[0]?.syntax ?? []) {
+    if (node.kind === 'text' ? LEFTOVER_MARKUP.test(node.text) : node.kind !== 'rubyMark' && node.kind !== 'rubyReading') {
+      return NOT_PLAIN;
+    }
+  }
   const parts: NamePart[] = [];
   let plain = '';
-  // The text of an explicit base, collected from its ｜ until its reading.
-  let held: string[] | null = null;
-  // The text node an implicit reading binds to; the Scanner puts the reading right after it.
-  let pending = '';
-  for (const node of lines[0]?.syntax ?? []) {
-    switch (node.kind) {
-      case 'text':
-        if (LEFTOVER_MARKUP.test(node.text)) {
-          return NOT_PLAIN;
+  for (const item of lines[0]?.content ?? []) {
+    // The gate above leaves typed text and rubies: nothing else makes content.
+    if (item.kind === 'chars') {
+      plain += item.text;
+      for (const chunk of item.text.split(SPACES)) {
+        if (chunk !== '') {
+          parts.push({ base: chunk, reading: null });
         }
-        plain += node.text;
-        if (held !== null) {
-          held.push(node.text);
-        } else if (node.rubyBase === true) {
-          pending = node.text;
-        } else {
-          for (const chunk of node.text.split(SPACES)) {
-            if (chunk !== '') {
-              parts.push({ base: chunk, reading: null });
-            }
-          }
-        }
-        break;
-      case 'rubyMark':
-        held = [];
-        break;
-      case 'rubyReading':
-        if (node.implicit) {
-          parts.push({ base: pending, reading: node.reading.text });
-          pending = '';
-        } else {
-          parts.push({ base: (held ?? []).join(''), reading: node.reading.text });
-          held = null;
-        }
-        break;
-      default:
-        return NOT_PLAIN;
+      }
+    } else if (item.kind === 'ruby') {
+      plain += item.base;
+      parts.push({ base: item.base, reading: item.right?.text ?? null });
     }
   }
   if (parts.length === 0) {
@@ -121,7 +102,7 @@ export function sameWriting(a: ListedName, b: ListedName): boolean {
   return a.parts.length === b.parts.length &&
     a.parts.every((p, i) => {
       const q = b.parts[i];
-      return q !== undefined && norm(p.base) === norm(q.base) && p.reading === q.reading;
+      return q !== undefined && norm(p.base) === norm(q.base) && (p.reading === null ? q.reading === null : q.reading !== null && norm(p.reading) === norm(q.reading));
     });
 }
 

@@ -76,6 +76,7 @@ test('identity is the base text alone; writings differ by their parts and readin
   assert.ok(!sameWriting(taro, name('山田太郎')), 'a split is a writing');
   assert.ok(!sameWriting(taro, name('山田《やまだ》太郎《たろう》')), 'a reading is a writing');
   assert.ok(!sameWriting(name('山田《やまだ》花子《はなこ》'), name('山田《やまだ》花子')));
+  assert.ok(sameWriting(name('山田《やまた\u3099》'), name('山田《やまだ》')), 'a reading compares as shown');
   assert.equal(nameBase(name('山田《やまだ》花子《はなこ》')), '山田花子');
 });
 

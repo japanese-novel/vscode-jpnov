@@ -569,7 +569,17 @@ test('a fix never deletes a whole ruby base; a span may be emptied', () => {
   assert.equal(applied('「そうだ［＃傍点］。［＃傍点終わり］」', CLOSING), '「そうだ［＃傍点］［＃傍点終わり］」');
   const ZW = { 'jpnov.lint.common.noZeroWidth': true };
   assert.equal(applied('　あ［＃傍点］\u200b［＃傍点終わり］い。', ZW), '　あ［＃傍点］［＃傍点終わり］い。');
+  // Part of a base goes; the whole of it does not.
+  assert.equal(applied('　｜\u200b山田《やまだ》。', ZW), '　｜山田《やまだ》。');
+  assert.equal(applied('　｜山田\u200b《やまだ》。', ZW), '　｜山田《やまだ》。');
+  assert.equal(applied('　｜\u200b《やまだ》。', ZW), '　｜\u200b《やまだ》。');
   assert.equal(applied('「。［＃「z」に傍点］」', CLOSING), '「［＃「z」に傍点］」');
+});
+
+test('an insert anchored inside a ruby or a 縦中横 lands outside the cell', () => {
+  assert.equal(applied('　｜！？あ《よみ》', EXCL_SPACE), '　｜！？あ《よみ》　');
+  assert.equal(applied('　［＃縦中横］！？あ［＃縦中横終わり］', EXCL_SPACE), '　［＃縦中横］！？あ［＃縦中横終わり］　');
+  assert.equal(applied('　｜漢字　《かんじ》', PERIOD), '　｜漢字　《かんじ》。');
 });
 
 test('two fixes at one offset apply like LSP: the insert survives the neighbouring delete/replace', () => {
@@ -668,16 +678,15 @@ test('noTrailingSpace: a line of nothing but spaces is the whole-line case', () 
   ]);
 });
 
-test('noTrailingSpace leaves blank lines, prose, and lines ending in markup alone', () => {
-  // The line end is literal: an annotation there ends the line, so the space before it is not
-  // trailing.
+test('noTrailingSpace leaves blank lines, prose, and lines ending in markup that shows nothing alone', () => {
+  // The line end is what is shown: a postfix or a comment there shows nothing, so the space before
+  // it is not trailing.
   const clean = [
     'あ。\n\nい。',
     '　地の文。',
     '「台詞」',
-    '［＃３字下げ］',
-    '　［＃３字下げ］',
     '好き　［＃「好き」に傍点］',
+    '好き　［＃メモ］',
     '漢字《かんじ》',
   ];
   for (const src of clean) {
@@ -685,14 +694,27 @@ test('noTrailingSpace leaves blank lines, prose, and lines ending in markup alon
   }
 });
 
-test('noTrailingSpace: spaces after a bare ［＃字下げ］ are flagged; the fix leaves the annotation', () => {
+test('noTrailingSpace: the spaces a ［＃字下げ］ shows at the line end are trailing; the fix deletes the annotation', () => {
+  for (const src of ['［＃３字下げ］', '　［＃３字下げ］', '［＃３字下げ］　', '好き　［＃１字下げ］']) {
+    const [hit, ...rest] = lintAll(src, TRAILING);
+    assert.deepEqual(rest, [], src);
+    assert.equal(hit?.code, 'lint.common.noTrailingSpace', src);
+    assert.equal(hit.fix?.newText, '', src);
+  }
   assert.deepEqual(lintAll('［＃３字下げ］　', TRAILING), [
-    { code: 'lint.common.noTrailingSpace', text: '　', fix: { text: '　', newText: '' } },
+    { code: 'lint.common.noTrailingSpace', text: '［＃３字下げ］　', fix: { text: '［＃３字下げ］　', newText: '' } },
   ]);
-  assert.equal(applied('［＃３字下げ］　\n', TRAILING), '［＃３字下げ］\n');
+  // An annotation goes whole or not at all: a hit over part of its spaces has no fix.
+  assert.deepEqual(lintAll('　「台詞」［＃２字下げ］「次」', { 'jpnov.lint.dialogue.noIndent': true }).map((h) => h.fix?.text), ['　']);
+  assert.equal(applied('好き　［＃１字下げ］\n', TRAILING), '好き\n');
+  assert.equal(applied('［＃３字下げ］　\n', TRAILING), '\n');
+  assert.equal(applied('あ。\n　［＃３字下げ］\nい。', TRAILING), 'あ。\n\nい。');
 });
 
-test('noTrailingSpace: only the spaces after the last markup are trailing', () => {
+test('noTrailingSpace: a run straddling markup is one finding; the fix takes its tail, the next round the rest', () => {
+  assert.deepEqual(lintAll('　［＃「z」に傍点］　', TRAILING), [
+    { code: 'lint.common.noTrailingSpace', text: '　［＃「z」に傍点］　', fix: { text: '　', newText: '' } },
+  ]);
   assert.equal(applied('　［＃「z」に傍点］　', TRAILING), '　［＃「z」に傍点］');
 });
 
@@ -887,9 +909,9 @@ test('noControlChar reports every character the outputs drop, wherever it sits, 
     { code, text: '\u0007', fix: { text: '\u0007', newText: '' } },
     { code, text: '\u0007', fix: { text: '\u0007', newText: '' } },
   ]);
-  // A base or a reading the deletes would empty keeps every character: none of them has a fix.
-  assert.deepEqual(lintAll('｜\u200B\u0007《よみ》', CTRL), [{ code, text: '\u0007' }]);
-  assert.deepEqual(lintAll('山田《\u0007》', CTRL), [{ code, text: '\u0007' }]);
+  // A reading the delete empties is deleted too: the 《》 left is the syntax diagnostics' finding.
+  assert.deepEqual(lintAll('｜\u200B\u0007《よみ》', CTRL), [{ code, text: '\u0007', fix: { text: '\u0007', newText: '' } }]);
+  assert.equal(applied('山田《\u0007》', CTRL), '山田《》');
   // An annotation whose KEYWORD holds a control character is unrecognized; deleting it brings it back.
   assert.equal(applied('［＃\u0007改ページ］', CTRL), '［＃改ページ］');
 });

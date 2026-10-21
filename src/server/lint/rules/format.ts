@@ -10,13 +10,14 @@ import { DASH_CHARS } from '../../../shared/dash.ts';
 import { modeOf } from '../../../shared/lint/select.ts';
 
 import { CLOSERS, SENTENCE_MARKS, TERMINATORS } from '../sentences.ts';
-import type { LineRule, LintLine, ProseView, RuleContext } from '../types.ts';
+import type { FixSpec, LineRule, LintLine, ProseView, RuleContext } from '../types.ts';
 
 import { maxOf, viewFix, viewSpan } from './adapt.ts';
 import { isControlChar } from './chars.ts';
 
-/** Characters allowed to open a paragraph besides the 字下げ space. */
-const LEADING_CHARS = '　「『（【〈';
+/** Characters allowed to open a paragraph besides the 字下げ space (typed, or shown by a ［＃○字下げ］):
+ *  the opening brackets, 《 among them as the 二重山括弧 外字注記 shows it. */
+const LEADING_CHARS = '　「『（【〈《';
 
 /** Line-end characters that close 地の文: the real sentence enders plus EVERY closing bracket
  *  (a line ending on 】 or 〉 — a status line — ended as an inset, exactly like 」). Derived from
@@ -73,9 +74,9 @@ function isListLine(view: ProseView): boolean {
   return view.text.charAt(k) === '・';
 }
 
-/** 行頭字下げ: a 地の文 line must open with 　 / an opening bracket, or a ［＃字下げ］ before its
- *  text. The fix inserts the 　 before the first prose unit's markup (a ｜, a ［＃縦中横］) and
- *  after a ［＃０字下げ］, which shows nothing. */
+/** 行頭字下げ: a 地の文 line must open with 　 / an opening bracket (a ［＃○字下げ］ shows the
+ *  spaces) or sit in a block 字下げ. The fix inserts the 　 before the first unit's markup (a ｜,
+ *  a ［＃縦中横］) and after a ［＃０字下げ］, which shows nothing. */
 export function indentRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
@@ -96,9 +97,10 @@ export function indentRule(ctx: RuleContext): LineRule {
   };
 }
 
-/** 地の文は句点で終わる: the line's last prose character must be a terminal (or the line ends
+/** 地の文は句点で終わる: the line's last character shown must be a terminal (or the line ends
  *  inside a multi-line utterance). The fix inserts 。 after that character and the markup wrapping
- *  it (a ruby's reading, ［＃…終わり］); it only adds, so a trailing 、 stays. */
+ *  it (a ruby's reading, ［＃…終わり］, the 外字注記 that shows it; a ruby or a 縦中横 whole). It
+ *  only adds, so a trailing 、 stays. */
 export function endPeriodRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
@@ -110,7 +112,7 @@ export function endPeriodRule(ctx: RuleContext): LineRule {
         return;
       }
       let k = v.text.length - 1;
-      // A control character is skipped like a space: noControlChar deletes it.
+      // A C1 control character is skipped like a space: noControlChar deletes it.
       while (k >= 0 && (isSpace(v.text.charAt(k)) || isControlChar(v.text.charCodeAt(k)))) {
         k -= 1;
       }
@@ -354,27 +356,30 @@ export function ellipsisRule(ctx: RuleContext): LineRule {
   };
 }
 
-/** 行末スペース: the space run (either width, or a tab) right before the line break; the fix
- *  deletes exactly that. A line ending in markup has no trailing prose, so a bare ［＃字下げ］
- *  line is never flagged. */
+/** 行末スペース: the space run (either width, or a tab) shown right before the line break, the
+ *  spaces of a ［＃○字下げ］ included; the fix deletes exactly that, such an annotation whole. A
+ *  line ending in other markup (a postfix, a comment) shows nothing at its end and is not flagged. */
 export function trailingSpaceRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
-      const piece = line.pieces[line.pieces.length - 1];
-      if (piece === undefined || piece.srcStart + piece.text.length !== line.srcEnd) {
+      const v = line.prose();
+      const last = v.units[v.units.length - 1];
+      if (last?.end !== line.srcEnd) {
         return;
       }
-      let k = piece.text.length;
-      while (k > 0 && isSpace(piece.text.charAt(k - 1))) {
+      let k = v.text.length;
+      while (k > 0 && isSpace(v.text.charAt(k - 1))) {
         k -= 1;
       }
-      if (k === piece.text.length) {
+      if (k === v.text.length) {
         return;
       }
-      ctx.report(
-        { start: piece.srcStart + k, end: line.srcEnd },
-        { fix: { replace: { slice: piece, start: k, end: piece.text.length }, text: '' } },
-      );
+      // The run may straddle markup (`　［＃…］　`): the fix deletes its tail up to there, the next round the rest.
+      let fix: FixSpec | undefined;
+      for (let j = k; j < v.text.length && fix === undefined; j += 1) {
+        fix = viewFix(v, j, v.text.length, '');
+      }
+      ctx.report(viewSpan(v, k, v.text.length), fix === undefined ? undefined : { fix });
     },
   };
 }
@@ -411,8 +416,9 @@ export function blankRunRule(ctx: RuleContext): LineRule {
   };
 }
 
-/** 台詞行頭の字下げ禁止: literal leading whitespace right before a 「/『 opener. An annotation
- *  ［＃字下げ］ on a dialogue line is the author's explicit call and is left alone. */
+/** 台詞行頭の字下げ禁止: leading whitespace shown right before a 「/『 opener, typed or the spaces
+ *  of a ［＃○字下げ］ (the fix deletes the annotation with them). A block 字下げ is a value of the
+ *  line, not whitespace, and is not judged. */
 export function noIndentRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {

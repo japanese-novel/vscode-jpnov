@@ -3,7 +3,12 @@
  * character of a run was written.
  */
 import { graphemes } from '../chars.ts';
-import type { Chars, Inline, Span } from './nodes.ts';
+import type { Chars, CharsOrigin, Inline, Span } from './nodes.ts';
+
+/** Whether characters of `origin` are shown by an annotation and have no place of their own. */
+export function isFixedOrigin(origin: CharsOrigin): boolean {
+  return origin === 'value' || origin === 'indent' || origin === 'gaiji';
+}
 
 /** The runs of `content`, in display order: a ruby's and a 縦中横's as themselves. */
 export function runsIn(content: readonly Inline[]): Chars[] {
@@ -20,10 +25,13 @@ export function runsIn(content: readonly Inline[]): Chars[] {
 
 /**
  * Where each character of `run` was written: its `starts`, else its span start plus its offset.
- * `clusters` are the characters, when the caller has them already. Not for a value: its
- * characters have no place of their own.
+ * `clusters` are the characters, when the caller has them already. The characters an annotation
+ * shows ({@link isFixedOrigin}) all sit at the annotation.
  */
 export function clusterStarts(run: Chars, clusters: readonly string[] = graphemes(run.text)): number[] {
+  if (isFixedOrigin(run.origin)) {
+    return clusters.map(() => run.span.start);
+  }
   let offset = 0;
   return clusters.map((ch, k) => {
     const start = run.starts?.[k] ?? run.span.start + offset;

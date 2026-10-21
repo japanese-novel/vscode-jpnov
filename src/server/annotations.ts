@@ -107,7 +107,7 @@ function whatItIs(node: SyntaxNode): LocalizableMessage | undefined {
     case 'rubyMark':
       return undefined;
     case 'rubyReading':
-      return { code: 'hover.ruby', args: [node.reading.text] };
+      return { code: 'hover.ruby', args: [displayText(node.reading.text)] };
     case 'brokenAnnotation':
       return { code: 'hover.broken' };
     case 'comment':
@@ -127,7 +127,7 @@ function whatItIs(node: SyntaxNode): LocalizableMessage | undefined {
     case 'headingPostfix':
       return { code: 'hover.postfix', args: [headingLiteralOf(node.level)] };
     case 'rubyLeftPostfix':
-      return { code: 'hover.rubyLeft', args: [node.reading.text] };
+      return { code: 'hover.rubyLeft', args: [displayText(node.reading.text)] };
     case 'indentBlockStart':
     case 'indentBlockEnd':
     case 'emphasisSpanStart':
@@ -171,7 +171,7 @@ function hoverLines(doc: TextDocument, ast: Ast, node: SyntaxNode): LocalizableM
     return [first, ...(held === undefined ? [] : [{ code: 'hover.holds', args: [held.text] } as const]), pairLine(doc, ast, node)];
   }
   if (node.kind === 'rubyReading') {
-    const ruby = ast.lines[doc.positionAt(node.span.start).line]?.content.find((item): item is Ruby => item.kind === 'ruby' && item.span.end === node.span.end);
+    const ruby = ast.lines[doc.positionAt(node.span.start).line]?.content.find((item): item is Ruby => item.kind === 'ruby' && item.right?.span.start === node.reading.span.start);
     return ruby === undefined ? [first] : [first, { code: 'hover.rubyBase', args: [ruby.base] }]; // no ruby: an empty base, or a 縦中横 took it
   }
   return [first];

@@ -5,8 +5,10 @@
  *
  * `viewScan` runs the scanner over a chosen VIEW of each line: the scanner sees prose adjacency
  * (elided markup invisible), and this adapter is the ONE place a view hit is converted to a fix —
- * only when every unit of the hit lies in the same {@link Piece} (source-contiguous) and the fix
- * would not delete a whole ruby base; otherwise the warning survives and the fix is dropped.
+ * a replacement only when every unit of the hit lies in the same {@link Piece}; a deletion also
+ * over a stretch of typed units and whole ［＃○字下げ］ annotations that is one in the source,
+ * unless it would empty a ruby or a 縦中横 (the stranded markup would print literally); otherwise
+ * the warning survives and the fix is dropped.
  *
  * `perPieceScan` runs the scanner over each piece alone: a run interrupted by markup is two runs,
  * not one (the dash rule's contract — parity is per rendered run), and a fix is safe by
@@ -22,20 +24,63 @@ export function maxOf(ctx: RuleContext): number {
   return typeof ctx.options === 'object' && 'max' in ctx.options ? ctx.options.max : Infinity;
 }
 
-/** The source span of a non-empty view hit `[a, b)`: anchored on the LAST included unit, so a hit
- *  ending at elided markup never bleeds across the gap. */
+/** The source span of a non-empty view hit `[a, b)`: from where its first unit was written to
+ *  where its last one ends, so a hit ending at elided markup never bleeds across the gap. */
 export function viewSpan(view: ProseView, a: number, b: number): Span {
-  const start = view.units[a]?.src ?? 0;
+  const first = view.units[a];
   const last = view.units[Math.max(a, b - 1)];
-  return { start, end: (last?.src ?? start) + 1 };
+  const start = first?.src ?? 0;
+  return { start, end: last?.end ?? start };
 }
 
-/** A replacement fix for view hit `[a, b)` iff every unit shares one piece and the fix does not
- *  delete a whole ruby base (the stranded ｜《…》 would print literally); undefined otherwise. */
-export function viewFix(view: ProseView, a: number, b: number, text: string): FixSpec | undefined {
+/** A deletion of view hit `[a, b)` as one source span, or undefined (see the module header). */
+function erase(view: ProseView, a: number, b: number): FixSpec | undefined {
   const first = view.units[a];
+  if (first === undefined) {
+    return undefined;
+  }
+  let at = first.src;
+  for (let k = a; k < b;) {
+    const carrier = view.units[k]?.carrier ?? null;
+    if (carrier === null) {
+      return undefined;
+    }
+    let j = k; // past the hit's last unit of this carrier
+    while (j < b && view.units[j]?.carrier === carrier) {
+      j += 1;
+    }
+    // The hit holds the carrier whole: its first unit and its last.
+    const whole = view.units[k - 1]?.carrier !== carrier && view.units[j]?.carrier !== carrier;
+    if (carrier.kind === 'indent') {
+      if (!whole || carrier.src !== at) {
+        return undefined; // the annotation goes whole or not at all
+      }
+      at = carrier.end;
+    } else if (carrier.kind === 'cell' && whole) {
+      return undefined; // the stranded markup would print literally
+    } else {
+      for (; k < j; k += 1) {
+        const unit = view.units[k];
+        if (unit?.piece == null || unit.src !== at) {
+          return undefined;
+        }
+        at = unit.end;
+      }
+    }
+    k = j;
+  }
+  return { erase: { start: first.src, end: at } };
+}
+
+/** A fix for view hit `[a, b)`: a replacement iff every unit shares one piece; a deletion as {@link erase} allows it. */
+export function viewFix(view: ProseView, a: number, b: number, text: string): FixSpec | undefined {
+  if (text === '') {
+    return erase(view, a, b);
+  }
+  const first = view.units[a];
+  const last = view.units[b - 1];
   const piece = first?.piece ?? null;
-  if (first === undefined || piece === null) {
+  if (first === undefined || last === undefined || piece === null) {
     return undefined;
   }
   for (let k = a + 1; k < b; k += 1) {
@@ -43,12 +88,7 @@ export function viewFix(view: ProseView, a: number, b: number, text: string): Fi
       return undefined;
     }
   }
-  const start = first.indexInPiece;
-  const end = (view.units[b - 1]?.indexInPiece ?? start) + 1;
-  if (text === '' && start === 0 && end === piece.text.length && piece.rubyBase) {
-    return undefined;
-  }
-  return { replace: { slice: piece, start, end }, text };
+  return { replace: { slice: piece, start: first.src - piece.srcStart, end: last.end - piece.srcStart }, text };
 }
 
 /** Lifts `scan` onto one view of every line (`'prose'` = both 地の文 and 台詞 with adjacency). */

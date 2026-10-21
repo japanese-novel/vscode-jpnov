@@ -242,7 +242,7 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
           held.nodes.some((n) => (n.kind === 'text' ? hasShown(src, n.span.start, n.span.end) : n.kind === 'valueField' || n.kind === 'gaiji'));
         if (!visible) {
           // Nothing between the ｜ and the 《 that a reading could sit on: no base.
-          issues.push({ kind: 'rubyBaseMissing', span: { start: held.at, end }, reading });
+          issues.push({ kind: 'rubyBaseMissing', span: { start: held.at, end }, reading, marked: true });
           release();
           i = end;
           continue;
@@ -263,7 +263,7 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
 
       const baseStart = implicitBaseStart(src, runStart, i);
       if (baseStart === i) {
-        issues.push({ kind: 'rubyBaseMissing', span: { start: i, end }, reading });
+        issues.push({ kind: 'rubyBaseMissing', span: { start: i, end }, reading, marked: false });
         i = end;
         continue;
       }

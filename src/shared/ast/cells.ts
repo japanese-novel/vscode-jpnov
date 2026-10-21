@@ -9,13 +9,13 @@ import { partitionPoint } from '../utils/lists.ts';
 import type { Chars, CharsOrigin, CommentInline, Inline, Mark, Marks, Ruby, Span, SyntaxNode, Tcy } from './nodes.ts';
 import { CHANNELS } from './notation.ts';
 import type { Channel } from './notation.ts';
-import { clusterStarts, runsIn } from './span.ts';
+import { clusterStarts, isFixedOrigin, runsIn } from './span.ts';
 
 /** Where a run of display characters came from, shared by the pieces it is cut into. */
 interface Source {
   /** Source offset of the text the characters were taken from. */
   readonly start: number;
-  /** A substituted value or a 外字注記: every piece maps to this one span. */
+  /** What an annotation shows ({@link isFixedOrigin}): every piece maps to this one span. */
   readonly fixed: Span | null;
   /** The display characters with their source ranges, when showing changed the text. */
   readonly chars: readonly ComposedChar[] | null;
@@ -43,7 +43,7 @@ export function charsCell(node: SyntaxNode, raw: string, origin: CharsOrigin, ma
   if (text === '') {
     return null;
   }
-  const fixed = origin === 'value' || origin === 'gaiji' ? node.span : null;
+  const fixed = isFixedOrigin(origin) ? node.span : null;
   const chars = fixed !== null || text === raw ? null : displayChars(raw);
   return { kind: 'chars', source: { start: node.span.start, fixed, chars }, origin, text, from: 0, marks };
 }
@@ -283,7 +283,8 @@ function startsOf(cell: CharsCell): number[] | null {
   return starts;
 }
 
-/** The cells as content: adjacent pieces of one source with equal marks rejoin into one run. */
+/** The cells as content: adjacent pieces of one source with equal marks rejoin into one run. A
+ *  zero-width cell keeps its place in the list, which for a comment inside a ｜ base is after the ruby. */
 export function contentOf(cells: readonly Cell[]): Inline[] {
   const runs: Cell[] = [];
   for (const cell of cells) {
@@ -312,9 +313,13 @@ export function contentOf(cells: readonly Cell[]): Inline[] {
 
 /**
  * `a` then `b` as one run when a kana ending `a` composes with a mark opening `b`: the cell shows
- * them as one character, whatever markup sat between. Null when they stay two runs.
+ * them as one character, whatever markup sat between. Null when they stay two runs: of different
+ * origins, or either shown by an annotation (its characters have no place to compose at).
  */
 function composed(a: Chars, b: Chars): Chars | null {
+  if (a.origin !== b.origin || isFixedOrigin(a.origin)) {
+    return null;
+  }
   const text = composeKana(a.text + b.text);
   if (text.length === a.text.length + b.text.length) {
     return null;

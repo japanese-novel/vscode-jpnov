@@ -3,14 +3,13 @@
  * (地の文 and セリフ alike; annotation interiors stay the raw shiftJisSafe rule's job), except
  * noNfd and noControlChar, which scan every source slice of the line: a ruby reading, an
  * annotation target or a comment is composed, and loses its control characters, in every output
- * too. Every fix replaces or deletes characters in place; noControlChar withholds its fix for a
- * ruby base or reading it would empty.
+ * too. Every fix replaces or deletes characters in place.
  */
 import { COMBINING_KANA_MARKS, UNSHOWN, composeKana, isCjkIdeograph } from '../../../shared/chars.ts';
 
 import { rubyKanaScan } from '../prescan.ts';
 import type { PreScan } from '../prescan.ts';
-import type { LineRule, LintLine, RuleContext, SourceSlice } from '../types.ts';
+import type { LineRule, LintLine, RuleContext } from '../types.ts';
 
 import { viewScan } from './adapt.ts';
 
@@ -84,37 +83,19 @@ export function isControlChar(cp: number): boolean {
   return CONTROL_CHAR.test(String.fromCharCode(cp));
 }
 
-/** True when `slice` holds nothing but control characters and U+200B, so deleting them leaves
- *  nothing shown. */
-function wouldEmpty(slice: SourceSlice): boolean {
-  for (let i = 0; i < slice.text.length; i += 1) {
-    const cp = slice.text.charCodeAt(i);
-    if (!isControlChar(cp) && cp !== 0x200b) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /** 制御文字 (C0/C1 except \t — terminators never reach a line) and the noncharacters U+FFFE and
  *  U+FFFF, anywhere on the line — prose, ruby readings, annotations and comments alike, since no
- *  output carries the ones `dropUnshown` drops. Each one is deleted, unless the deletes would
- *  empty a ruby base or a ruby reading (the stranded ｜《…》 or 《》 would print literally). */
+ *  output carries the ones `dropUnshown` drops. Each one is deleted; a reading left empty is the
+ *  syntax diagnostics' finding (the Scanner already makes no ruby of a ｜ base that shows nothing). */
 export function controlCharRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
-      let emptied: SourceSlice[] | undefined;
       for (const slice of line.source) {
         const { text, srcStart } = slice;
         for (const m of text.matchAll(CONTROL_CHARS)) {
           const i = m.index;
           const at = srcStart + i;
-          emptied ??= [...line.pieces.filter((p) => p.rubyBase), ...line.rubies].filter(wouldEmpty);
-          const withheld = emptied.some((s) => s.srcStart <= at && at < s.srcStart + s.text.length);
-          ctx.report(
-            { start: at, end: at + 1 },
-            withheld ? undefined : { fix: { replace: { slice, start: i, end: i + 1 }, text: '' } },
-          );
+          ctx.report({ start: at, end: at + 1 }, { fix: { replace: { slice, start: i, end: i + 1 }, text: '' } });
         }
       }
     },
@@ -156,13 +137,15 @@ export const hankakuKanaRule = viewScan(hankakuKanaScan, 'prose');
 export const zeroWidthRule = viewScan(zeroWidthScan, 'prose');
 export const strayLetterRule = viewScan(strayLetterScan, 'prose');
 
-/** ルビの読みの仮名種: each reading must be entirely the chosen kana type. */
+/** ルビの読みの仮名種: each reading shown must be entirely the chosen kana type. A 左ルビ reading is
+ *  exempt (it is often Latin); a reading that does not show (a 縦中横 swallowed it, its base shows
+ *  nothing) is not a reading. */
 export function rubyKanaRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
-      for (const ruby of line.rubies) {
-        for (const hit of rubyKanaScan(ruby.text, ctx.options)) {
-          ctx.report({ start: ruby.srcStart + hit.start, end: ruby.srcStart + hit.end });
+      for (const item of ctx.ast.lines[line.srcLine]?.content ?? []) {
+        if (item.kind === 'ruby' && item.right !== undefined && rubyKanaScan(item.right.text, ctx.options).length > 0) {
+          ctx.report(item.right.span);
         }
       }
     },

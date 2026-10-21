@@ -93,7 +93,10 @@ The text build prints the nodes.
 The editor side of the server keeps one scan and one resolve per document
 version (`src/server/parsed.ts`). The highlighter reads the nodes for the markup
 and the AST for the narration; the syntax diagnostics, the hover, the lint and
-the preview read the AST. The builds parse on their
+the preview read the AST. The lint judges the content, the line as its reader
+sees it (`src/server/shown.ts`), and lands its fixes on the nodes: what was
+typed is edited in place, what an annotation shows is not, and an insert at its
+edge goes outside the annotation. The builds parse on their
 own, from the files they read through `jpnov/readText`; a cover page, and the
 page furniture, also get the book's values.
 
@@ -166,11 +169,12 @@ Where things live today:
 | Dropping a character no output can carry (a C0 control other than tab and the line ends, U+FFFE, U+FFFF) | AST | content is what is shown; the nodes keep it, so the lint reports it |
 | Where each character shown was written in the source | AST | kana are composed, characters dropped, values and 外字注記 substituted there; a ruby and a 縦中横 keep the runs they were joined from; Output does not read the source |
 | The narration a name or a keyword is recognised in | editor (`src/server/shown.ts`, the highlighter) | the body as the AST shows it, so a word the markup cuts (新［＃「新」に傍点］帝都) is one word; what is coloured is where each piece was written |
+| What the lint judges, and where its fixes land | editor (`src/server/lint/`) | a rule reads the line as shown, so a 外字注記 is its character and a ［＃○字下げ］ its spaces, with no exception per rule; a fix edits the source: typed text in place, never what an annotation shows (an insert at its edge goes outside the annotation, a deletion of the spaces removes the ［＃○字下げ］); the block 字下げ is a value of the line, not characters, and is not judged |
 | The ダッシュ glyph, 禁則, 分離禁止, ぶら下げ, the space dropped after a line-end 区切り約物, ruby overhang, wrapping, pagination | Output | typesetting, driven by layout settings |
 | The class of a character under 禁則: its first code point's | Output | a rule of typesetting |
 | Which characters a ダッシュ may be typed with (－－, ––), and that ー never is one | editor (lint) | a convention of the manuscript; the typesetting class stays the 分離禁止 one |
 | A 縦中横 too long to fit its cell | editor | a threshold, judged on what the AST holds |
-| Which 「」『』 of the prose open and close an utterance, across lines | editor (`src/server/dialogue.ts`; the corner characters themselves in `src/shared/chars.ts`) | a convention of the manuscript over the prose nodes, read by the lint and the highlighter alike; an annotation's 「対象」 is not prose, and a listed name holds no corner |
+| Which 「」『』 of the prose open and close an utterance, across lines | editor (`src/server/dialogue.ts`; the corner characters themselves in `src/shared/chars.ts`) | a convention of the manuscript over the prose of the content, read by the lint and the highlighter alike; an annotation's 「対象」, what a value shows and a listed name hold no corner |
 | A half-width pair (`!?`) with no 縦中横 annotation | editor | a manuscript convention, judged on what the AST holds; the fix replaces the pair with its character or writes the annotation, as the lint setting says |
 | What an annotation shows on hover, what lights up with it, renaming a 対象文字列 with the body it names, a fix rewriting the 「…」 of the postfix bound over it | editor (`src/server/annotations.ts`, `targets.ts`) | each reads what the postfix bound to and which start pairs with which end: the resolver's findings; the 「…」 is rewritten only where it is written as the body it bound to |
 | Writing `‼` `⁇` `⁈` `⁉` `¡` `¿` as 外字注記 in a Shift JIS text (`《` `》` have a cell and are written as themselves) | client (`encodeTxt`, `src/shared/encoding.ts`) | the encoding is a client setting; the Scanner and the AST take none |

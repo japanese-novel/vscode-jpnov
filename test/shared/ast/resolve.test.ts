@@ -358,9 +358,9 @@ const state = (src: string): unknown[][] =>
 
 test('字下げ: the single-line form is N spaces of its line, the block form the state of the lines after it', () => {
   assert.deepEqual(state('［＃３字下げ］本文の行。\n次の行。'), [[0, undefined, false, false], [0, undefined, false, false]]);
-  assert.deepEqual(content('［＃３字下げ］本文の行。'), ['value 　　　', 'chars 本文の行。']);
-  assert.deepEqual(content('本文［＃２字下げ］本文'), ['chars 本文', 'value 　　', 'chars 本文']);
-  assert.deepEqual(content('　［＃１字下げ］本文'), ['chars 　', 'value 　', 'chars 本文']); // the auto-indent space and its own
+  assert.deepEqual(content('［＃３字下げ］本文の行。'), ['indent 　　　', 'chars 本文の行。']);
+  assert.deepEqual(content('本文［＃２字下げ］本文'), ['chars 本文', 'indent 　　', 'chars 本文']);
+  assert.deepEqual(content('　［＃１字下げ］本文'), ['chars 　', 'indent 　', 'chars 本文']); // the auto-indent space and its own
   assert.deepEqual(content('［＃０字下げ］本文'), ['chars 本文']);
   assert.deepEqual(content('［＃縦中横］［＃１字下げ］1［＃縦中横終わり］'), ['tcy 　1']);
   // A ［＃０字下げ］ inside a block adds nothing: the block's state stands.

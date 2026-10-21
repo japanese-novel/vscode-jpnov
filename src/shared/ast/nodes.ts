@@ -117,7 +117,7 @@ export interface CommentNode extends AnnotationBase {
   readonly inner: Part;
 }
 
-/** An unclosed ［＃ up to its line end: its characters are content, as typed. */
+/** An unclosed ［＃ up to its line end: its characters are content, shown as any other text is. */
 export interface BrokenAnnotationNode extends NodeBase {
   readonly kind: 'brokenAnnotation';
 }
@@ -239,10 +239,12 @@ export type SyntaxNode =
 export type Marks = Readonly<Partial<Record<Channel, Mark>>>;
 
 /**
- * Where a run's characters come from: `prose` typed text; `value` a substituted value or the spaces
- * a ［＃○字下げ］ stands for; `gaiji` a 外字注記; `markup` ruby markup printed as typed (its base came out empty); `broken` an unclosed ［＃.
+ * Where a run's characters come from: `prose` typed text; `value` a substituted value; `indent` the
+ * spaces a ［＃○字下げ］ stands for; `gaiji` a 外字注記; `markup` ruby markup printed as typed (its base
+ * came out empty); `broken` an unclosed ［＃. A value, the spaces and a 外字注記 are shown by an
+ * annotation: their characters have no place of their own (see {@link isFixedOrigin}).
  */
-export type CharsOrigin = 'prose' | 'value' | 'gaiji' | 'markup' | 'broken';
+export type CharsOrigin = 'prose' | 'value' | 'indent' | 'gaiji' | 'markup' | 'broken';
 
 /** A run of characters laid out one per cell; a slice of ONE syntax node with uniform marks. */
 export interface Chars {
@@ -253,24 +255,31 @@ export interface Chars {
    * Where each character of `text` was written, when its source had a kana composed or a character
    * dropped; without it, each sits at `span.start` plus its offset in `text`. A character is a
    * grapheme cluster: a composed kana covers its kana and mark, a kanji its variation selector.
-   * The characters of a value and of a 外字注記 have no place of their own: they all come from
-   * `span`, the annotation.
+   * The characters an annotation shows (a value, the spaces of a ［＃○字下げ］, a 外字注記) have no
+   * place of their own: they all come from `span`, the annotation.
    */
   readonly starts?: readonly number[];
   readonly origin: CharsOrigin;
   readonly marks: Marks;
 }
 
+/** A reading as shown, and where it was written: the inside of its 《…》 or of the 左ルビ's 「…」. */
+export interface Reading {
+  readonly text: string;
+  readonly span: Span;
+}
+
 /**
  * A base with its readings; atomic. `runs` are the runs `base` was joined from, each with where
  * it was written (a value or a 外字注記 inside the base is a run of its origin); their marks are
- * what was in effect inside, the ruby's `marks` are what shows.
+ * what was in effect inside, the ruby's `marks` are what shows. `span` runs from the ｜ (or the
+ * implicit base) through the 》; a ruby a 左ルビ postfix made covers the text it matched only.
  */
 export interface Ruby {
   readonly kind: 'ruby';
   readonly base: string;
-  readonly right?: string;
-  readonly left?: string;
+  readonly right?: Reading;
+  readonly left?: Reading;
   readonly span: Span;
   readonly marks: Marks;
   readonly runs: readonly Chars[];
@@ -278,7 +287,8 @@ export interface Ruby {
 
 /**
  * A 縦中横 cell; atomic, one cell whatever it holds. `span` is where that was written, its
- * annotations aside; `runs` are the runs `text` was joined from, as a ruby's.
+ * annotations aside: the inside of a ［＃縦中横］ span, the text a postfix matched; `runs` are the
+ * runs `text` was joined from, as a ruby's.
  */
 export interface Tcy {
   readonly kind: 'tcy';
@@ -288,7 +298,8 @@ export interface Tcy {
   readonly runs: readonly Chars[];
 }
 
-/** An annotation that takes no effect: zero-width, undecorated. `inner` is a display string. */
+/** An annotation that takes no effect: zero-width, undecorated. `inner` is a display string. One
+ *  written inside a ｜ base follows the ruby in the content, after the span it sits in. */
 export interface CommentInline {
   readonly kind: 'comment';
   readonly inner: string;
@@ -299,13 +310,13 @@ export type Inline = Chars | Ruby | Tcy | CommentInline;
 
 // Findings
 
-/** What the scan alone can tell. */
+/** What the scan alone can tell. A `target` or a `reading` quotes the source as written. */
 export type ScanIssue =
   | { readonly kind: 'unclosedAnnotation'; readonly span: Span }
   // `span`: the whole annotation, which is left a comment.
   | { readonly kind: 'indentTooLarge'; readonly span: Span }
-  // `span`: the 《…》 left as text, from its ｜ when one opened it (it starts at the 《 exactly when none did).
-  | { readonly kind: 'rubyBaseMissing'; readonly span: Span; readonly reading: string }
+  // `span`: the 《…》 left as text, from its ｜ when one opened it (`marked`); from the 《 when none did.
+  | { readonly kind: 'rubyBaseMissing'; readonly span: Span; readonly reading: string; readonly marked: boolean }
   | { readonly kind: 'rubyReadingEmpty'; readonly span: Span };
 
 /** Every structural finding; the kind names the defect, never a message. */
@@ -320,7 +331,7 @@ export type Issue =
   | { readonly kind: 'spanAlreadyOpen'; readonly span: Span; readonly mark: string; readonly redundant: boolean }
   | { readonly kind: 'unterminatedTcy' | 'danglingTcyEnd'; readonly span: Span }
   | { readonly kind: 'postfixTargetMissing'; readonly span: Span; readonly target: string }
-  /** A ruby a 縦中横 swallowed: its reading is dropped, the base text alone makes the cell. */
+  /** A ruby a 縦中横 swallowed: its reading (as shown) is dropped, the base text alone makes the cell. */
   | { readonly kind: 'rubyInTcy'; readonly span: Span; readonly reading: string };
 
 // Documents

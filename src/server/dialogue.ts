@@ -3,10 +3,10 @@
  * walker and the highlighter alike, so that a character can never be dialogue to one and
  * 地の文 to the other.
  *
- * Only prose feeds the stack — the `text` nodes for the lint walker, the prose as the AST shows
- * it for the highlighter (shown.ts): ［＃「対象」に傍点］ carries its 「対象」 inside an annotation
- * node, and a 「 swallowed by an unclosed ［＃ is a brokenAnnotation, so neither can open an
- * utterance (the Aozora trap). An opener always pushes; a closer pops only when it
+ * Only prose feeds the stack — the prose runs of the AST's content, as shown, for the lint
+ * walker and the highlighter (shown.ts) alike: ［＃「対象」に傍点］ carries its 「対象」 inside an
+ * annotation node, and a 「 swallowed by an unclosed ［＃ is a brokenAnnotation, so neither can
+ * open an utterance (the Aozora trap). An opener always pushes; a closer pops only when it
  * matches the top; a mismatched closer is ordinary prose. The stack is document-scoped: an
  * utterance may span lines.
  *

@@ -134,7 +134,7 @@ function inlineLabel(item: Inline): string {
     case 'chars':
       return `${item.origin === 'prose' ? 'chars' : item.origin} ${item.text}${marks}`;
     case 'ruby':
-      return `ruby ${item.base}${item.right === undefined ? '' : `《${item.right}》`}${item.left === undefined ? '' : `〈${item.left}〉`}${marks}`;
+      return `ruby ${item.base}${item.right === undefined ? '' : `《${item.right.text}》`}${item.left === undefined ? '' : `〈${item.left.text}〉`}${marks}`;
     case 'tcy':
       return `tcy ${item.text}${marks}`;
     case 'comment':

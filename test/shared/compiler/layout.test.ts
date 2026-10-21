@@ -1254,17 +1254,17 @@ test('furniture: a name the page lacks prints as itself; a page without values p
   assert.match(out, /<div class="hd c">発行日<\/div><div class="ft r">タイトル<\/div>/);
 });
 
-test('furniture: only the value annotation is interpreted — other annotations, ruby and markup print as typed', () => {
+test('furniture: plain text — a ruby prints its base, a 縦中横 its text, a 外字注記 its character; a comment nothing', () => {
   const chrome: BuildChrome = {
     ...FURNISHED,
     footerAlign: 'right',
-    header: '作品名《さくひんめい》［＃「作品名」に傍点］',
-    footer: '<b>［＃縦中横］１２［＃縦中横終わり］</b>',
+    header: `作品名《さくひんめい》［＃「作品名」に傍点］${gaijiOf('‼')}［＃メモ］`,
+    footer: '<b>［＃縦中横］１２［＃縦中横終わり］</b>　全［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］頁',
   };
   const used = new Set<string>();
   const out = pagesToHtml([{ lines: page1('一') }], used, chrome);
-  assert.match(out, /<div class="hd c">作品名《さくひんめい》［＃「作品名」に傍点］<\/div>/);
-  assert.match(out, /<div class="ft r">&lt;b&gt;［＃縦中横］１２［＃縦中横終わり］&lt;\/b&gt;<\/div>/);
+  assert.match(out, /<div class="hd c">作品名‼<\/div>/);
+  assert.match(out, /<div class="ft r">&lt;b&gt;１２&lt;\/b&gt;　全1頁<\/div>/); // a value inside a 縦中横 is still looked up per page
   assert.doesNotMatch(out, /<ruby|class="tcy"|emph-/);
   assert.deepEqual([...used], []); // the furniture sinks no on-demand class
 });
