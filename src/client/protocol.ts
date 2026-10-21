@@ -70,6 +70,32 @@ export interface CountsVM {
   readonly chars: CountItem;
 }
 
+/** A span of a chapter as the editor counts it (mirrors the LSP `Range`; this module imports nothing). */
+export interface TextRange {
+  readonly start: Cursor;
+  readonly end: Cursor;
+}
+
+/** One problem of a chapter in the `problems` screen: `message` and `where` are localized by the host. */
+export interface ProblemVM {
+  readonly range: TextRange;
+  /** The diagnostic code; with `range`, the problem's identity the fix verb echoes. */
+  readonly code: string;
+  readonly severity: 'error' | 'warning';
+  readonly message: string;
+  /** The problem's place in words (the line number). */
+  readonly where: string;
+  /** Whether a fix is on offer: the row's checkbox starts checked, else disabled. */
+  readonly fixable: boolean;
+}
+
+/** One chapter's problems, under the path its entry row names. */
+export interface ChapterProblemsVM {
+  readonly uri: string;
+  readonly path: string;
+  readonly problems: readonly ProblemVM[];
+}
+
 // Books panel — messages
 
 /** Host → webview: the full book list + selection. The sole authority; every push reconciles the view. */
@@ -109,8 +135,18 @@ export interface CloseDetailMessage {
   readonly type: 'closeDetail';
 }
 
+/**
+ * Host → webview: the PROBLEMS screen of the open book (the title-bar fix command): every chapter
+ * with a problem, in the book's order. The webview shows it only while that book's detail is open.
+ */
+export interface ProblemsMessage {
+  readonly type: 'problems';
+  readonly uri: string;
+  readonly chapters: readonly ChapterProblemsVM[];
+}
+
 /** Every message the host posts to the Books webview. */
-export type BooksInbound = StateMessage | DetailMessage | CloseDetailMessage;
+export type BooksInbound = StateMessage | DetailMessage | CloseDetailMessage | ProblemsMessage;
 
 /** A build action fired from the footer (`print` = build HTML, then open it in the browser). */
 export type BuildAction = 'print' | 'txt' | 'epub';
@@ -172,7 +208,18 @@ export type BooksOutbound =
     readonly before: number | null;
     readonly beforePath: string | null;
   }
-  | { readonly type: 'welcome'; readonly action: WelcomeAction };
+  | { readonly type: 'welcome'; readonly action: WelcomeAction }
+  // The problems screen's verbs: fix the problems checked (each named by its chapter, place and
+  // code; the host fixes those its text still has), and open a chapter at a problem.
+  | { readonly type: 'fixProblems'; readonly uri: string; readonly problems: readonly ProblemRefVM[] }
+  | { readonly type: 'openProblem'; readonly uri: string; readonly range: TextRange };
+
+/** A problem the fix verb names: its chapter, place and code. */
+export interface ProblemRefVM {
+  readonly chapter: string;
+  readonly range: TextRange;
+  readonly code: string;
+}
 
 /**
  * Localized UI strings the Books webview renders. Baked into `__INIT` (not re-fetched per node)
@@ -216,6 +263,10 @@ export interface Labels {
   readonly noFolderHint: string;
   readonly createBook: string;
   readonly openGuide: string;
+  /** The problems screen: its heading, the fix button (also a checkbox's name prefix), and the name of a disabled checkbox. */
+  readonly problems: string;
+  readonly fix: string;
+  readonly notFixable: string;
 }
 
 /** The Books webview's `__INIT` bootstrap: localized strings baked in for the first paint. */

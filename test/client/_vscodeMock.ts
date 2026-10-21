@@ -335,6 +335,8 @@ export interface MockState {
   infoMessages: string[];
   /** `env.openExternal` targets (uri strings), e.g. the post-build output-folder opens. */
   openedExternal: string[];
+  /** `window.showTextDocument` calls: the uri shown and the selection asked for, when any. */
+  shownDocuments: { uri: string; selection: [number, number, number, number] | undefined }[];
   /** `withProgress` options seen, one per call (so tests can assert `cancellable`). */
   progressOptions: unknown[];
   /** Pre-set to true to hand the progress task an already-cancelled token. The mock token
@@ -352,6 +354,7 @@ export function createMockState(): MockState {
     writtenFiles: [],
     appliedEdits: [],
     applyEditResult: true,
+    shownDocuments: [],
     onDidChangeDoc: new EventEmitter<{ document: FakeTextDocument }>(),
     onDidChangeActiveEditor: new EventEmitter<FakeTextEditor | undefined>(),
     activeEditor: undefined,
@@ -412,6 +415,7 @@ export function resetMockState(s: MockState): void {
   s.writtenFiles.length = 0;
   s.appliedEdits.length = 0;
   s.applyEditResult = true;
+  s.shownDocuments.length = 0;
   s.activeEditor = undefined;
   s.visibleEditors.length = 0;
   s.onDidChangeSelection.dispose();
@@ -530,7 +534,13 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       void options;
       return Promise.resolve(state.workspaceFolderPickResult);
     },
-    showTextDocument(document: unknown): Promise<unknown> {
+    showTextDocument(document: unknown, options?: { selection?: Range }): Promise<unknown> {
+      const uri = document instanceof Uri ? document : (document as { uri: Uri }).uri;
+      const sel = options?.selection;
+      state.shownDocuments.push({
+        uri: uri.toString(),
+        selection: sel === undefined ? undefined : [sel.start.line, sel.start.character, sel.end.line, sel.end.character],
+      });
       return Promise.resolve(document);
     },
     withProgress<R>(

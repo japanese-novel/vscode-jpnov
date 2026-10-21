@@ -32,7 +32,8 @@ import { partitionPoint } from '../../shared/utils/lists.ts';
 
 import { diagnostic, finding } from '../diagnostics.ts';
 import type { Finding, Fix } from '../diagnostics.ts';
-import { TargetIndex, rangeKey, rangeOf } from '../targets.ts';
+import { TargetIndex, rangeOf } from '../targets.ts';
+import { rangeKey } from '../../shared/utils/position.ts';
 import { RULE_IMPL } from './modules.ts';
 import type { RuleImpl } from './modules.ts';
 import type { FixSpec, LineRule, ProseUnit } from './types.ts';
@@ -143,7 +144,7 @@ export function computeLintFindings(doc: TextDocument, ast: Ast, selection: Rule
           const range = rangeOf(doc, span);
           const message = extra?.message ?? { code: rule.code };
           const fix = extra?.fix === undefined ? undefined : materializeFix(extra.fix, doc, ast, targets);
-          prose.push(finding(diagnostic(range, message, WARNING), fix));
+          prose.push(finding(diagnostic(range, message, WARNING, rule.setting), fix));
           taken.add(`${rule.id}\n${rangeKey(range)}`);
         },
       }),
@@ -169,7 +170,7 @@ export function computeLintFindings(doc: TextDocument, ast: Ast, selection: Rule
       if (impl.yieldsTo.some((id) => taken.has(`${id}\n${key}`))) {
         continue;
       }
-      raw.push(finding(diagnostic(range, span.message ?? { code: rule.code }, WARNING), undefined));
+      raw.push(finding(diagnostic(range, span.message ?? { code: rule.code }, WARNING, rule.setting), undefined));
     }
   }
   return [...raw, ...prose];

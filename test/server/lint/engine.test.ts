@@ -72,6 +72,17 @@ test('a rule message reaches Diagnostic.data whole, args included', () => {
   );
   assert.equal(findings[0]?.diagnostic.message, 'use the configured dash character (―)');
   assert.equal(findings[0].diagnostic.code, 'lint.common.dash'); // mirrored onto Diagnostic.code
+  // The code links to the rule's setting (the Problems panel opens command links).
+  assert.deepEqual(findings[0].diagnostic.codeDescription, {
+    href: 'command:workbench.action.openSettings?%22jpnov.lint.common.dash%22',
+  });
+});
+
+test('a sub-code links to the setting of its rule', () => {
+  const doc = openDoc('彼は―と');
+  const findings = computeLintFindings(doc, parse(doc.getText()), selectRules(DASH_BAR));
+  assert.equal(findings[0]?.diagnostic.code, 'lint.common.dash.parity');
+  assert.equal(findings[0].diagnostic.codeDescription?.href, 'command:workbench.action.openSettings?%22jpnov.lint.common.dash%22');
 });
 
 test('a common rule fires in narration AND dialogue under one code', () => {

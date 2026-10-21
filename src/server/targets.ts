@@ -15,7 +15,7 @@ import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Ast, PostfixNode, Span, SyntaxNode } from '../shared/ast/nodes.ts';
 import { partitionPoint } from '../shared/utils/lists.ts';
-import { comparePositions } from '../shared/utils/position.ts';
+import { comparePositions, rangeKey } from '../shared/utils/position.ts';
 
 /** A postfix whose 「…」 can be rewritten with the body: `bound` reads as `node.target.text`. */
 export interface EligibleTarget {
@@ -51,11 +51,6 @@ export function isPostfix(node: SyntaxNode): node is PostfixNode {
 
 export function rangeOf(doc: TextDocument, span: Span): Range {
   return { start: doc.positionAt(span.start), end: doc.positionAt(span.end) };
-}
-
-/** A range as a comparable key: two edits over the same characters are of the same thing. */
-export function rangeKey(r: Range): string {
-  return [r.start.line, r.start.character, r.end.line, r.end.character].join(':');
 }
 
 const byStart = (a: { readonly range: Range }, b: { readonly range: Range }): number =>

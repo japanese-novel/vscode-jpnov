@@ -336,7 +336,7 @@ export function activate(context: vscode.ExtensionContext): void {
     serverCommand('jpbook.open', () => booksView?.focus()),
     serverCommand('jpbook.refresh', () => booksView?.refresh(true)),
     serverCommand('jpbook.createFile', () => createFile(booksView)),
-    serverCommand('jpbook.fixAll', () => booksView?.fixAllChapters()),
+    serverCommand('jpbook.fixProblems', () => booksView?.showProblems()),
     serverCommand('jpnov.preview', () => preview?.open(false)),
     serverCommand('jpnov.previewToSide', () => preview?.open(true)),
     // The preview's layout widget verbs (plain: an override exists only once the preview has

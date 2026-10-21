@@ -24,6 +24,8 @@ export interface ActiveRule {
   readonly options: true | { readonly max: number } | { readonly mode: string };
   /** The diagnostic code stamped on every message this rule produces. */
   readonly code: LintCode;
+  /** The rule's setting key, linked from each of its diagnostics. */
+  readonly setting: string;
 }
 
 /** The `mode` of an enum rule's options; undefined for any other kind. */
@@ -63,7 +65,7 @@ export function selectRules(raw: RawLintConfigWire): RuleSelection {
       }
     }
     if (options !== undefined) {
-      out.push({ id: rule.id, options, code: diagCode(rule) });
+      out.push({ id: rule.id, options, code: diagCode(rule), setting: settingKey(rule) });
     }
   }
   return out;

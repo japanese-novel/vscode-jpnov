@@ -54,6 +54,9 @@ function labels(): Labels {
     noFolderHint: vscode.l10n.t("A folder is optional, but recommended: open your novel's folder and its books are listed here automatically; without one, a book is listed while its .jpbook is open in the editor."),
     createBook: vscode.l10n.t('Create a Book…'),
     openGuide: vscode.l10n.t('Open the Guide'),
+    problems: vscode.l10n.t('Problems'),
+    fix: vscode.l10n.t('Fix'),
+    notFixable: vscode.l10n.t('Cannot be fixed automatically'),
   };
 }
 

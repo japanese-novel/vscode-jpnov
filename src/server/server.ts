@@ -12,7 +12,8 @@
  * - `jpnov/readText` (server -> client): the only custom request this side sends; manuscript
  *   and manifest text comes back decoded by the client.
  * - `.jpnov`: semantic tokens, `jpnov/hover`, document highlights, rename of a 対象文字列,
- *   diagnostics and lint (its selection: `initialize`, then `jpnov/lintConfigChanged`).
+ *   diagnostics and lint (its selection: `initialize`, then `jpnov/lintConfigChanged`), and the
+ *   Books view's `jpnov/problems` / `jpnov/fixAll` over a chapter's text.
  * - `.jpbook`: completion, document links, live diagnostics.
  */
 import {
@@ -43,6 +44,7 @@ import {
   BookCountsRequest,
   BuildRequest,
   FixAllRequest,
+  ProblemsRequest,
   HoverRequest,
   LintConfigChangedNotification,
   ListBooksRequest,
@@ -56,6 +58,8 @@ import type {
   BuildResult,
   FixAllParams,
   FixAllResult,
+  ProblemsParams,
+  ProblemsResult,
   HoverParams,
   HoverResult,
   LintConfigChangedParams,
@@ -69,7 +73,7 @@ import type {
 
 import { highlightsAt, hoverAt, prepareRenameAt, renameAt } from './annotations.ts';
 import { handleBookCounts, handleBuild, handleListBooks } from './build.ts';
-import type { Finding } from './diagnostics.ts';
+import { problemOf, type Finding } from './diagnostics.ts';
 import { parentUri } from './fsUri.ts';
 import { buildCodeActions, fixAllEdits } from './lint/codeActions.ts';
 import { computeLintFindings } from './lint/engine.ts';
@@ -349,6 +353,17 @@ function publishFindings(uri: string, version: number, findings: Finding[]): voi
   void connection.sendDiagnostics({ uri, diagnostics: findings.map((f) => f.diagnostic) });
 }
 
+/** The findings of an open .jpnov at its current version: the cached ones when they match, else computed now and cached. */
+function currentFindings(doc: TextDocument): Finding[] {
+  const cached = findingsCache.get(doc.uri);
+  if (cached?.version === doc.version) {
+    return cached.findings;
+  }
+  const findings = findingsOf(doc, parsed.astOf(doc));
+  findingsCache.set(doc.uri, { version: doc.version, findings });
+  return findings;
+}
+
 function scheduleProseDiagnostics(doc: TextDocument): void {
   const uri = doc.uri;
   const scheduledVersion = doc.version;
@@ -362,7 +377,7 @@ function scheduleProseDiagnostics(doc: TextDocument): void {
         return;
       }
       try {
-        publishFindings(uri, scheduledVersion, findingsOf(current, parsed.astOf(current)));
+        publishFindings(uri, scheduledVersion, currentFindings(current));
       } catch (err) {
         reportError(context, err);
       }
@@ -378,30 +393,31 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
   if (doc?.languageId !== 'jpnov') {
     return [];
   }
-  const uri = doc.uri;
-  const version = doc.version;
-  const cached = findingsCache.get(uri);
-  if (cached?.version === version) {
-    return buildCodeActions(uri, cached.findings, params.range, params.context.only);
-  }
-  const findings = findingsOf(doc, parsed.astOf(doc));
-  findingsCache.set(uri, { version, findings });
-  return buildCodeActions(uri, findings, params.range, params.context.only);
+  return buildCodeActions(doc.uri, currentFindings(doc), params.range, params.context.only);
 });
 
-// "Fix all" over one manuscript as the client holds it (the Books view runs it over every chapter of
-// a book, open or not): the same findings and the same edits as the editor's source.fixAll action.
-// An open document showing that text answers from its parse and its published findings; any other
-// text is parsed on its own, outside the cache of the open ones.
-connection.onRequest(FixAllRequest, (params: FixAllParams): FixAllResult => {
-  const open = documents.get(params.uri);
-  if (open?.languageId === 'jpnov' && open.getText() === params.text) {
-    const cached = findingsCache.get(open.uri);
-    return fixAllEdits(cached?.version === open.version ? cached.findings : findingsOf(open, parsed.astOf(open)));
-  }
-  const doc = TextDocument.create(params.uri, 'jpnov', 0, params.text);
-  return fixAllEdits(findingsOf(doc, parse(params.text)));
-});
+/**
+ * The findings of one manuscript as the client holds it (the Books view asks for every chapter of
+ * a book, open or not): the same findings the editor publishes. An open document showing that
+ * text answers from its parse and its findings (cached for the publish to come); any other text
+ * is parsed on its own, outside the cache of the open ones.
+ */
+function findingsForText(uri: string, text: string): Finding[] {
+  const open = documents.get(uri);
+  return open?.languageId === 'jpnov' && open.getText() === text
+    ? currentFindings(open)
+    : findingsOf(TextDocument.create(uri, 'jpnov', 0, text), parse(text));
+}
+
+// The problems of one manuscript, for the Books view's list of a whole book's problems.
+connection.onRequest(ProblemsRequest, (params: ProblemsParams): ProblemsResult => ({
+  problems: findingsForText(params.uri, params.text).map(problemOf),
+}));
+
+// "Fix all" over one manuscript, or only the problems the Books view's user picked: the same
+// findings and the same edits as the editor's source.fixAll action.
+connection.onRequest(FixAllRequest, (params: FixAllParams): FixAllResult =>
+  fixAllEdits(findingsForText(params.uri, params.text), params.only));
 
 /** Re-lint every open .jpnov — used when the lint selection changes (no text edit drives it). */
 function revalidateOpenNovels(): void {

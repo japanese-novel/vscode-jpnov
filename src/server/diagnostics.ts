@@ -11,7 +11,7 @@ import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { Diagnostic, Range } from 'vscode-languageserver/node';
 
 import { renderEnglish } from '../shared/messages.ts';
-import type { LocalizableMessage } from '../shared/protocol.ts';
+import type { LocalizableMessage, Problem } from '../shared/protocol.ts';
 
 import type { SyncedEdit } from './targets.ts';
 
@@ -24,18 +24,28 @@ const FILE_START_RANGE = {
   end: { line: 0, character: 0 },
 } as const;
 
+/** A diagnostic of this server: its `data` is always the message it was built from. */
+export type JpnovDiagnostic = Omit<Diagnostic, 'data'> & { readonly data: LocalizableMessage };
+
+/** The link behind a lint diagnostic's code in the Problems panel: the settings editor, filtered to the rule's setting. */
+function settingLink(settingKey: string): string {
+  return `command:workbench.action.openSettings?${encodeURIComponent(JSON.stringify(settingKey))}`;
+}
+
 /**
  * Builds a `Diagnostic` over an explicit range from a {@link LocalizableMessage}. The English
  * render goes in `.message` (the fallback VS Code shows directly), and the `{code, args}` ride
  * in `.data` so the client's `handleDiagnostics` middleware can replace `.message` with the
  * localized text. Callers never hand-write English — it is single-sourced in `renderEnglish`.
+ * A lint diagnostic links its code to the rule's `setting`; a syntax or `.jpbook` one has none.
  */
 export function diagnostic(
   range: Range,
   message: LocalizableMessage,
   severity: DiagnosticSeverity,
-): Diagnostic {
-  return {
+  setting?: string,
+): JpnovDiagnostic {
+  const diag: JpnovDiagnostic = {
     range,
     severity,
     source: DIAGNOSTIC_SOURCE,
@@ -44,6 +54,7 @@ export function diagnostic(
     message: renderEnglish(message.code, message.args),
     data: message,
   };
+  return setting === undefined ? diag : { ...diag, codeDescription: { href: settingLink(setting) } };
 }
 
 /** A single auto-fix edit in SOURCE coordinates: a {@link SyncedEdit}, applied with the 「…」 edits it carries. */
@@ -51,16 +62,26 @@ export type Fix = SyncedEdit;
 
 /** One finding to publish: its diagnostic, plus its fix when there is one to offer. */
 export interface Finding {
-  readonly diagnostic: Diagnostic;
+  readonly diagnostic: JpnovDiagnostic;
   readonly fix?: Fix;
 }
 
 /** Pairs a diagnostic with an optional fix, omitting `fix` entirely when absent (exactOptional…). */
-export function finding(diag: Diagnostic, fix: Fix | undefined): Finding {
+export function finding(diag: JpnovDiagnostic, fix: Fix | undefined): Finding {
   return fix !== undefined ? { diagnostic: diag, fix } : { diagnostic: diag };
 }
 
+/** A finding as the Books view lists it: the diagnostic's place, severity and message, and whether a fix is on offer. */
+export function problemOf(f: Finding): Problem {
+  return {
+    range: f.diagnostic.range,
+    severity: f.diagnostic.severity === DiagnosticSeverity.Error ? 'error' : 'warning',
+    message: f.diagnostic.data,
+    fixable: f.fix !== undefined,
+  };
+}
+
 /** An Error-severity, document-start ("file level") diagnostic. */
-export function fileLevelError(message: LocalizableMessage): Diagnostic {
+export function fileLevelError(message: LocalizableMessage): JpnovDiagnostic {
   return diagnostic(FILE_START_RANGE, message, DiagnosticSeverity.Error);
 }

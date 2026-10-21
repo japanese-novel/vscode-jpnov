@@ -35,7 +35,7 @@ h1, h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 /* Custom selection cell: a FULL-HEIGHT, fixed-width segment split from the content by a vertical
    divider. Unchecked shows nothing (a faint outline circle on hover); checked fills with a primary
    tint + a filled circle. */
-.row.book { padding-left: 0; }
+.row.book, .row.problem { padding-left: 0; }
 .cbtile {
   flex: 0 0 auto; width: 36px;
   display: flex; align-items: center; justify-content: center;
@@ -51,6 +51,9 @@ h1, h2 { margin: 0; font-size: inherit; font-weight: inherit; }
   background: color-mix(in srgb, var(--vscode-button-background) 50%, transparent);
 }
 .cbtile.on .codicon { opacity: 1; }
+/* A problem without a fix: its checkbox is disabled and shows nothing, hover included. */
+.cbtile:disabled { cursor: default; }
+.cbtile:disabled:hover .codicon { opacity: 0; }
 .main, .emain, .meta, .action {
   flex: 1 1 auto; display: flex; align-items: center; gap: 6px; min-width: 0;
   text-align: left; background: none; border: none; color: inherit; padding: 4px 0; cursor: pointer;
@@ -107,6 +110,10 @@ h1, h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 .entry.drop-before { box-shadow: inset 0 2px 0 var(--vscode-focusBorder); }
 .entry.drop-after { box-shadow: inset 0 -2px 0 var(--vscode-focusBorder); }
 .err { flex: 0 0 auto; color: var(--vscode-list-errorForeground, #f88070); }
+.warn { flex: 0 0 auto; color: var(--vscode-list-warningForeground, #cca700); }
+/* A problem's place, and the note that it has no fix, as separate items on one line. */
+.pwhere { display: flex; gap: 8px; }
+.pwhere span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pen { flex: 0 0 auto; color: var(--vscode-descriptionForeground); opacity: 0; }
 .meta:hover .pen, .meta:focus-visible .pen, .emain:hover .pen, .emain:focus-visible .pen { opacity: 1; }
 .empty { padding: 4px 8px; color: var(--vscode-descriptionForeground); font-size: 12px; }

@@ -3,7 +3,7 @@
   "command.books.open.title": "Open the Books View",
   "command.books.refresh.title": "Refresh Books",
   "command.books.createFile.title": "Create a Book…",
-  "command.books.fixAll.title": "Fix All Auto-Fixable Problems in the Book",
+  "command.books.fixProblems.title": "Fix Problems in the Book…",
   "command.preview.title": "Open Preview",
   "command.openGuide.title": "Open the Getting Started Guide",
   "command.previewToSide.title": "Open Preview to the Side",

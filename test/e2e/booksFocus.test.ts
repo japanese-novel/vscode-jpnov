@@ -141,6 +141,18 @@ const host = {
   chapters() {
     return this.open === null ? null : [...this.details.get(this.open).chapters];
   },
+  // The open book's problems screen: chapter 01 with a fixable and a fix-less problem, 02 with a fixable one.
+  problems() {
+    const R = (l1, c1, l2, c2) => ({ start: { line: l1, character: c1 }, end: { line: l2, character: c2 } });
+    const pr = (range, code, fixable) => ({ range, code, severity: fixable ? 'warning' : 'error', message: code, where: 'L', fixable });
+    send({
+      type: 'problems', uri: this.open,
+      chapters: [
+        { uri: U(FIX.chapters[0]), path: FIX.chapters[0], problems: [pr(R(0, 2, 0, 4), 'fix', true), pr(R(1, 0, 1, 1), 'nofix', false)] },
+        { uri: U(FIX.chapters[1]), path: FIX.chapters[1], problems: [pr(R(3, 0, 3, 1), 'fix', true)] },
+      ],
+    });
+  },
   on(m) {
     this.posted.push(m);
     const books = this.groups.flatMap((g) => g.books);
@@ -226,7 +238,7 @@ const SCENARIO_SCRIPT = `<script>
 (() => {
   const host = window.__host;
   const results = [];
-  const GRIDS = ['books', 'covers', 'chapters', 'meta'];
+  const GRIDS = ['books', 'covers', 'chapters', 'meta', 'problems'];
   const byKey = (key) => {
     for (const el of document.querySelectorAll('[data-fk]')) {
       if (el.getAttribute('data-fk') === key) {
@@ -424,6 +436,28 @@ const SCENARIO_SCRIPT = `<script>
   open(B);
   step('N4', K('chapters', 'open', '02.jpnov'), dragTo('chapters', rect(K('chapters', 'open', '03.jpnov')).top + 1));
 
+  // #230: the problems screen is a grid too (checkbox / open); a disabled checkbox hands over to its
+  // row; the select links and the fix button follow the checked set; a plain detail re-push keeps the
+  // screen, Back and Escape return to the detail.
+  const P = (part, n, l1, c1, l2, c2, code) => 'pb:' + part + ':' + U(n) + ':' + [l1, c1, l2, c2, code].join(':');
+  host.reset();
+  open(B);
+  step('P1', 'back', () => host.problems());
+  step('P2a', 'deselall');
+  step('P2b', 'selall');
+  step('P3a', P('cb', '01.jpnov', 0, 2, 0, 4, 'fix'));
+  step('P3b', P('cb', '01.jpnov', 0, 2, 0, 4, 'fix'), press('ArrowDown'));
+  step('P3c', P('open', '01.jpnov', 1, 0, 1, 1, 'nofix'), press('ArrowDown'));
+  step('P4', P('open', '02.jpnov', 3, 0, 3, 1, 'fix'), () => host.detail());
+  step('P5', P('open', '02.jpnov', 3, 0, 3, 1, 'fix'));
+  step('P6', 'bfix');
+  host.reset();
+  open(B);
+  host.problems();
+  step('P7', P('cb', '01.jpnov', 0, 2, 0, 4, 'fix'), press('Escape'));
+  host.problems();
+  step('P8', 'back');
+
   document.documentElement.setAttribute('${MARKER}', JSON.stringify(results));
 })();
 </script>`;
@@ -458,6 +492,9 @@ interface Expected {
 const { A, B, C } = FIX.books;
 const [C1, C2, C3] = FIX.chapters;
 const ch = (part: 'open' | 'up' | 'down' | 'rm', name: string): string => entry('chapters', part, name);
+/** A problem row's key: the part, its chapter, place and code (as the stub host lists them). */
+const pb = (part: 'cb' | 'open', name: string, at: readonly [number, number, number, number], code: string): string =>
+  `pb:${part}:${u(name)}:${at.join(':')}:${code}`;
 
 /** Where focus must land per scenario, in run order (a checkbox stays in the checkbox column). */
 const EXPECT: Readonly<Record<string, Expected>> = {
@@ -537,6 +574,21 @@ const EXPECT: Readonly<Record<string, Expected>> = {
   N2: { landed: ch('open', C3), chapters: [C3, C1, C2], posted: ['moveEntryTo'], drop: 'before ' + ch('open', C1), pending: 0 },
   N3: { landed: ch('open', C1), chapters: [C1, C2, C3], posted: [], drop: null },
   N4: { landed: ch('open', C2), chapters: [C1, C2, C3], posted: [], drop: null },
+  // The problems screen: focus lands on Back; its one Tab stop is the first row's open cell. The
+  // links disable themselves (none / all checked) so focus crosses; ArrowDown from a checkbox onto
+  // a fix-less row lands on that row's open cell, then keeps the column. A re-push keeps the screen
+  // and the focus; a row opens its chapter; Fix posts the verb and returns to the detail.
+  P1: { landed: 'back', posted: [], tab0: { problems: pb('open', C1, [0, 2, 0, 4], 'fix'), chapters: null } },
+  P2a: { landed: 'selall', posted: [] },
+  P2b: { landed: 'deselall', posted: [] },
+  P3a: { landed: pb('cb', C1, [0, 2, 0, 4], 'fix'), posted: [] },
+  P3b: { landed: pb('open', C1, [1, 0, 1, 1], 'nofix'), posted: [] },
+  P3c: { landed: pb('open', C2, [3, 0, 3, 1], 'fix'), posted: [] },
+  P4: { landed: pb('open', C2, [3, 0, 3, 1], 'fix'), posted: [], tab0: { problems: pb('open', C2, [3, 0, 3, 1], 'fix'), chapters: null } },
+  P5: { landed: pb('open', C2, [3, 0, 3, 1], 'fix'), posted: ['openProblem'] },
+  P6: { landed: 'back', posted: ['fixProblems'], tab0: { problems: null, chapters: ch('open', C1) } },
+  P7: { landed: 'back', posted: [], tab0: { problems: null } },
+  P8: { landed: 'back', posted: [], tab0: { problems: null, chapters: ch('open', C1) } },
 };
 
 /** The page as the host serves it: the `__INIT` bootstrap (every label reads as its own key — the
