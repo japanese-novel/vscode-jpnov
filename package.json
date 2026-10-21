@@ -609,9 +609,9 @@
         "icon": "$(add)"
       },
       {
-        "command": "jpbook.fixAll",
+        "command": "jpbook.fixProblems",
         "category": "%command.category%",
-        "title": "%command.books.fixAll.title%",
+        "title": "%command.books.fixProblems.title%",
         "icon": "$(lightbulb-autofix)"
       },
       {
@@ -728,7 +728,7 @@
           "when": "view == jpnov.books && !jpnov.booksDetail"
         },
         {
-          "command": "jpbook.fixAll",
+          "command": "jpbook.fixProblems",
           "group": "navigation@0",
           "when": "view == jpnov.books && jpnov.booksDetail"
         },
@@ -767,7 +767,7 @@
           "when": "false"
         },
         {
-          "command": "jpbook.fixAll",
+          "command": "jpbook.fixProblems",
           "when": "jpnov.booksDetail"
         },
         {

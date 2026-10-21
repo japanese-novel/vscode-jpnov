@@ -3,9 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CodeActionKind } from 'vscode-languageserver/node';
-import type { CodeAction, Diagnostic, Range, TextEdit } from 'vscode-languageserver/node';
+import type { CodeAction, Range, TextEdit } from 'vscode-languageserver/node';
 
-import type { Finding } from '../../../src/server/diagnostics.ts';
+import { problemOf, type Finding } from '../../../src/server/diagnostics.ts';
 import { buildCodeActions, fixAllEdits } from '../../../src/server/lint/codeActions.ts';
 import type { SyncedTarget } from '../../../src/server/targets.ts';
 import { inLinearTime } from '../../shared/_timing.ts';
@@ -17,7 +17,7 @@ function range(l1: number, c1: number, l2: number, c2: number): Range {
 }
 
 function finding(r: Range, code: string, fixNewText?: string, within: SyncedTarget[] = []): Finding {
-  const diagnostic: Diagnostic = { range: r, message: `msg:${code}`, severity: 2, source: 'jpnov', data: { code } };
+  const diagnostic = { range: r, message: `msg:${code}`, severity: 2, source: 'jpnov', data: { code } } as Finding['diagnostic'];
   return fixNewText === undefined ? { diagnostic } : { diagnostic, fix: { range: r, newText: fixNewText, within } };
 }
 
@@ -106,6 +106,34 @@ test('fixAllEdits: the fix-all edits, and `fixed` counts the fixes kept, not the
   assert.ok(action);
   assert.deepEqual(edits, editsOf(action));
   assert.deepEqual(fixAllEdits([unfixable]), { edits: [], fixed: 0 });
+});
+
+test('fixAllEdits with `only` fixes the problems named by place and code: a ref the findings lack fixes nothing, an empty list fixes nothing', () => {
+  const a = finding(range(0, 3, 0, 5), 'lint.common.questionExclamationMarks', '⁉');
+  const b = finding(range(0, 6, 0, 8), 'lint.common.noHankakuKana', 'イ');
+  const findings = [a, b];
+  assert.deepEqual(fixAllEdits(findings, [{ range: range(0, 6, 0, 8), code: 'lint.common.noHankakuKana' }]), {
+    edits: [{ range: range(0, 6, 0, 8), newText: 'イ' }],
+    fixed: 1,
+  });
+  // The same place under another code, and the right code at another place: neither names a finding.
+  assert.deepEqual(fixAllEdits(findings, [
+    { range: range(0, 6, 0, 8), code: 'lint.common.questionExclamationMarks' },
+    { range: range(0, 3, 0, 4), code: 'lint.common.questionExclamationMarks' },
+  ]), { edits: [], fixed: 0 });
+  assert.deepEqual(fixAllEdits(findings, []), { edits: [], fixed: 0 });
+  assert.equal(fixAllEdits(findings).fixed, 2);
+});
+
+test('problemOf lists a finding as the Books view shows it: place, severity, message, and whether a fix is on offer', () => {
+  const fixable = finding(range(0, 3, 0, 5), 'lint.common.questionExclamationMarks', '⁉');
+  const plain = finding(range(1, 0, 1, 1), 'lint.narration.indent');
+  assert.deepEqual(problemOf(fixable), {
+    range: range(0, 3, 0, 5), severity: 'warning', message: { code: 'lint.common.questionExclamationMarks' }, fixable: true,
+  });
+  assert.deepEqual(problemOf(plain), { range: range(1, 0, 1, 1), severity: 'warning', message: { code: 'lint.narration.indent' }, fixable: false });
+  const error = { ...plain, diagnostic: { ...plain.diagnostic, severity: 1 } } as Finding;
+  assert.equal(problemOf(error).severity, 'error');
 });
 
 test('a quick-fix carries the edit of the 「…」 its fix lands inside', () => {

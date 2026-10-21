@@ -19,6 +19,7 @@ import {
   BuildRequest,
   FixAllRequest,
   ListBooksRequest,
+  ProblemsRequest,
   type BookCountsParams,
   type BookCountsResult,
   type BookEntry,
@@ -30,6 +31,9 @@ import {
   type FixAllResult,
   type ListBooksParams,
   type ListBooksResult,
+  type ProblemRef,
+  type ProblemsParams,
+  type ProblemsResult,
 } from '#/shared/protocol.ts';
 
 import { entryKeyOf, entryLines, metaRows, moveEntryTo, resolveEntry, type EntryRef } from '#/shared/book/edits.ts';
@@ -37,9 +41,24 @@ import { parseJpbook, type EntryList, isEntryList, isNameList, jpbookStem, META_
 import { encodeTxt, TXT_ENCODING_DEFAULT, TXT_ENCODINGS } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/utils/errors.ts';
 import { isRecord } from '#/shared/utils/guards.ts';
+import { compareRanges } from '#/shared/utils/position.ts';
 import { ocfZip } from '#/shared/compiler/ocf.ts';
 
-import type { BookVM, BuildAction, CountsVM, DetailMessage, EntryVM, MetaVM, StateMessage } from '../protocol.ts';
+import type {
+  BookVM,
+  BuildAction,
+  ChapterProblemsVM,
+  CountsVM,
+  Cursor,
+  DetailMessage,
+  EntryVM,
+  MetaVM,
+  ProblemRefVM,
+  ProblemsMessage,
+  ProblemVM,
+  StateMessage,
+  TextRange,
+} from '../protocol.ts';
 
 import { applyBookEdits, metaLabel, metaValueParts } from './manage.ts';
 import type { BookNode } from './nodes.ts';
@@ -47,6 +66,7 @@ import { booksHtml } from './webviewHtml.ts';
 import { renderMessage } from '../messages.ts';
 import { bookDir, compareStr, lastPathSegment, resolveUri, splitRelPath } from '../paths.ts';
 import { bookTargets, isOpenBook } from '../projectConfig.ts';
+import { readText } from './readText.ts';
 import { affectsRenderSettings, buildHtmlSettings } from '../renderConfig.ts';
 import { cappedRequest, raceRequest } from '../requests.ts';
 
@@ -89,6 +109,40 @@ function groupLabel(rootUri: string | null): string {
 /** A row as a webview verb names it: the rendered line + path, and the detail's document version. */
 type RowRef = EntryRef & { readonly version: number };
 
+/** A chapter of the open detail: its file, the path its entry row names, and whether the file is missing. */
+interface ChapterRow {
+  readonly uri: string;
+  readonly path: string;
+  readonly missing: boolean;
+}
+
+/** A position a webview verb names, or null unless both coordinates are counts (what `vscode.Range` accepts). */
+function cursorOf(value: unknown): Cursor | null {
+  const count = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+  return isRecord(value) && count(value.line) && count(value.character)
+    ? { line: value.line, character: value.character }
+    : null;
+}
+
+/** The span a webview verb names, or null unless both ends are positions. */
+function textRangeOf(value: unknown): TextRange | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const start = cursorOf(value.start);
+  const end = cursorOf(value.end);
+  return start === null || end === null ? null : { start, end };
+}
+
+/** A problem as the fix verb names it, or null unless its chapter, place and code are all present. */
+function problemRefOf(value: unknown): ProblemRefVM | null {
+  if (!isRecord(value) || typeof value.chapter !== 'string' || typeof value.code !== 'string') {
+    return null;
+  }
+  const range = textRangeOf(value.range);
+  return range === null ? null : { chapter: value.chapter, range, code: value.code };
+}
+
 /** The row a webview entry verb names, or null unless `line`, `path` and `version` are all present. */
 function rowRefOf(msg: Readonly<Record<string, unknown>>): RowRef | null {
   const { line, path, version } = msg;
@@ -126,8 +180,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private openDetailUri: string | undefined;
   /** Trailing-edge timer coalescing chapter-file events into one detail re-post per burst. */
   private repostTimer: ReturnType<typeof setTimeout> | undefined;
-  /** The chapter URIs of the last posted detail: the documents whose edits re-count it. */
-  private detailChapters: ReadonlySet<string> = new Set();
+  /** The chapters of the last posted detail by file URI (each file once, in the book's order), under
+   *  the book they belong to: the documents whose edits re-count it, and the files the problems screen works on. */
+  private detailChapters: { readonly book: string; readonly rows: ReadonlyMap<string, ChapterRow> } = { book: '', rows: new Map() };
   /** The contributed view title captured at resolve, restored when the detail closes. */
   private defaultTitle: string | undefined;
   /** Serializes the row verbs (remove / move / drop), see `runEntryVerb`. */
@@ -163,7 +218,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     };
     /** A chapter of the open detail that no editor holds: only the disk can change it. */
     const closedChapter = (uri: vscode.Uri): boolean =>
-      this.detailChapters.has(uri.toString()) && !vscode.workspace.textDocuments.some((d) => d.uri.toString() === uri.toString());
+      this.detailChapters.rows.has(uri.toString()) && !vscode.workspace.textDocuments.some((d) => d.uri.toString() === uri.toString());
 
     this.disposables.push(
       watcher,
@@ -192,7 +247,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         const uri = e.document.uri.toString();
         if (uri === this.openDetailUri) {
           repostDetail();
-        } else if (this.detailChapters.has(uri)) {
+        } else if (this.detailChapters.rows.has(uri)) {
           schedule(COUNTS_DEBOUNCE_MS);
         }
       }),
@@ -464,6 +519,18 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case 'welcome':
         this.dispatchWelcome(m.action);
         break;
+      case 'fixProblems':
+        await this.fixProblems(m.uri, m.problems);
+        break;
+      case 'openProblem': {
+        const range = textRangeOf(m.range);
+        if (typeof m.uri === 'string' && this.detailChapters.rows.has(m.uri) && range !== null) {
+          await vscode.window.showTextDocument(vscode.Uri.parse(m.uri), {
+            selection: new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character),
+          });
+        }
+        break;
+      }
     }
   }
 
@@ -670,7 +737,13 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (this.openDetailUri !== uri) {
       return; // navigated away during the async stats
     }
-    this.detailChapters = new Set(chapters.map((c) => c.fileUri).filter((u) => u !== null));
+    const rows = new Map<string, ChapterRow>();
+    for (const c of chapters) {
+      if (c.fileUri !== null && !rows.has(c.fileUri)) {
+        rows.set(c.fileUri, { uri: c.fileUri, path: c.path, missing: c.missing });
+      }
+    }
+    this.detailChapters = { book: uri, rows };
     const message: DetailMessage = {
       type: 'detail',
       uri,
@@ -738,62 +811,133 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     );
   }
 
+  /** The present chapters of the open detail (a missing one is skipped: the panel marks it), once its
+   *  rows are posted; undefined before that or without an open detail. */
+  private openChapters(): readonly ChapterRow[] | undefined {
+    const { book, rows } = this.detailChapters;
+    return book === this.openDetailUri ? [...rows.values()].filter((c) => !c.missing) : undefined;
+  }
+
   /**
-   * `jpbook.fixAll` (the detail screen's title bar): the editor's "fix all" over every chapter of
-   * the open book, one request per chapter, each on the text the editor holds. A chapter that was
-   * clean is saved after its edit; one that was already dirty keeps the fixes unsaved, as its own
-   * edits are. A missing chapter, a refused edit or a failed save is toasted and skipped; one
-   * toast at the end counts the fixes and the chapters they landed in.
+   * `jpbook.fixProblems` (the detail screen's title bar): list every chapter's problems in the
+   * webview's PROBLEMS screen, each chapter on the text the editor shows (read as the server
+   * reads it, so a closed chapter stays closed); the user picks what to fix there
+   * (`fixProblems`). The chapters that could not be checked are skipped under one toast; a book
+   * without a problem is toasted and shows no screen.
    */
-  async fixAllChapters(): Promise<void> {
-    const entry = this.entryOf(this.openDetailUri);
-    if (entry === undefined) {
+  async showProblems(): Promise<void> {
+    const uri = this.openDetailUri;
+    const chapters = this.openChapters();
+    if (uri === undefined || chapters === undefined) {
       return;
     }
-    let lines: readonly ParsedLine[];
-    try {
-      lines = parseJpbook((await vscode.workspace.openTextDocument(vscode.Uri.parse(entry.uri))).getText()).lines;
-    } catch (err) {
+    const settled = chapters.length === 0
+      ? []
+      : await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: vscode.l10n.t('Japanese Novel: checking {0} chapter(s)…', String(chapters.length)),
+          },
+          () => Promise.allSettled(chapters.map((ch) => this.problemsOf(ch))),
+        );
+    const view = this.view;
+    if (this.openDetailUri !== uri || view === undefined) {
+      return; // the user left the book while the chapters were checked
+    }
+    const failures = settled.flatMap((s) => (s.status === 'rejected' ? [errorText(s.reason)] : []));
+    if (failures.length > 0) {
       void vscode.window.showErrorMessage(
-        vscode.l10n.t("Japanese Novel: couldn't load the books. {0}", errorText(err)),
+        vscode.l10n.t("Japanese Novel: couldn't check {0} chapter(s). {1}", String(failures.length), failures[0] ?? ''),
       );
+    }
+    const listed = settled.flatMap((s) => (s.status === 'fulfilled' && s.value.problems.length > 0 ? [s.value] : []));
+    if (listed.length === 0) {
+      void vscode.window.showInformationMessage(vscode.l10n.t('Japanese Novel: no problems in this book.'));
       return;
     }
-    // A chapter listed twice is fixed once; a missing one is skipped (the panel already marks it).
-    const chapters = [...new Set(
-      (await this.entryVMs(entry, lines, 'chapters')).flatMap((vm) => (vm.missing || vm.fileUri === null ? [] : [vm.fileUri])),
-    )];
-    let fixed = 0;
-    let touched = 0;
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: vscode.l10n.t('Japanese Novel: fixing {0} chapter(s)…', String(chapters.length)),
-      },
-      async () => {
-        for (const uri of chapters) {
-          const n = await this.fixChapter(uri);
-          if (n !== undefined) {
-            fixed += n;
-            touched += 1;
-          }
-        }
-      },
-    );
+    const message: ProblemsMessage = { type: 'problems', uri, chapters: listed };
+    void view.webview.postMessage(message);
+  }
+
+  /**
+   * One chapter's problems on the text the editor shows, in order of place and worded for the
+   * webview; rejects when the chapter could not be read or the server failed.
+   */
+  private async problemsOf(ch: ChapterRow): Promise<ChapterProblemsVM> {
+    const read = await readText({ uri: ch.uri });
+    if (!read.ok) {
+      throw new Error(read.why);
+    }
+    const result = await this.client.sendRequest<ProblemsResult>(ProblemsRequest, { uri: ch.uri, text: read.text } satisfies ProblemsParams);
+    const problems = [...result.problems]
+      .sort((a, b) => compareRanges(a.range, b.range))
+      .map((p): ProblemVM => ({
+        range: p.range,
+        code: p.message.code,
+        severity: p.severity,
+        message: renderMessage(p.message),
+        where: vscode.l10n.t('Line {0}', String(p.range.start.line + 1)),
+        fixable: p.fixable,
+      }));
+    return { uri: ch.uri, path: ch.path, problems };
+  }
+
+  /**
+   * Webview `fixProblems`: the problems the user checked, grouped by chapter and fixed chapter by
+   * chapter, each on the text the editor holds (a problem the text no longer has is left alone).
+   * A chapter the detail does not list is skipped; a malformed verb is ignored. A chapter that was
+   * clean is saved after its edit; one that was already dirty keeps the fixes unsaved, as its own
+   * edits are. A refused edit or a failed save is toasted and skipped; one toast at the end counts
+   * the fixes and the chapters they landed in.
+   */
+  private async fixProblems(uri: unknown, problems: unknown): Promise<void> {
+    const chapters = this.openChapters();
+    if (uri !== this.openDetailUri || chapters === undefined || !Array.isArray(problems)) {
+      return;
+    }
+    const refs = problems.map(problemRefOf);
+    if (!refs.every((r): r is ProblemRefVM => r !== null)) {
+      return;
+    }
+    const byChapter = Map.groupBy(refs, (r) => r.chapter);
+    const targets = chapters.flatMap((ch) => {
+      const only = byChapter.get(ch.uri);
+      return only === undefined ? [] : [{ uri: ch.uri, only: only.map(({ range, code }) => ({ range, code })) }];
+    });
+    const { fixed, touched } = targets.length === 0
+      ? { fixed: 0, touched: 0 }
+      : await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: vscode.l10n.t('Japanese Novel: fixing {0} chapter(s)…', String(targets.length)),
+          },
+          async () => {
+            let fixed = 0;
+            let touched = 0;
+            for (const t of targets) {
+              const n = await this.fixChapter(t.uri, t.only);
+              if (n !== undefined) {
+                fixed += n;
+                touched += 1;
+              }
+            }
+            return { fixed, touched };
+          },
+        );
     void vscode.window.showInformationMessage(
       fixed > 0
         ? vscode.l10n.t('Japanese Novel: fixed {0} problem(s) in {1} chapter(s).', String(fixed), String(touched))
-        : vscode.l10n.t('Japanese Novel: no auto-fixable problems in this book.'),
+        : vscode.l10n.t('Japanese Novel: none of the selected problems could be fixed; the text may have changed since they were listed.'),
     );
   }
 
-  /** Fix-all over one chapter: the number of fixes that landed, or undefined when none did (nothing to fix, or a failure, toasted). */
-  private async fixChapter(uri: string): Promise<number | undefined> {
+  /** Fix-all over one chapter, limited to the problems `only` names: the number of fixes that landed, or undefined when none did (nothing to fix, or a failure, toasted). */
+  private async fixChapter(uri: string, only: readonly ProblemRef[]): Promise<number | undefined> {
     let doc: vscode.TextDocument;
     let result: FixAllResult;
     try {
       doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(uri));
-      result = await this.client.sendRequest<FixAllResult>(FixAllRequest, { uri, text: doc.getText() } satisfies FixAllParams);
+      result = await this.client.sendRequest<FixAllResult>(FixAllRequest, { uri, text: doc.getText(), only } satisfies FixAllParams);
     } catch (err) {
       void vscode.window.showErrorMessage(
         vscode.l10n.t("Japanese Novel: couldn't edit {0}. {1}", lastPathSegment(uri), errorText(err)),

@@ -1,6 +1,6 @@
 /**
  * The Books panel's webview-side renderer (runs in the panel's browser realm). It rebuilds the DOM
- * from the host's pushed `state` / `detail` messages with the `h()` builder — string children
+ * from the host's pushed `state` / `detail` / `problems` messages with the `h()` builder — string children
  * become text nodes, so user data (book titles, chapter paths) NEVER flows through innerHTML and
  * can carry no markup — and dispatches every user action back as a typed message. The host
  * ({@link ../../book/view.ts}) owns all truth; a checkbox toggle updates optimistically and is not
@@ -22,20 +22,25 @@ import type {
   BooksOutbound,
   BookVM,
   BuildAction,
+  ChapterProblemsVM,
   CountsVM,
   DetailMessage,
   EntryList,
   EntryVM,
   MetaVM,
+  ProblemRefVM,
+  ProblemsMessage,
+  ProblemVM,
   StateMessage,
   WelcomeAction,
 } from '../../protocol.ts';
 
 import { svgGlyph } from '../svg.ts';
+import { rangeKey } from '../../../shared/utils/position.ts';
 
 /** Every glyph the panel draws; `cbOff`/`cbOn` are the selection checkbox's two states. */
 type IconName =
-  | 'chevR' | 'chevL' | 'up' | 'down' | 'err' | 'add' | 'close' | 'edit' | 'cbOff' | 'cbOn';
+  | 'chevR' | 'chevL' | 'up' | 'down' | 'err' | 'warn' | 'add' | 'close' | 'edit' | 'cbOff' | 'cbOn';
 
 /** Codicon suffix per icon; the element gets `class="codicon codicon-<suffix>"`. */
 const CODICON: Record<IconName, string> = {
@@ -44,6 +49,7 @@ const CODICON: Record<IconName, string> = {
   up: 'chevron-up',
   down: 'chevron-down',
   err: 'error',
+  warn: 'warning',
   add: 'add',
   close: 'close',
   edit: 'edit',
@@ -88,6 +94,10 @@ const app = requireApp();
 
 let state: StateMessage | null = null;
 let detail: DetailMessage | null = null;
+/** The open book's problems while its PROBLEMS screen shows over the detail: a one-shot list, so
+ * the checked set lives here (unlike the book selection, which the host holds and re-pushes). */
+let problems: ProblemsMessage | null = null;
+const problemChecked = new Set<string>();
 let screen: 'list' | 'detail' = 'list';
 let lastDetailUri: string | null = null;
 let infoOpen = false;
@@ -114,6 +124,8 @@ interface Props {
   readonly 'data-grid'?: GridId;
   /** The entry list an entry section holds; the drop zone is found by it. */
   readonly 'data-list'?: EntryList;
+  /** A footer control that follows the screen's selection: off when all are selected, or when none are. */
+  readonly 'data-sel'?: 'all' | 'none' | undefined;
   /** Focus keys to try, in order, when this control is gone or disabled: after a rebuild (focus
    * restore, the grid's Tab stop) or when an arrow move lands on it. `undefined` entries (absent
    * neighbours) are dropped. Never a destructive or build action. */
@@ -126,7 +138,7 @@ type Child = Node | string | false;
 /** The Props keys h() writes with `setAttribute`; booleans serialize as 'true'/'false'. */
 const ATTRS: readonly Exclude<keyof Props, 'onClick' | 'fallback'>[] = [
   'class', 'title', 'role', 'type', 'aria-label', 'aria-expanded', 'aria-hidden', 'aria-keyshortcuts',
-  'data-fk', 'data-grid', 'data-list',
+  'data-fk', 'data-grid', 'data-list', 'data-sel',
 ];
 /** Each control's declared `fallback` keys, read by capture() off the outgoing DOM. */
 const FALLBACK = new WeakMap<Element, readonly string[]>();
@@ -271,37 +283,32 @@ function counts(): { selected: number; total: number } {
   }
   return { selected: sel, total };
 }
-// Drive every footer control from (selected, total): Select-all off when all are already selected,
-// Deselect-all off when none are, and the build buttons off when none are. Called after each list
-// render and on every optimistic toggle. The detail footer shares these data-fk keys but must stay
-// enabled, hence the list-only guard.
+// Drive every `data-sel` control from the checkboxes painted on the screen (the books on the list,
+// the problems with a fix on the problems screen; a tile without one is disabled): Select-all off
+// when all are already checked, the rest off when none are. Called after each render and on every
+// optimistic toggle; the detail footer carries no `data-sel`, so its build buttons stay enabled.
 function applyControls(): void {
-  if (screen !== 'list') {
-    return;
+  const selected = app.querySelectorAll('.cbtile.on').length;
+  const total = app.querySelectorAll('.cbtile:not(:disabled)').length;
+  const off = { all: selected === total, none: selected === 0 };
+  for (const el of app.querySelectorAll<HTMLButtonElement>('[data-sel]')) {
+    el.disabled = off[el.getAttribute('data-sel') === 'all' ? 'all' : 'none'];
   }
-  const c = counts();
-  const off = { selall: c.selected === c.total, deselall: c.selected === 0, build: c.selected === 0 };
-  const els = app.querySelectorAll<HTMLButtonElement>('[data-fk]');
-  for (const el of els) {
-    const k = el.getAttribute('data-fk');
-    if (k === 'selall') {
-      el.disabled = off.selall;
-    } else if (k === 'deselall') {
-      el.disabled = off.deselall;
-    } else if (k === 'bprint' || k === 'btxt' || k === 'bepub') {
-      el.disabled = off.build;
-    }
+  // A control that disabled itself under focus (a select link) hands focus along its fallbacks.
+  const a = document.activeElement;
+  if (a instanceof HTMLButtonElement && a.disabled) {
+    focusKeys(keyChain(a));
   }
 }
 
-// Grids: every row list (the book list, the two entry lists, Book Info) is a `role=grid` whose
+// Grids: every row list (the book list, the entry lists, Book Info, the problems) is a `role=grid` whose
 // rows hold their controls in `.cell` wrappers (the row's primary control a `rowheader`, the rest
 // `gridcell`s). One Tab stop per grid (roving tabindex); the arrow keys move among rows and cells.
 // A grid may span several containers (one per root group on the list screen, as a heading cannot
 // sit inside a grid); rows are addressed by `data-grid`.
 
-type GridId = 'books' | EntryList | 'meta';
-const GRIDS: readonly GridId[] = ['books', 'meta', 'characters', 'keywords', 'covers', 'chapters'];
+type GridId = 'books' | EntryList | 'meta' | 'problems';
+const GRIDS: readonly GridId[] = ['books', 'meta', 'characters', 'keywords', 'covers', 'chapters', 'problems'];
 /** Per grid, the focus-key chain of the cell that last had focus; initRoving() replays it after a
  * rebuild so the Tab stop follows the row, as focus restore does. */
 const cursor = new Map<GridId, readonly string[]>();
@@ -378,7 +385,7 @@ function chordOf(ev: KeyboardEvent): string {
   return [...mods.filter((m): m is string => m !== false), ev.key].join('+');
 }
 /**
- * Keyboard: Escape on the detail screen is Back. Inside a grid, a chord a button of the row declares
+ * Keyboard: Escape on the detail screen is Back, on the problems screen the detail. Inside a grid, a chord a button of the row declares
  * in `aria-keyshortcuts` clicks that button (Alt+ArrowUp/Down move an entry, Delete/Backspace remove
  * it; a disabled edge arrow is a native no-op). Plain ArrowUp/Down keep the column across rows
  * (sameCell), Home/End go to the first/last row, ArrowLeft/Right step along the row's enabled cells
@@ -388,7 +395,11 @@ function onKey(ev: KeyboardEvent): void {
   if (ev.key === 'Escape') {
     if (screen === 'detail' && drag === null) {
       ev.preventDefault();
-      goBack();
+      if (problems === null) {
+        goBack();
+      } else {
+        showDetail();
+      }
     }
     return;
   }
@@ -451,7 +462,11 @@ function clearDrop(): void {
 
 function render(): void {
   if (screen === 'detail' && detail) {
-    renderDetail();
+    if (problems === null) {
+      renderDetail();
+    } else {
+      renderProblems(problems);
+    }
   } else {
     renderList();
   }
@@ -498,6 +513,14 @@ function paintChecked(cb: HTMLButtonElement, checked: boolean): void {
   cb.classList.toggle('on', checked);
   cb.replaceChildren(icon(checked ? 'cbOn' : 'cbOff'));
 }
+/** A row's custom checkbox: a button with role=checkbox, named `name`, painted `checked`; the caller
+ * adds its click. The glyph is always in the DOM (hidden until hover or checked); the .on class tints
+ * the tile and swaps the outline circle for the filled one. */
+function cbTile(name: string, fk: string, fallback: NonNullable<Props['fallback']>, checked: boolean): HTMLButtonElement {
+  const cb = h('button', { class: 'cbtile', role: 'checkbox', 'aria-label': name, title: name, 'data-fk': fk, fallback });
+  paintChecked(cb, checked);
+  return cb;
+}
 
 /** A neighbouring book's row key, or undefined past the list's edge. */
 function bookKey(prefix: 'cb:' | 'book:', b: BookVM | undefined): string | undefined {
@@ -506,18 +529,7 @@ function bookKey(prefix: 'cb:' | 'book:', b: BookVM | undefined): string | undef
 
 // `next`/`prev`: the rows focus moves to once this one is gone (the book deleted), staying in its column.
 function bookRow(bk: BookVM, next: BookVM | undefined, prev: BookVM | undefined): HTMLElement {
-  // Custom checkbox: a button with role=checkbox. The glyph is always in the DOM (hidden until hover
-  // or checked); the .on class tints the tile and swaps the outline circle for the filled one.
-  const cbName = L.selectBook + ': ' + bk.title;
-  const cb = h('button', {
-    class: 'cbtile',
-    role: 'checkbox',
-    'aria-label': cbName,
-    title: cbName,
-    'data-fk': 'cb:' + bk.uri,
-    fallback: [bookKey('cb:', next), bookKey('cb:', prev)],
-  });
-  paintChecked(cb, bk.checked);
+  const cb = cbTile(L.selectBook + ': ' + bk.title, 'cb:' + bk.uri, [bookKey('cb:', next), bookKey('cb:', prev)], bk.checked);
   cb.addEventListener('click', () => {
     const checked = !bk.checked;
     paintChecked(cb, checked);
@@ -547,34 +559,36 @@ function bookRow(bk: BookVM, next: BookVM | undefined, prev: BookVM | undefined)
   return h('div', { class: 'row book', role: 'row' }, cell(cb, 'stretch'), cell(main, 'lead'));
 }
 
+/** The select links, justified to the two edges: Deselect on the left, Select on the right. Each
+ * link's own click disables it (none / all selected), so focus crosses to the other one. */
+function selRow(deselect: () => void, select: () => void): HTMLElement {
+  return h('div', { class: 'selrow' },
+    h('button', { class: 'link', 'data-fk': 'deselall', 'data-sel': 'none', fallback: ['selall'], onClick: deselect }, L.deselectAll),
+    h('button', { class: 'link', 'data-fk': 'selall', 'data-sel': 'all', fallback: ['deselall'], onClick: select }, L.selectAll));
+}
+
 // Disabled states (list mode only) are applied by applyControls() once the footer is in the DOM.
 function footer(buildUri?: string, counts: CountsVM | null = null): HTMLElement {
   const build = (format: BuildAction): BooksOutbound =>
     buildUri === undefined ? { type: 'build', format } : { type: 'build', format, uri: buildUri };
+  // Build buttons go disabled only on the list (the last checked book vanished); Select all is the way back.
+  const sel = buildUri === undefined ? 'none' : undefined;
   return h('div', { class: 'footer' },
     // The detail's status bar: the body's figures as short items, the full name on hover; read-only
     // text outside every grid, present only when the host could count.
     counts !== null &&
       h('div', { class: 'status' },
         ...[counts.pages, counts.sheets, counts.chars].map((item) => h('span', { title: item.title }, item.text))),
-    // Justified to the two edges: Deselect on the left, Select on the right. Each link's own click
-    // disables it (none / all selected), so focus crosses to the other one.
-    buildUri === undefined &&
-      h('div', { class: 'selrow' },
-        h('button', { class: 'link', 'data-fk': 'deselall', fallback: ['selall'], onClick: poster({ type: 'deselectAll' }) },
-          L.deselectAll),
-        h('button', { class: 'link', 'data-fk': 'selall', fallback: ['deselall'], onClick: poster({ type: 'selectAll' }) },
-          L.selectAll)),
-    // Build buttons go disabled only on the list (the last checked book vanished); Select all is the way back.
+    buildUri === undefined && selRow(poster({ type: 'deselectAll' }), poster({ type: 'selectAll' })),
     // Icon + text primary: a printer glyph rides the print button.
-    h('button', { class: 'btn primary', 'data-fk': 'bprint', fallback: ['selall'], onClick: poster(build('print')) },
+    h('button', { class: 'btn primary', 'data-fk': 'bprint', 'data-sel': sel, fallback: ['selall'], onClick: poster(build('print')) },
       glyph('print'), L.print),
     // The text button keeps the row's growing flex; EPUB is an icon button whose
     // accessible name doubles as the hover tooltip.
     h('div', { class: 'btnrow' },
-      h('button', { class: 'btn', 'data-fk': 'btxt', fallback: ['selall'], onClick: poster(build('txt')) }, L.buildTxt),
+      h('button', { class: 'btn', 'data-fk': 'btxt', 'data-sel': sel, fallback: ['selall'], onClick: poster(build('txt')) }, L.buildTxt),
       h('button', {
-        class: 'btn icon', 'data-fk': 'bepub', title: L.buildEpub, 'aria-label': L.buildEpub,
+        class: 'btn icon', 'data-fk': 'bepub', 'data-sel': sel, title: L.buildEpub, 'aria-label': L.buildEpub,
         fallback: ['selall'], onClick: poster(build('epub')),
       }, glyph('epub'))),
     revealRow(),
@@ -607,8 +621,15 @@ function showList(): void {
   detailWanted = false;
   screen = 'list';
   detail = null;
+  problems = null;
   render();
   focusKeys(['book:' + (lastDetailUri ?? '')]);
+}
+/** The detail screen again, from the problems screen (Back, Escape, the fix button). */
+function showDetail(): void {
+  problems = null;
+  render();
+  focusKeys(['back']);
 }
 /** The Back button and Escape. */
 function goBack(): void {
@@ -831,6 +852,115 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
   return row;
 }
 
+// The problems screen: the open book's problems over its detail, a grid per chapter, each fixable
+// row a checkbox (checked at entry), each row opening its chapter at the problem; the footer fixes
+// the checked.
+
+/** A problem's identity on this screen: its chapter, place and code (what the fix verb names). */
+function problemKey(chapter: string, p: ProblemVM): string {
+  return [chapter, rangeKey(p.range), p.code].join(':');
+}
+/** The checked problems as the fix verb names them. */
+function checkedRefs(pr: ProblemsMessage): ProblemRefVM[] {
+  return pr.chapters.flatMap((ch) =>
+    ch.problems.filter((p) => problemChecked.has(problemKey(ch.uri, p))).map((p) => ({ chapter: ch.uri, range: p.range, code: p.code })));
+}
+/** Checks every listed problem with a fix: the set at entry, and the set and the tiles from Select all. */
+function checkFixable(pr: ProblemsMessage): void {
+  for (const ch of pr.chapters) {
+    for (const p of ch.problems) {
+      if (p.fixable) {
+        problemChecked.add(problemKey(ch.uri, p));
+      }
+    }
+  }
+}
+/** Checks every fixable problem, or none, in the set and on the tiles (the footer's links). */
+function checkAll(pr: ProblemsMessage, on: boolean): void {
+  problemChecked.clear();
+  if (on) {
+    checkFixable(pr);
+  }
+  for (const cb of app.querySelectorAll<HTMLButtonElement>('[data-fk^="pb:cb:"]')) {
+    paintChecked(cb, on && !cb.disabled);
+  }
+  applyControls();
+}
+
+function renderProblems(pr: ProblemsMessage): void {
+  const hdr = h('div', { class: 'dhdr' },
+    iconBtn('chevL', L.back, showDetail, { 'data-fk': 'back', 'aria-keyshortcuts': 'Escape' }),
+    h('h1', { class: 'dtitle', title: L.problems }, L.problems));
+  // Row neighbours run across chapters: the rows flat, in order, so each finds its neighbours by index.
+  const all = pr.chapters.flatMap((ch) => ch.problems.map((p) => ({ ch, p, key: problemKey(ch.uri, p) })));
+  const rows = all.map(({ ch, p, key }, i) => ({ ch, el: problemRow(ch, p, key, all[i + 1]?.key, all[i - 1]?.key) }));
+  // One grid container per chapter, headed by its path, as the list screen does per root.
+  app.replaceChildren(
+    scrollPane(hdr, h('div', { class: 'list' }, ...pr.chapters.flatMap((ch) => [
+      h('h2', { class: 'group-header', title: ch.path }, ch.path),
+      h('div', { class: 'grid', role: 'grid', 'data-grid': 'problems', 'aria-label': ch.path },
+        ...rows.filter((r) => r.ch === ch).map((r) => r.el)),
+    ]))),
+    problemsFooter(pr),
+  );
+  applyControls();
+}
+
+/** A row's control key, or undefined past the list's edge. */
+function problemFk(part: 'cb' | 'open', key: string | undefined): string | undefined {
+  return key === undefined ? undefined : 'pb:' + part + ':' + key;
+}
+
+// `key` is the row's own; `next`/`prev` the rows focus moves to once this one is gone, staying in its column.
+function problemRow(ch: ChapterProblemsVM, p: ProblemVM, key: string, next: string | undefined, prev: string | undefined): HTMLElement {
+  const openKey = 'pb:open:' + key;
+  // The checkbox of a problem without a fix is disabled and says so; focus hands over to the row.
+  const cb = cbTile(
+    (p.fixable ? L.fix : L.notFixable) + ': ' + p.message,
+    'pb:cb:' + key,
+    [problemFk('cb', next), problemFk('cb', prev), openKey],
+    problemChecked.has(key),
+  );
+  cb.disabled = !p.fixable;
+  cb.addEventListener('click', () => {
+    const checked = !problemChecked.delete(key);
+    if (checked) {
+      problemChecked.add(key);
+    }
+    paintChecked(cb, checked);
+    applyControls();
+  });
+  const sev = p.severity === 'error' ? 'err' : 'warn';
+  const main = h('button', {
+    class: 'main',
+    'aria-label': p.message + ' ' + p.where,
+    title: p.message + '\n' + p.where,
+    'data-fk': openKey,
+    fallback: [problemFk('open', next), problemFk('open', prev), 'back'],
+    onClick: poster({ type: 'openProblem', uri: ch.uri, range: p.range }),
+  },
+  icon(sev, sev),
+  h('div', { class: 'maincol' },
+    h('div', { class: 'title' }, p.message),
+    h('div', { class: 'sub pwhere' }, h('span', {}, p.where), !p.fixable && h('span', {}, L.notFixable))));
+  return h('div', { class: 'row problem', role: 'row' }, cell(cb, 'stretch'), cell(main, 'lead'));
+}
+
+/** The problems footer: the select links and the fix button; the fix verb carries the checked set and returns to the detail. */
+function problemsFooter(pr: ProblemsMessage): HTMLElement {
+  return h('div', { class: 'footer' },
+    selRow(
+      () => { checkAll(pr, false); },
+      () => { checkAll(pr, true); }),
+    h('button', {
+      class: 'btn primary', 'data-fk': 'bfix', 'data-sel': 'none', fallback: ['selall'],
+      onClick: () => {
+        post({ type: 'fixProblems', uri: pr.uri, problems: checkedRefs(pr) });
+        showDetail();
+      },
+    }, L.fix));
+}
+
 function metaRow(d: DetailMessage, mi: MetaVM): HTMLElement {
   const btn = h('button', {
     class: 'meta',
@@ -887,15 +1017,18 @@ window.addEventListener('message', (e: MessageEvent) => {
       }
       detailWanted = true; // a reveal adopts the intent, so later plain re-pushes render too
       // A re-push of the SAME open book (after an edit saved -> watcher -> refresh) preserves
-      // focus/scroll; opening a book fresh moves focus to the Back button.
+      // focus/scroll, its problems screen included; opening a book fresh moves focus to the Back button.
       const reentry = screen === 'detail' && detail !== null && detail.uri === msg.uri;
       const troubled = troubledCovers(msg);
       detail = msg;
       screen = 'detail';
       lastDetailUri = msg.uri;
       if (reentry) {
-        if (msg.reveal === true && troubled) {
-          openLists.add('covers'); // a failed build of the open book re-applies the entry rule
+        if (msg.reveal === true) {
+          problems = null; // a host-initiated open shows the detail itself
+          if (troubled) {
+            openLists.add('covers'); // a failed build of the open book re-applies the entry rule
+          }
         }
         const c2 = capture();
         render();
@@ -906,12 +1039,24 @@ window.addEventListener('message', (e: MessageEvent) => {
         if (troubled) {
           openLists.add('covers');
         }
+        problems = null;
         cursor.clear(); // another book's rows: the Tab stops start afresh
         render();
         focusKeys(['back']);
       }
       break;
     }
+    case 'problems':
+      if (detail?.uri !== msg.uri) {
+        return; // the user left the book while its chapters were checked
+      }
+      problems = msg;
+      problemChecked.clear();
+      checkFixable(msg); // every fixable problem starts checked
+      cursor.delete('problems');
+      render();
+      focusKeys(['back']);
+      break;
     case 'closeDetail':
       // Precedes the list re-push that drops a vanished book (view.ts refresh()), so its row is still
       // here to take focus; the next `state` then moves focus on through the row's fallback keys.

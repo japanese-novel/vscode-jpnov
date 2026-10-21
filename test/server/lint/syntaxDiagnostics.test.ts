@@ -47,6 +47,7 @@ test('an unclosed ［＃ yields one Error covering ［＃…-to-line-end', () =>
   assert.equal(d.severity, DiagnosticSeverity.Error);
   assert.equal(d.source, 'jpnov');
   assert.deepEqual(d.data, { code: 'syntax.unclosedAnnotation' });
+  assert.equal(d.codeDescription, undefined); // no setting to link, unlike a lint code
   assert.equal(d.message, 'unterminated ［＃ annotation (missing ］)');
   assert.deepEqual(d.range, {
     start: { line: 0, character: 1 },

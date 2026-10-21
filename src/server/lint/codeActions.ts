@@ -14,7 +14,8 @@ import { CodeActionKind } from 'vscode-languageserver/node';
 import type { CodeAction, Position, Range, TextEdit } from 'vscode-languageserver/node';
 
 import type { Finding, Fix } from '../diagnostics.ts';
-import { comparePositions } from '../../shared/utils/position.ts';
+import type { ProblemRef } from '../../shared/protocol.ts';
+import { comparePositions, compareRanges, rangeKey } from '../../shared/utils/position.ts';
 import { mergedEdits, rangesOverlap } from '../targets.ts';
 
 type FixableFinding = Finding & { readonly fix: Fix };
@@ -23,10 +24,7 @@ const FIX_ALL_TITLE = 'Fix all auto-fixable problems (Japanese Novel)';
 
 /** Sort edits by position and drop any overlapping an already-kept edit, so the WorkspaceEdit is valid. */
 function nonOverlapping<T extends { readonly range: Range }>(edits: readonly T[]): T[] {
-  const sorted = [...edits].sort(
-    (a, b) =>
-      comparePositions(a.range.start, b.range.start) || comparePositions(a.range.end, b.range.end),
-  );
+  const sorted = [...edits].sort((a, b) => compareRanges(a.range, b.range));
   const out: T[] = [];
   let lastEnd: Position | undefined;
   for (const e of sorted) {
@@ -51,13 +49,22 @@ function quickFix(uri: string, f: FixableFinding): CodeAction {
   };
 }
 
+/** A finding's identity on the wire: where it is and what it is. */
+function refKey(range: Range, code: string): string {
+  return rangeKey(range) + ':' + code;
+}
+
 /**
  * The edits of "fix all" over `findings`, and `fixed`, the number of fixes they carry: a 「…」
  * rewrite rides a fix (`Fix.within`) and is not a fix of its own. The 「…」 edits come from the
- * fixes kept, so a 「…」 two fixes land inside is rewritten once.
+ * fixes kept, so a 「…」 two fixes land inside is rewritten once. `only` limits the fixes to the
+ * findings it names (by place and code); a ref the findings no longer have fixes nothing.
  */
-export function fixAllEdits(findings: readonly Finding[]): { edits: TextEdit[]; fixed: number } {
-  const kept = nonOverlapping(findings.filter((f): f is FixableFinding => f.fix !== undefined).map((f) => f.fix));
+export function fixAllEdits(findings: readonly Finding[], only?: readonly ProblemRef[]): { edits: TextEdit[]; fixed: number } {
+  const wanted = only === undefined ? null : new Set(only.map((r) => refKey(r.range, r.code)));
+  const kept = nonOverlapping(findings
+    .filter((f): f is FixableFinding => f.fix !== undefined && (wanted === null || wanted.has(refKey(f.diagnostic.range, f.diagnostic.data.code))))
+    .map((f) => f.fix));
   return { edits: nonOverlapping(mergedEdits(kept)), fixed: kept.length };
 }
 

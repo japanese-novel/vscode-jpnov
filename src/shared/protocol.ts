@@ -18,7 +18,7 @@ import type { EpubMember } from './compiler/epub.ts';
 import type { PaperOrientation, PaperSize } from './compiler/geometry.ts';
 import type { LayoutSettings } from './config/types.ts';
 import type { LintCode } from './lint/catalog.ts';
-import type { Position } from './utils/position.ts';
+import type { Position, Range } from './utils/position.ts';
 
 // initialize (C->S)
 
@@ -147,14 +147,8 @@ export interface ServerErrorParams {
 
 export const HoverRequest = 'jpnov/hover';
 
-/** An LSP position: 0-based line, UTF-16 column. */
-export type { Position };
-
-/** An LSP range, half-open. */
-export interface Range {
-  readonly start: Position;
-  readonly end: Position;
-}
+/** An LSP position (0-based line, UTF-16 column) and a half-open range of them. */
+export type { Position, Range };
 
 export interface HoverParams {
   readonly uri: string;
@@ -384,14 +378,42 @@ export interface RenderFileResult {
   readonly html: string;
 }
 
+// jpnov/problems (C->S request)
+
+export const ProblemsRequest = 'jpnov/problems';
+
+/** One manuscript as the editor holds it: the client sends the text itself, so the request owes nothing to a `didOpen`. */
+export interface ProblemsParams {
+  readonly uri: string;
+  readonly text: string;
+}
+
+/** One finding of a manuscript, as the editor would publish it: where, how severe, what, and whether a fix is on offer. */
+export interface Problem {
+  readonly range: Range;
+  readonly severity: 'error' | 'warning';
+  readonly message: LocalizableMessage;
+  readonly fixable: boolean;
+}
+
+/** Every finding of `text`, syntax and lint alike, in the order the editor publishes them. */
+export interface ProblemsResult {
+  readonly problems: readonly Problem[];
+}
+
 // jpnov/fixAll (C->S request)
 
 export const FixAllRequest = 'jpnov/fixAll';
 
-/** One manuscript as the editor holds it: the client sends the text itself, so the request owes nothing to a `didOpen`. */
-export interface FixAllParams {
-  readonly uri: string;
-  readonly text: string;
+/** A problem named by where it is and what it is; its fix applies only while the text still has that finding there. */
+export interface ProblemRef {
+  readonly range: Range;
+  readonly code: string;
+}
+
+/** The manuscript to fix, and the problems to fix in it: a ref the text no longer has fixes nothing. */
+export interface FixAllParams extends ProblemsParams {
+  readonly only: readonly ProblemRef[];
 }
 
 /** The edits of the editor's "fix all" over `text`, and the number of fixes they carry (a 「…」 rewrite rides a fix, it is not counted). */

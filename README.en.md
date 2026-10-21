@@ -370,7 +370,10 @@ returns to the list. **Cover pages** manages the `cover`
 list the same way (see [Submission cover sheets and title
 pages](#submission-cover-sheets-and-title-pages)). Expand **Book Info** and
 click a row to edit that value in place; the buttons at the bottom build only
-the open book.
+the open book. **Fix Problems in the Book…** in the title bar lists every
+chapter's problems (syntax and lint) with the auto-fixable ones ticked; **Fix** applies the
+ticked ones, in chapters you have not opened too (an unsaved chapter stays
+unsaved).
 Every action rewrites the `.jpbook` text itself, so the view and
 hand-editing always agree.
 
