@@ -8,7 +8,7 @@
  *   capabilities.
  * - `jpnov/build`, `jpnov/listBooks`, `jpnov/bookCounts`, `jpnov/renderFile` request handlers (per-root state
  *   rides each request's `projectDirs`; the narration vocabulary is read from the books a
- *   listing finds, root by root).
+ *   listing finds, with the pages each lists).
  * - `jpnov/readText` (server -> client): the only custom request this side sends; manuscript
  *   and manifest text comes back decoded by the client.
  * - `.jpnov`: semantic tokens, `jpnov/hover`, document highlights, rename of a 対象文字列,
@@ -175,9 +175,9 @@ connection.onRequest(BuildRequest, (params: BuildParams, token: CancellationToke
 
 // List books: enumerate every `.jpbook` of every root in the request's projectDirs map, then the
 // open books it names, and read each one through the client for its title (no diagnostics); the
-// wire may omit params, so accept the nullable form. The books' `characters:`/`keywords:` are the
-// narration vocabulary: when a listing changes it, the open chapters recolour and the open books
-// are re-checked, their conflicts with their neighbours having moved too.
+// wire may omit params, so accept the nullable form. The books' `characters:`/`keywords:` and the
+// pages they list are the narration vocabulary: when a listing changes it, the open chapters
+// recolour and the open books are re-checked, their conflicts with their neighbours having moved too.
 connection.onRequest(
   ListBooksRequest,
   async (params: ListBooksParams | undefined): Promise<ListBooksResult> => {
@@ -213,7 +213,7 @@ connection.onRequest(
 );
 
 // Semantic tokens: Aozora markup + dialogue colouring (always), plus cast/keyword highlighting when
-// the owning root declares any. Fully synchronous — markup and colours emit on the first request.
+// a book listing the document declares any. Fully synchronous — markup and colours emit on the first request.
 connection.languages.semanticTokens.on((params) => {
   const doc = documents.get(params.textDocument.uri);
   // Only jpnov documents are highlighted (book files share the selector but stay plain).
@@ -291,7 +291,7 @@ connection.onDocumentLinks((params) => {
 });
 
 // Live per-line diagnostics for an open .jpbook (missing/duplicate paths, metadata
-// problems, name conflicts with the root's other books). Debounced per URI and version-guarded so async fs existence checks never publish
+// problems, name conflicts with the books sharing a page). Debounced per URI and version-guarded so async fs existence checks never publish
 // results for stale text.
 const jpbookDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 const JPBOOK_DEBOUNCE_MS = 250;
@@ -310,7 +310,8 @@ function scheduleJpbookDiagnostics(doc: TextDocument): void {
       }
       void (async () => {
         try {
-          const diagnostics = await diagnoseJpbook(parentUri(uri), parseJpbook(current.getText()), context.highlight.othersOf(uri));
+          const parsed = parseJpbook(current.getText());
+          const diagnostics = await diagnoseJpbook(parentUri(uri), parsed, context.highlight.othersOf(uri, parsed.lines));
           // Re-check after the async fs work: a newer edit (with its own schedule) wins.
           if (documents.get(uri)?.version === scheduledVersion) {
             // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.

@@ -409,7 +409,7 @@ divider:
 02_chapter1.jpnov
 ```
 
-| Key | Template value | Meaning |
+| Key | Default (what Create a Book writes) | Meaning |
 | --- | --- | --- |
 | `title` | the file name | Display name in the Books view and the EPUB title (the output file name still derives from the file name); never empty |
 | `author` | empty | Author name; becomes the EPUB creator metadata; empty for none |
@@ -424,11 +424,12 @@ divider:
 
 The header is the first line, exactly `jpbook/1`: a first line that is anything
 else, or that names a version this extension has no parser for, fails the build,
-and nothing below it is read. A key that is not written is an empty one; `title`,
-`headerAlign` and `footerAlign` cannot be empty, so a book without them is not
-built, and its `---` line is flagged. Unknown keys
+and nothing below it is read. A key that is not written takes its default;
+`title` has none and cannot be empty, so a book without it is not built, and
+its `---` line is flagged. Unknown keys
 warn and are ignored, so future keys stay forward-compatible. The seven keys from `title` to `divider`
-are also editable from the **Book Info** rows in the Books view, `cover`
+are also editable from the **Book Info** rows in the Books view (every row but
+the title also offers **Restore default**, which deletes the key's line), `cover`
 from its **Cover pages** section, and the two lists from its **Characters** and
 **Keywords** sections.
 
@@ -540,9 +541,10 @@ keywords:
 
 Matching is exact — no dictionary, no guessing — so ordinary words are never
 miscoloured and invented names are always caught. A chapter uses the lists of
-**every** `.jpbook` in its folder (the nearest open workspace folder), whichever
-book it is in: a series writes a name once, in the volume it first appears in,
-and a name written differently (ruby, split) in two volumes warns in both. The
+the books that list it, all of them when it is in more than one; a chapter in no
+book is not highlighted, and a name written differently (ruby, split) in two
+books sharing a chapter warns in both. A `.jpbook` opened from outside the
+workspace counts while it is open. The
 lists take effect in open editors when the book file is saved — no reload, no
 rebuild — and the Books view edits them in its **Characters** and **Keywords**
 sections. Colouring is delivered as LSP semantic tokens; override the colours

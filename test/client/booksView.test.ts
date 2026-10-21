@@ -10,7 +10,7 @@ import { test, mock, beforeEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { CancellationTokenSource } from 'vscode-languageserver/node';
 
-import { META_KEYS } from '../../src/shared/book/jpbook.ts';
+import { META_DEFAULTS, META_KEYS } from '../../src/shared/book/jpbook.ts';
 import { PROJECT_DEFAULT } from '../../src/shared/config/types.ts';
 import { encodeTxt, type TxtEncoding } from '../../src/shared/encoding.ts';
 import { HEAD, meta } from '../shared/book/_fixture.ts';
@@ -683,7 +683,7 @@ test('openDetail posts covers and chapters (missing flagged) and the metadata ro
   assert.ok(titleRow);
   assert.equal(titleRow.value, 'A');
   assert.equal(titleRow.note, '');
-  // An unwritten divider is an empty one: "(none)".
+  // An unwritten divider defaults to none: "(none)", the default being empty.
   const dividerRow = detail.meta.find((m) => m.key === 'divider');
   assert.ok(dividerRow);
   assert.equal(dividerRow.value, '');
@@ -901,10 +901,10 @@ test('openProblem shows a chapter of the open book at the problem; another file 
   assert.deepEqual(state.shownDocuments, [{ uri: 'file:///ws/src/ch1.jpnov', selection: [0, 2, 0, 4] }]);
 });
 
-test('the metadata rows note an empty or unwritten key: not set (title, author, an alignment), hidden (header, footer), none (divider)', async () => {
+test('the metadata rows note an empty key (not set, hidden, none) and an unwritten one (its default)', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
-  const text = meta({ title: '', header: '', footer: '', divider: '' }, ['author', 'headerAlign']) + 'ch1.jpnov\n';
+  const text = meta({ title: '', header: '', divider: '' }, ['author', 'headerAlign', 'footer']) + 'ch1.jpnov\n';
   state.textDocuments.push(doc(bookUri, 'jpbook', text));
   const { view } = await setup([entry(root, 'a')]);
   view.webview.receive({ type: 'openDetail', uri: bookUri });
@@ -914,10 +914,11 @@ test('the metadata rows note an empty or unwritten key: not set (title, author, 
   assert.deepEqual(rows.get('title'), ['', '(not set)']); // an empty title is an Error: no value
   assert.deepEqual(rows.get('author'), ['', '(not set)']);
   assert.deepEqual(rows.get('header'), ['', '(hidden)']);
-  assert.deepEqual(rows.get('footer'), ['', '(hidden)']);
   assert.deepEqual(rows.get('divider'), ['', '(none)']);
-  // An alignment row shows its own value, whatever its header or footer holds; absent = not set.
-  assert.deepEqual(rows.get('headerAlign'), ['', '(not set)']);
+  // An unwritten key shows what its default does: the page numbers, a centred header.
+  assert.deepEqual(rows.get('footer'), [META_DEFAULTS.footer, '(default)']);
+  assert.deepEqual(rows.get('headerAlign'), ['Center', '(default)']);
+  // An alignment row shows its own value, whatever its header or footer holds.
   assert.deepEqual(rows.get('footerAlign'), ['Right', '']);
 });
 

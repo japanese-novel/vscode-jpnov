@@ -62,14 +62,3 @@ export function resolveUri(dirUri: string, rel: string): string | null {
 export function normalizeRootUri(uri: string): string {
   return uri.endsWith('/') ? uri.slice(0, -1) : uri;
 }
-
-/** The longest of `roots` (normalized, no trailing slash) that is `uri` or a `/`-bounded prefix of it, or null. */
-export function longestPrefixRoot(roots: Iterable<string>, uri: string): string | null {
-  let best: string | null = null;
-  for (const root of roots) {
-    if ((uri === root || uri.startsWith(`${root}/`)) && (best === null || root.length > best.length)) {
-      best = root;
-    }
-  }
-  return best;
-}

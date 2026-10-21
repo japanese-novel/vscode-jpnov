@@ -21,6 +21,7 @@ type Position = TextReplace['start'];
 const up = (p: Position): Position => ({ line: p.line - 1, character: p.character });
 const shift = (r: TextReplace): TextReplace => ({ start: up(r.start), end: up(r.end), newText: r.newText });
 const setMeta = (text: string, key: MetaKey, value: string): TextReplace[] => edits.setMeta(HEAD + text, key, value).map(shift);
+const removeMeta = (text: string, key: MetaKey): TextReplace[] => edits.removeMeta(HEAD + text, key).map(shift);
 const appendEntries = (text: string, list: EntryList, rels: readonly string[]): TextReplace | null => {
   const r = edits.appendEntries(HEAD + text, list, rels);
   return r === null ? null : shift(r);
@@ -246,13 +247,29 @@ test('entryLines(chapters) and metaRows project the panel model in fixed order',
   assert.deepEqual(entryLines(parsed.lines, 'chapters'), [2, 4]);
   assert.deepEqual(metaRows(parsed.meta), [
     { key: 'title', value: undefined },
-    { key: 'author', value: '' },
+    { key: 'author', value: undefined },
     { key: 'header', value: '柱' },
     { key: 'headerAlign', value: undefined },
-    { key: 'footer', value: '' },
+    { key: 'footer', value: undefined },
     { key: 'footerAlign', value: undefined },
-    { key: 'divider', value: '' },
+    { key: 'divider', value: undefined },
   ]);
+});
+
+test('removeMeta deletes every line of the key, so its default applies; nothing when none is written', () => {
+  // The valid line, a repeat in another case, and a line in Error all go; the neighbours stay.
+  const text = 'title: 作品名\nFooterAlign: left\nheader: h\nfooterAlign: right\nfooterAlign:\n---\na.jpnov\n';
+  assert.deepEqual(removeMeta(text, 'footerAlign'), [
+    { start: { line: 1, character: 0 }, end: { line: 2, character: 0 }, newText: '' },
+    { start: { line: 3, character: 0 }, end: { line: 5, character: 0 }, newText: '' },
+  ]);
+  assert.equal(apply(text, removeMeta(text, 'footerAlign')), 'title: 作品名\nheader: h\n---\na.jpnov\n');
+  assert.deepEqual(removeMeta(text, 'author'), []);
+  // The last line of a file without a fence: the preceding newline goes with it.
+  assert.equal(apply('title: 作品名\nfooter:', removeMeta('title: 作品名\nfooter:', 'footer')), 'title: 作品名');
+  assert.equal(apply('title: 作品名\r\nfooter: x\r\n---\r\n', removeMeta('title: 作品名\r\nfooter: x\r\n---\r\n', 'footer')), 'title: 作品名\r\n---\r\n');
+  // A chapter line below the fence never holds a key.
+  assert.deepEqual(removeMeta('---\nheader: h\n', 'header'), []);
 });
 
 test('setMeta never splits a cover list: an absent key lands beside a key line', () => {
@@ -268,7 +285,7 @@ test('setMeta never splits a cover list: an absent key lands beside a key line',
 test('a cover list never leaks into the metadata the panel edits', () => {
   const text = ['title: 一', 'cover:', '  - c1.jpnov', '---', 'a.jpnov'].join('\n');
   // The list lives in the LINE KINDS, so the panel's seven single-line rows stay complete.
-  assert.deepEqual(parseJpbook(text).meta, { title: '一', author: '', header: '', footer: '', divider: '' });
+  assert.deepEqual(parseJpbook(text).meta, { title: '一' });
   assert.deepEqual(metaRows(parseJpbook(text).meta).map((r) => r.key), [...META_KEYS]);
 });
 

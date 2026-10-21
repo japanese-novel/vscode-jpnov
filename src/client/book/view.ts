@@ -193,7 +193,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.extensionUri = extensionUri;
 
     // A `.jpbook` appearing/disappearing changes the book SET, and a SAVE can change its
-    // title (a book label), chapters (the open detail) or names (the server's vocabulary), so
+    // title (a book label), chapters (the open detail, and which pages the server's vocabulary
+    // colours) or names (the vocabulary itself), so
     // create/delete/change all re-list. The watcher only fires onDidChange for on-disk writes —
     // not per keystroke.
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.jpbook');

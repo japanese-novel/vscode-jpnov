@@ -41,8 +41,8 @@ The boundaries:
   (`src/shared/config/settings.ts`), because a payload is untrusted at runtime.
   The lint selection arrives at start and again on every change. The narration
   vocabulary is no setting: the server reads the `characters:` and `keywords:` of
-  every `.jpbook` while it lists the books, root by root, and the client lists
-  them at start and on every `.jpbook` change.
+  every `.jpbook`, with the pages each lists, while it lists the books, and the
+  client lists them at start and on every `.jpbook` change.
 - **The server emits message codes, the client renders text.** Localization needs
   `vscode.l10n`, which the server does not have.
 - **A webview is a program of its own.** Its TypeScript compiles against the DOM
@@ -218,17 +218,21 @@ each hold a `原稿.jpbook`. The same file means the same book whichever folder
 is open, and with none.
 
 A root is a workspace folder, and a folder nested in another is a root of its
-own. A root decides five things: which `.jpbook` files discovery finds
+own. A root decides three things: which `.jpbook` files discovery finds
 (the walk stops at every other root, at dot-folders and at `node_modules`), the group a
-book is listed under, the `outDir` value of the books found under it, the
-narration vocabulary of the chapters under it (the union of the `characters:`
-and `keywords:` of every `.jpbook` under that root, whichever book the chapter
-is in), and which books a `.jpbook`'s names are checked against for the
-conflict diagnostic. A
+book is listed under, and the `outDir` value of the books found under it. A
 `.jpbook` open in the editor that no root contains is listed too, with the
 `outDir` the client reads for its uri (`rootUri: null`, the 「開いているファイル」
-group); it adds no names. The folder a chapter sits in decides the settings of
-that file (the encoding it is read in) as well.
+group). The folder a chapter sits in decides the settings of that file (the
+encoding it is read in) as well.
+
+The narration vocabulary of a chapter comes from the books that list it, as a
+chapter line or a cover page: the union of their `characters:` and `keywords:`,
+every writing of a name included. A chapter no book lists has none, whatever
+folder it sits in, and a book open outside every root counts while it is open.
+The server keys each listed page while it lists the books
+(`src/server/highlight/vocabulary.ts`), and the conflict diagnostic checks a
+`.jpbook`'s names against the books that list one of its pages.
 
 Each reader takes the book's directory from one place:
 

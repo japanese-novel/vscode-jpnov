@@ -12,7 +12,6 @@ import assert from 'node:assert/strict';
 
 import { fullWidthDigits, INDENT_MAX } from '../../src/shared/ast/notation.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
-import { BUILD_CHROME_DEFAULT } from '../../src/shared/config/settings.ts';
 import { buildVscode, createMockState, doc, FakeQuickPick, FileType, resetMockState, Uri } from './_vscodeMock.ts';
 import { HEAD } from '../shared/book/_fixture.ts';
 
@@ -476,14 +475,34 @@ test('editMeta edits the lines of ONE key and saves the book', async () => {
       [{ range: [1, 10, 1, 10], newText: '\nfooter:' }],
     ],
     [
-      'the footer pick "Default" writes the default footer out',
-      'title: 作品名\nfooter:\n---\n', 'footer', { picked: [{ pick: 'Default' }, 'accept'] },
-      [{ range: [2, 0, 2, 7], newText: `footer: ${BUILD_CHROME_DEFAULT.footer}` }],
+      'the footer pick "Restore default" deletes the footer line: the page numbers come back',
+      'title: 作品名\nfooter:\n---\n', 'footer', { picked: [{ pick: 'Restore default' }, 'accept'] },
+      [{ range: [2, 0, 3, 0], newText: '' }],
     ],
     [
-      'the footer pick "Default" on an unwritten footer inserts it',
-      'header: 作品名　一\n---\na.jpnov\n', 'footer', { picked: [{ pick: 'Default' }, 'accept'] },
-      [{ range: [1, 13, 1, 13], newText: `\nfooter: ${BUILD_CHROME_DEFAULT.footer}` }],
+      'the header pick "Restore default" deletes the header line, repeats included',
+      'title: 作品名\nheader: 作品名　一\nHeader: x\n---\n', 'header', { picked: [{ pick: 'Restore default' }, 'accept'] },
+      [{ range: [2, 0, 4, 0], newText: '' }],
+    ],
+    [
+      'a typed author is the first item, taken as typed',
+      'title: 作品名\n---\n', 'author', { picked: [{ type: ' ペンネーム ' }, 'accept'] },
+      [{ range: [1, 10, 1, 10], newText: '\nauthor: ペンネーム' }],
+    ],
+    [
+      'the author pick "Restore default" deletes the author line (Enter on an emptied box picks it)',
+      'title: 作品名\nauthor: ペンネーム\n---\n', 'author', { picked: [{ type: '' }, 'accept'] },
+      [{ range: [2, 0, 3, 0], newText: '' }],
+    ],
+    [
+      'the alignment pick "Restore default" deletes the line, a rejected one included',
+      'footerAlign: bottom\n---\n', 'footerAlign', { picked: { label: 'Restore default', description: 'Right', value: null } },
+      [{ range: [1, 0, 2, 0], newText: '' }],
+    ],
+    [
+      'the divider pick "Restore default" deletes the divider line',
+      'title: 作品名\ndivider: ＊\n---\n', 'divider', { picked: { label: 'Restore default', pick: 'restore' } },
+      [{ range: [2, 0, 3, 0], newText: '' }],
     ],
     [
       'a typed footer is the first item, taken as typed',
@@ -540,20 +559,43 @@ test('the divider 字下げ box takes 1-99 only: the line head is not on offer (
   }
 });
 
-test('editMeta offers the five alignments for the header and the footer, each with its own prompt', async () => {
-  const labels = ['Right', 'Left', 'Alternate: right, then left', 'Alternate: left, then right', 'Center'];
-  for (const [key, placeHolder] of [['headerAlign', 'Where the header goes'], ['footerAlign', 'Where the footer goes']] as const) {
+test('editMeta offers the five alignments and the default for the header and the footer, each with its own prompt', async () => {
+  const labels = ['Right', 'Left', 'Alternate: right, then left', 'Alternate: left, then right', 'Center', 'Restore default'];
+  for (const [key, placeHolder, dflt] of [['headerAlign', 'Where the header goes', 'Center'], ['footerAlign', 'Where the footer goes', 'Right']] as const) {
     reseed('header: 作品名　一\n---\n');
     state.quickPickCalls.length = 0;
     answer({ picked: undefined });
     assert.equal(await runEditMeta(key), 0, key);
     const call = state.quickPickCalls[0];
     assert.ok(call, key);
-    const items = call.items as readonly { readonly label: string; readonly value: string }[];
-    assert.deepEqual(items.map((i) => i.value), [...FURNITURE_ALIGNS], key);
+    const items = call.items as readonly { readonly label: string; readonly description: string; readonly value: string | null }[];
+    assert.deepEqual(items.map((i) => i.value), [...FURNITURE_ALIGNS, null], key);
     assert.deepEqual(items.map((i) => i.label), labels, key);
+    assert.equal(items[5]?.description, dflt, key);
     assert.deepEqual(call.options, { placeHolder }, key);
   }
+});
+
+test('the line pickers list what each key offers, the default last, and say what the default shows', async () => {
+  const rows = async (key: string): Promise<[string, string | undefined][]> => {
+    reseed('title: 作品名\n---\n');
+    state.quickPicks.length = 0;
+    answer({ picked: [] });
+    assert.equal(await runEditMeta(key), 0, key);
+    const qp = state.quickPicks[0];
+    assert.ok(qp, key);
+    return qp.items.map((i) => [i.label, i.description]);
+  };
+  assert.deepEqual(await rows('header'), [['Title', '［＃ここに「タイトル」の値を表示］'], ['No header', undefined], ['Restore default', '(hidden)']]);
+  assert.deepEqual(await rows('footer'), [['No footer', undefined], ['Restore default', '［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］']]);
+  assert.deepEqual(await rows('author'), [['Restore default', '(not set)']]);
+});
+
+test('"Restore default" on a key no line writes changes nothing and saves nothing', async () => {
+  reseed('title: 作品名\n---\na.jpnov\n');
+  answer({ picked: [{ pick: 'Restore default' }, 'accept'] });
+  assert.equal(await runEditMeta('footer'), 0);
+  assert.deepEqual(state.appliedEdits, []);
 });
 
 test('a dismissed dialog applies nothing and saves nothing', async () => {

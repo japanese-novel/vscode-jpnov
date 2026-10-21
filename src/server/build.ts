@@ -9,8 +9,8 @@
  *   the stem being the book's path from the folder `outDir` counts from, `/` written `-` (a
  *   `${workspaceFolder}/…` outDir, the default included, counts from the book's root instead,
  *   when it has one);
- * - a `.jpbook` with an Error line, an unterminated metadata block, or a required key empty or
- *   unwritten fails as a whole: `checkJpbook` reports the first of these in document order;
+ * - a `.jpbook` with an Error line, an unterminated metadata block, or no `title` fails as a
+ *   whole: `checkJpbook` reports the first of these in document order;
  * - page furniture comes from each book's OWN metadata (`composeBookChrome`), so one batch build
  *   carries a different header per volume;
  * - the server never touches `vscode.fs` nor decodes bytes: manuscript text arrives through
@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken } from 'vscode-languageserver/node';
 
-import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, NO_NAMES, parseJpbook } from '#/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, META_DEFAULTS, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
 import { bookCounts, concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { TitledBook } from '#/shared/compiler/document.ts';
@@ -53,7 +53,7 @@ import { fileLevelError } from './diagnostics.ts';
 import { diagnoseJpbook } from './jpbook.ts';
 import { baseName, childUri, isFileScheme, normalizeRootUri, parentUri, resolveUri } from './fsUri.ts';
 import type { ServerContext } from './context.ts';
-import type { BookNames, RootNames } from './highlight/vocabulary.ts';
+import type { ListedBook } from './highlight/vocabulary.ts';
 
 /** One targeted root, always `file:`: its normalized URI and the validated `outDir`. */
 interface ProjectRoot {
@@ -347,12 +347,12 @@ async function buildBook(
     const dirUri = parentUri(book.uri);
     // Per-line diagnostics (same path the live editor uses); published on the .jpbook URI.
     // LSP send: rejects only on a dead connection (nothing to recover) -> drop the promise.
-    const lineDiags = await diagnoseJpbook(dirUri, parsed, ctx.highlight.othersOf(book.uri));
+    const lineDiags = await diagnoseJpbook(dirUri, parsed, ctx.highlight.othersOf(book.uri, parsed.lines));
     void ctx.connection.sendDiagnostics({ uri: book.uri, diagnostics: collision ? [...lineDiags, fileLevelError(collision)] : lineDiags });
     if (collision) {
       return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...collision } };
     }
-    // An Error line or a missing key fails the book whatever the format; the first Error line
+    // An Error line or a missing title fails the book whatever the format; the first Error line
     // is the root cause.
     const verdict = checkJpbook(parsed);
     if (!verdict.ok) {
@@ -431,7 +431,7 @@ export async function handleBookCounts(ctx: ServerContext, params: BookCountsPar
   try {
     const parsed = parseJpbook(manifest.text);
     const files = await readEntries(ctx, parentUri(params.uri), parsed.lines, 'ok', token);
-    return { counts: bookCounts({ files, divider: parsed.meta.divider }, resolveHtmlSettings(params.settings)) };
+    return { counts: bookCounts({ files, divider: parsed.meta.divider ?? META_DEFAULTS.divider }, resolveHtmlSettings(params.settings)) };
   } catch {
     return { counts: null };
   }
@@ -442,10 +442,10 @@ export async function handleBookCounts(ctx: ServerContext, params: BookCountsPar
  * client's Books panel. Each file is read ONCE, through the client like a build, for its
  * `title` (display metadata; an unreadable file simply lists untitled) — but no diagnostics
  * (those belong to an actual build). Listing is also when the server learns the books'
- * `characters:` and `keywords:`: the lists of every book under a root, root by root, become the
- * narration vocabulary ({@link ServerContext.highlight}); an unreadable book contributes none,
- * and a book under no root (sent open) contributes to no root. The client lists on every
- * `.jpbook` change and each time the server comes up, so the store follows the files.
+ * `characters:` and `keywords:` and the pages each lists: together they are the narration
+ * vocabulary ({@link ServerContext.highlight}), a book sent open from outside every root
+ * included; an unreadable book contributes none. The client lists on every `.jpbook` change and
+ * each time the server comes up, so the store follows the files.
  */
 export async function handleListBooks(ctx: ServerContext, params: ListBooksParams): Promise<ListBooksResult> {
   const ticket = ctx.highlight.ticket();
@@ -455,14 +455,7 @@ export async function handleListBooks(ctx: ServerContext, params: ListBooksParam
     return { book, parsed: reply.ok ? parseJpbook(reply.text) : null };
   }));
 
-  // Every targeted root gets an entry, books or none: a nested root's empty vocabulary shadows its parent's.
-  const roots = new Map<string, BookNames[]>(targets.roots.map((root) => [root.rootUri, []]));
-  for (const { book, parsed } of read) {
-    if (book.rootUri !== null) {
-      roots.get(book.rootUri)?.push({ uri: book.uri, fileRel: book.fileRel, names: parsed?.names ?? NO_NAMES });
-    }
-  }
-  ctx.highlight.apply(ticket, [...roots].map(([rootUri, books]): RootNames => ({ rootUri, books })));
+  ctx.highlight.apply(ticket, read.map(({ book, parsed }): ListedBook => ({ uri: book.uri, fileRel: book.fileRel, parsed })));
 
   return {
     books: read.map(({ book, parsed }): BookEntry => {

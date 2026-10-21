@@ -22,6 +22,7 @@ import {
   listedEntries,
   moveEntryTo,
   removeEntry,
+  removeMeta,
   replaceEntry,
   resolveEntry,
   setMeta,
@@ -34,6 +35,7 @@ import {
   identityOf,
   isAlignKey,
   isNameList,
+  META_DEFAULTS,
   type FileList,
   type NameList,
   parseDividerValue,
@@ -44,7 +46,6 @@ import {
 } from '#/shared/book/jpbook.ts';
 import { nameIdentity, readName } from '#/shared/book/names.ts';
 import { FURNITURE_ALIGNS, type FurnitureAlign } from '#/shared/compiler/chrome.ts';
-import { BUILD_CHROME_DEFAULT } from '#/shared/config/settings.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/utils/errors.ts';
 import { isRecord } from '#/shared/utils/guards.ts';
@@ -95,19 +96,32 @@ function alignLabel(value: FurnitureAlign): string {
 
 /**
  * The meta row split into its bare display VALUE and a status NOTE, so the panel can place the
- * note beside the LABEL rather than inside the value: a value carries no note; an empty header
- * or footer shows "(hidden)", an empty divider "(none)", and an empty title or author, or a
- * title or alignment the file does not write, "(not set)". (An unwritten key that may be empty
- * parses as empty.)
+ * note beside the LABEL rather than inside the value: a written value carries no note; a key the
+ * file does not write shows its default tagged "(default)"; an empty value, written or the
+ * default, says what it does instead — a hidden header or footer, no divider, a title or author
+ * not set — so an unwritten header reads like an emptied one, as the output treats them.
  */
 export function metaValueParts(key: MetaKey, value: string | undefined): { value: string; note: string } {
-  if (value !== undefined && value !== '') {
-    return { value: isAlignKey(key) ? alignLabel(value as FurnitureAlign) : value, note: '' };
+  const shown = value ?? (key === 'title' ? '' : META_DEFAULTS[key]);
+  if (shown !== '') {
+    return { value: isAlignKey(key) ? alignLabel(shown as FurnitureAlign) : shown, note: value === undefined ? vscode.l10n.t('(default)') : '' };
   }
   const note = key === 'header' || key === 'footer'
     ? vscode.l10n.t('(hidden)')
     : key === 'divider' ? vscode.l10n.t('(none)') : vscode.l10n.t('(not set)');
   return { value: '', note };
+}
+
+/**
+ * What a picker resolves to: the value to write, `null` to restore the default (the key's lines
+ * are deleted), `undefined` for a dismissed dialog.
+ */
+type MetaPick = string | null | undefined;
+
+/** The 「既定に戻す」 item of a picker, describing what the default shows; the caller adds what it resolves to. */
+function restoreItem(key: Exclude<MetaKey, 'title'>): vscode.QuickPickItem {
+  const parts = metaValueParts(key, undefined);
+  return { label: vscode.l10n.t('Restore default'), description: parts.value || parts.note, alwaysShow: true };
 }
 
 /** Applies planned replaces and, unless told not to, saves — the panel's watcher does the refresh. A refused
@@ -605,20 +619,24 @@ async function moveEntry(arg: unknown, direction: -1 | 1): Promise<void> {
  * value is centred at build time, a ［＃○字下げ］ prefix indents (the value grammar lives in
  * parseDividerValue/composeDividerValue). Any step dismissed = whole edit dismissed.
  */
-async function pickDivider(current: string | undefined): Promise<string | undefined> {
+async function pickDivider(current: string | undefined): Promise<MetaPick> {
   const parsed = current !== undefined ? parseDividerValue(current) : null;
 
-  type MarkItem = vscode.QuickPickItem & { pick: 'none' | 'preset' | 'custom' };
+  type MarkItem = vscode.QuickPickItem & { pick: 'none' | 'preset' | 'custom' | 'restore' };
   const markItems: MarkItem[] = [
     { label: vscode.l10n.t('(none)'), pick: 'none' },
     ...DIVIDER_PRESETS.map((m): MarkItem => ({ label: m, pick: 'preset' })),
     { label: vscode.l10n.t('Custom mark…'), pick: 'custom' },
+    { ...restoreItem('divider'), pick: 'restore' },
   ];
   const markPick = await vscode.window.showQuickPick(markItems, {
     placeHolder: vscode.l10n.t('Divider between chapters without a heading'),
   });
   if (markPick === undefined) {
     return undefined;
+  }
+  if (markPick.pick === 'restore') {
+    return null; // the line goes: no divider, as a new book has none
   }
   if (markPick.pick === 'none') {
     return ''; // written as `divider:` = no divider
@@ -687,20 +705,26 @@ async function pickDivider(current: string | undefined): Promise<string | undefi
 const HEADER_TITLE = valueAnnotation(VALUE_NAMES.title);
 
 /**
- * One dialog for the header or the footer: the typed line rides as the first item, so Enter
- * takes it as is; a ready-made line (the title for the header, the product's footer) and none
- * (`header:` / `footer:`) stay listed below it.
+ * One dialog for a free-text line (the header, the footer, the author): the typed line rides as
+ * the first item, so Enter takes it as is; the key's ready-made choices stay listed below it,
+ * 「既定に戻す」 last.
  */
-function pickFurniture(key: 'header' | 'footer', current: string | undefined): Promise<string | undefined> {
-  type Item = vscode.QuickPickItem & { readonly value: string };
-  const offer = key === 'header'
-    ? { ready: vscode.l10n.t('Title'), value: HEADER_TITLE, none: vscode.l10n.t('No header'), placeholder: vscode.l10n.t('Type the header, or pick one below') }
-    : { ready: vscode.l10n.t('Default'), value: BUILD_CHROME_DEFAULT.footer, none: vscode.l10n.t('No footer'), placeholder: vscode.l10n.t('Type the footer, or pick one below') };
-  const fixed: Item[] = [
-    { label: offer.ready, description: offer.value, alwaysShow: true, value: offer.value },
-    { label: offer.none, alwaysShow: true, value: '' },
-  ];
-  const qp = vscode.window.createQuickPick<Item>();
+function pickLine(key: 'header' | 'footer' | 'author', current: string | undefined): Promise<MetaPick> {
+  /** The value to write, or `null` to restore the default. */
+  type LineItem = vscode.QuickPickItem & { readonly value: string | null };
+  const offer: { placeholder: string; fixed: LineItem[] } = key === 'header'
+    ? {
+        placeholder: vscode.l10n.t('Type the header, or pick one below'),
+        fixed: [
+          { label: vscode.l10n.t('Title'), description: HEADER_TITLE, alwaysShow: true, value: HEADER_TITLE },
+          { label: vscode.l10n.t('No header'), alwaysShow: true, value: '' },
+        ],
+      }
+    : key === 'footer'
+      ? { placeholder: vscode.l10n.t('Type the footer, or pick one below'), fixed: [{ label: vscode.l10n.t('No footer'), alwaysShow: true, value: '' }] }
+      : { placeholder: vscode.l10n.t('Type the author, or pick one below'), fixed: [] };
+  const fixed: LineItem[] = [...offer.fixed, { ...restoreItem(key), value: null }];
+  const qp = vscode.window.createQuickPick<LineItem>();
   qp.title = metaLabel(key);
   qp.placeholder = offer.placeholder;
   const refresh = (): void => {
@@ -712,7 +736,7 @@ function pickFurniture(key: 'header' | 'footer', current: string | undefined): P
   refresh();
   qp.onDidChangeValue(refresh);
 
-  return runQuickPick(qp, (): string | undefined => qp.selectedItems[0]?.value);
+  return runQuickPick(qp, (): MetaPick => qp.selectedItems[0]?.value);
 }
 
 async function editMeta(arg: unknown): Promise<void> {
@@ -721,14 +745,18 @@ async function editMeta(arg: unknown): Promise<void> {
     return;
   }
 
-  let value: string | undefined;
+  let value: MetaPick;
   if (node.metaKey === 'divider') {
     value = await pickDivider(node.value);
-  } else if (node.metaKey === 'header' || node.metaKey === 'footer') {
-    value = await pickFurniture(node.metaKey, node.value);
+  } else if (node.metaKey === 'header' || node.metaKey === 'footer' || node.metaKey === 'author') {
+    value = await pickLine(node.metaKey, node.value);
   } else if (isAlignKey(node.metaKey)) {
-    const picked = await vscode.window.showQuickPick(
-      FURNITURE_ALIGNS.map((v) => ({ label: alignLabel(v), description: v, value: v })),
+    type AlignItem = vscode.QuickPickItem & { readonly value: FurnitureAlign | null };
+    const picked = await vscode.window.showQuickPick<AlignItem>(
+      [
+        ...FURNITURE_ALIGNS.map((v): AlignItem => ({ label: alignLabel(v), description: v, value: v })),
+        { ...restoreItem(node.metaKey), value: null },
+      ],
       {
         placeHolder: node.metaKey === 'headerAlign'
           ? vscode.l10n.t('Where the header goes')
@@ -744,7 +772,7 @@ async function editMeta(arg: unknown): Promise<void> {
   }
 
   const { uri, text } = await bookText(node.entry);
-  const edits = setMeta(text, node.metaKey, value);
+  const edits = value === null ? removeMeta(text, node.metaKey) : setMeta(text, node.metaKey, value);
   if (edits.length > 0) {
     await applyBookEdits(uri, edits);
   }
