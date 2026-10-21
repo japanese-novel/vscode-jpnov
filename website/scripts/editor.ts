@@ -4,9 +4,9 @@
  */
 import { createRecognizer } from '../../src/server/highlight/recognizer.ts';
 import { buildSemanticTokens, SEMANTIC_LEGEND } from '../../src/server/semanticTokens.ts';
-import { scan } from '../../src/shared/ast/scan.ts';
+import { parse } from '../../src/shared/ast/parse.ts';
 import type { ParsedJpbook } from '../../src/shared/book/jpbook.ts';
-import { nameSurfaces } from '../../src/shared/book/names.ts';
+import { keywordSurface, nameSurfaces } from '../../src/shared/book/names.ts';
 import type { EditorLine, EditorToken, TokenKind } from './contract.ts';
 
 /** A book's `characters:` / `keywords:` lists, as the product parses them. */
@@ -49,9 +49,9 @@ function decode(data: readonly number[]): Span[] {
 }
 
 export function colourLines(src: string, vocab: Vocabulary): EditorLine[] {
-  const recognizer = createRecognizer(vocab.characters.flatMap((e) => nameSurfaces(e.name)), vocab.keywords.map((e) => e.text));
+  const recognizer = createRecognizer(vocab.characters.flatMap((e) => nameSurfaces(e.name)), vocab.keywords.map((e) => keywordSurface(e.name)));
   const spans = new Map<number, Span[]>();
-  for (const span of decode(buildSemanticTokens(scan(src), recognizer).data)) {
+  for (const span of decode(buildSemanticTokens(parse(src), recognizer).data)) {
     const line = spans.get(span.line);
     if (line === undefined) {
       spans.set(span.line, [span]);
