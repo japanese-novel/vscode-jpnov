@@ -16,7 +16,8 @@ import { scan } from '../../../src/shared/ast/scan.ts';
 import { displayText, graphemes } from '../../../src/shared/chars.ts';
 
 import { manuscripts, withEol } from './_fuzz.ts';
-import { charStarts, isPostfix, nodesIn } from './_shape.ts';
+import { clusterStarts } from '../../../src/shared/ast/span.ts';
+import { isPostfix, nodesIn } from './_shape.ts';
 
 const CORPUS = manuscripts();
 /** The same manuscripts with a lone CR for every terminator — the third line ending. */
@@ -161,7 +162,7 @@ test('every character of the content knows where it was written', () => {
           assert.equal(src.slice(item.span.start, item.span.end), gaijiAnnotation(item.text), JSON.stringify(src));
           continue;
         }
-        const starts = charStarts(item);
+        const starts = clusterStarts(item);
         graphemes(item.text).forEach((ch, i) => {
           const from = starts[i] ?? -1;
           const to = starts[i + 1] ?? item.span.end;

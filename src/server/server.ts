@@ -216,7 +216,7 @@ connection.languages.semanticTokens.on((params) => {
   if (doc?.languageId !== 'jpnov') {
     return { data: [] };
   }
-  return buildSemanticTokens(parsed.syntaxOf(doc), context.highlight.recognizerFor(params.textDocument.uri));
+  return buildSemanticTokens(parsed.astOf(doc), context.highlight.recognizerFor(params.textDocument.uri));
 });
 
 // The annotation under the cursor of an open .jpnov: its hover, what lights up with it, and the

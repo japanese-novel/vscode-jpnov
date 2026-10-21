@@ -11,9 +11,10 @@ import { DocumentHighlightKind } from 'vscode-languageserver/node';
 import type { DocumentHighlight, Range, TextEdit, WorkspaceEdit } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
-import type { Ast, PairedNode, PostfixNode, Span, SyntaxNode } from '../shared/ast/nodes.ts';
+import type { Ast, PairedNode, PostfixNode, Ruby, Span, SyntaxNode } from '../shared/ast/nodes.ts';
 import { TCY, fullWidthDigits, headingLiteralOf, markOf, spanMark } from '../shared/ast/notation.ts';
 import type { Channel } from '../shared/ast/notation.ts';
+import { displayText } from '../shared/chars.ts';
 import type { HoverResult, LocalizableMessage, Position } from '../shared/protocol.ts';
 
 import { MARKUP, eligibleTargets, isPostfix, rangeOf, syncedTargets, targetEdits } from './targets.ts';
@@ -162,15 +163,16 @@ function hoverLines(doc: TextDocument, ast: Ast, node: SyntaxNode): LocalizableM
     return [];
   }
   if (isPostfix(node)) {
-    const bound = ast.bound.get(node);
-    return [first, bound === undefined ? { code: 'hover.targetMissing' } : { code: 'hover.target', args: [doc.getText(rangeOf(doc, bound))] }];
+    // What it bound to is the body as shown, which is the target as shown: the resolver matched them.
+    return [first, ast.bound.has(node) ? { code: 'hover.target', args: [displayText(node.target.text)] } : { code: 'hover.targetMissing' }];
   }
   if (isPaired(node)) {
     const held = node.kind === 'tcySpanStart' ? ast.held.get(node) : undefined;
     return [first, ...(held === undefined ? [] : [{ code: 'hover.holds', args: [held.text] } as const]), pairLine(doc, ast, node)];
   }
   if (node.kind === 'rubyReading') {
-    return [first, { code: 'hover.rubyBase', args: [doc.getText(rangeOf(doc, node.base))] }];
+    const ruby = ast.lines[doc.positionAt(node.span.start).line]?.content.find((item): item is Ruby => item.kind === 'ruby' && item.span.end === node.span.end);
+    return ruby === undefined ? [first] : [first, { code: 'hover.rubyBase', args: [ruby.base] }]; // no ruby: an empty base, or a 縦中横 took it
   }
   return [first];
 }

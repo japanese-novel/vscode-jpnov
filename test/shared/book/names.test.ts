@@ -16,6 +16,7 @@ import {
   type ListedName,
   type NameEntry,
 } from '../../../src/shared/book/names.ts';
+import { D } from '../_kana.ts';
 
 function name(text: string): ListedName {
   const read = readName(text);
@@ -82,6 +83,8 @@ test('the surfaces a character is recognised by: as written, the parts joined, e
   assert.deepEqual(nameSurfaces(name('山田　太郎')), ['山田　太郎', '山田太郎', '山田', '太郎']);
   assert.deepEqual(nameSurfaces(name('山田《やまだ》花子《はなこ》')), ['山田花子', '山田花子', '山田', '花子']);
   assert.deepEqual(nameSurfaces(name('John Smith')), ['John Smith', 'JohnSmith', 'John', 'Smith']);
+  // As the body shows them: a decomposed kana in the list composes, as the AST composes the body.
+  assert.deepEqual(nameSurfaces(name(`た${D}んご`)), ['だんご', 'だんご', 'だんご']);
 });
 
 function entries(...texts: string[]): NameEntry[] {

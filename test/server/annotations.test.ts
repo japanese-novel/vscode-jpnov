@@ -48,7 +48,9 @@ test('the hover of a corner-target postfix: what it sets, and the body it bound 
     lines: ['hover.rubyLeft(おうと)', 'hover.target(王都)'], over: '［＃「王都」の左に「おうと」のルビ］', link: 'etc.html#ruby',
   });
   // The body as written: a ruby inside stays a ruby.
-  assert.deepEqual(hover('山田《やまだ》さん［＃「山田さん」に傍点］', '傍点')?.lines, ['hover.postfix(傍点)', 'hover.target(山田《やまだ》さん)']);
+  // The body it bound to, as shown: the ruby's base, not its markup.
+  assert.deepEqual(hover('山田《やまだ》さん［＃「山田さん」に傍点］', '傍点')?.lines, ['hover.postfix(傍点)', 'hover.target(山田さん)']);
+  assert.deepEqual(hover('新［＃「新」に傍点］帝都［＃「新帝都」に傍点］', '傍点', 1)?.lines, ['hover.postfix(傍点)', 'hover.target(新帝都)']);
   assert.deepEqual(hover('山田［＃「太郎」に傍点］', '傍点')?.lines, ['hover.postfix(傍点)', 'hover.targetMissing()']);
 });
 
@@ -92,7 +94,10 @@ test('the hover of the other annotations, and of a ruby', () => {
   assert.deepEqual(hover('あ［＃メモ］い', 'メモ'), { lines: ['hover.comment()'], over: '［＃メモ］', link: 'index.html' });
   assert.deepEqual(hover('あ［＃メモ', 'メモ'), { lines: ['hover.broken()'], over: '［＃メモ' });
   assert.deepEqual(hover('山田《やまだ》', 'やまだ'), { lines: ['hover.ruby(やまだ)', 'hover.rubyBase(山田)'], over: '《やまだ》', link: 'etc.html#ruby' });
-  assert.deepEqual(hover('｜お茶の間《おちゃのま》', 'おちゃのま')?.lines, ['hover.ruby(おちゃのま)', 'hover.rubyBase(｜お茶の間)']);
+  assert.deepEqual(hover('｜お茶の間《おちゃのま》', 'おちゃのま')?.lines, ['hover.ruby(おちゃのま)', 'hover.rubyBase(お茶の間)']);
+  assert.deepEqual(hover('｜山［＃「山」に傍点］田《やまだ》', 'やまだ')?.lines, ['hover.ruby(やまだ)', 'hover.rubyBase(山田)']);
+  // A reading a 縦中横 took: no ruby, so no base line.
+  assert.deepEqual(hover('［＃縦中横］１２《じゅうに》［＃縦中横終わり］', 'じゅうに')?.lines, ['hover.ruby(じゅうに)']);
   assert.equal(hover('山田《やまだ》', '山田'), null);
   assert.equal(hover('本文だけ', '本文'), null);
 });

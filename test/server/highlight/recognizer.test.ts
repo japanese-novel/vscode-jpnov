@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HONORIFICS, PARTICLES, PRONOUNS, createRecognizer, type Recognizer } from '../../../src/server/highlight/recognizer.ts';
+import { HONORIFICS, PARTICLES, createRecognizer, type Recognizer } from '../../../src/server/highlight/recognizer.ts';
 import { fullWidthDigits } from '../../../src/shared/ast/notation.ts';
 import { prng } from '../../shared/ast/_fuzz.ts';
 import { inLinearTime } from '../../shared/_timing.ts';
@@ -36,10 +36,19 @@ test('a name with no subject particle (の / を) is not highlighted', () => {
   assert.deepEqual(spans(r, '太郎を見た'), []);
 });
 
-test('built-in pronouns are recognised, gated by a subject particle', () => {
-  const r = createRecognizer([], ['無関係']); // pronouns are built in, independent of characters
-  assert.deepEqual(spans(r, '私は彼女が'), ['character:私は@0', 'character:彼女が@2']);
-  assert.deepEqual(spans(r, '私の本'), []); // bare pronoun → nothing
+test('nothing is built in: an unlisted subject never highlights', () => {
+  const r = createRecognizer([], ['無関係']);
+  assert.deepEqual(spans(r, '私は彼女が'), []);
+});
+
+test('a listed word directly after a kanji is not matched', () => {
+  const r = createRecognizer(cast('山田　太郎'), ['王都']);
+  assert.deepEqual(spans(r, '小山田は'), []); // 山田 inside a longer kanji word
+  assert.deepEqual(spans(r, 'お山田は'), ['character:山田は@1']); // after a kana it is a name
+  assert.deepEqual(spans(r, '新王都へ'), []); // keywords follow the same rule
+  assert.deepEqual(spans(r, '々太郎は'), []); // 々 counts as a kanji
+  assert.deepEqual(spans(r, '𠮷太郎は'), []); // an astral kanji (a surrogate pair) too
+  assert.deepEqual(spans(r, '王都山田は'), ['keyword:王都@0']); // and the guard holds after a match
 });
 
 test('keywords match exactly and are bolded', () => {
@@ -62,7 +71,7 @@ function vocabulary(n: number): { surfaces: string[]; keywords: string[] } {
   };
 }
 
-/** Text in which every position may start a name, a keyword, a pronoun or nothing: the letters
+/** Text in which every position may start a name, a keyword or nothing: the letters
  *  of the vocabulary with particles and honorifics mixed in, from a fixed seed. */
 function prose(length: number, seed: number): string {
   const letters = Array.from('人物用語０１２３４５６７８９はがのさん先生彼女私俺、。');
@@ -84,18 +93,19 @@ test('the matcher scales with the text, not with the text times the vocabulary (
  *  one — what the first-character index must reproduce span for span. */
 function naive(surfaces: readonly string[], keywords: readonly string[]): Recognizer {
   const longest = (xs: readonly string[]): readonly string[] => [...new Set(xs)].sort((a, b) => b.length - a.length);
-  const subjects = longest([...surfaces, ...PRONOUNS]);
+  const subjects = longest(surfaces);
   const honorifics = longest(HONORIFICS);
   const keys = longest(keywords);
   const at = (list: readonly string[], text: string, pos: number): string => list.find((s) => text.startsWith(s, pos)) ?? '';
+  const afterKanji = (text: string, pos: number): boolean => /[\p{Script=Han}ヶ]$/u.test(text.slice(0, pos));
   return {
     recognize(text) {
       const out: { start: number; len: number; kind: 'character' | 'keyword' }[] = [];
       for (let i = 0; i < text.length;) {
-        const name = at(subjects, text, i);
+        const name = afterKanji(text, i) ? '' : at(subjects, text, i);
         const after = i + name.length + (name === '' ? 0 : at(honorifics, text, i + name.length).length);
         const particle = name === '' ? '' : at(PARTICLES, text, after);
-        const key = particle === '' ? at(keys, text, i) : '';
+        const key = particle === '' && !afterKanji(text, i) ? at(keys, text, i) : '';
         if (particle !== '') {
           out.push({ start: i, len: after - i + particle.length, kind: 'character' });
           i = after + particle.length;

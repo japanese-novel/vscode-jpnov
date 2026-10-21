@@ -1,11 +1,12 @@
 /**
  * Unified highlighter: one semantic-token stream colours BOTH Aozora markup and the author's
- * narration (cast names + coined keywords) from the Scanner's nodes plus the recognizer
- * over the reconstructed body-text runs. A ruby BASE is body text and flows into its run (only the
- * ｜《》 markers and the reading are holes), so okurigana-split ruby (立《た》ち) still recognises.
+ * narration (cast names + coined keywords). The markup is coloured from the Scanner's nodes; the
+ * narration is read from the AST's content as the line shows it (shown.ts), so a word the
+ * markup cuts (新［＃「新」に傍点］帝都, 立《た》ち) is recognised whole and coloured where each
+ * piece was written.
  *
- * Dialogue 「」『』 is tracked by the STACK of dialogue.ts (shared with the lint walker) as body
- * text is appended — NEVER by scanning the raw source: ［＃「対象」に傍点］ reuses 「」 as an
+ * Dialogue 「」『』 is tracked by the STACK of dialogue.ts (shared with the lint walker) over the
+ * prose as shown — NEVER by scanning the raw source: ［＃「対象」に傍点］ reuses 「」 as an
  * emphasis-target delimiter, which a raw scan would miscount. The stack lives at document scope
  * (Aozora dialogue may span lines); dialogue content is masked from the recognizer.
  *
@@ -16,11 +17,12 @@
 import type { SemanticTokens, SemanticTokensLegend } from 'vscode-languageserver/node';
 import { SemanticTokensBuilder } from 'vscode-languageserver/node';
 
-import type { PartRole, RolePart, Syntax, SyntaxNode } from '../shared/ast/nodes.ts';
+import type { Ast, PartRole, RolePart, SyntaxNode } from '../shared/ast/nodes.ts';
 import { partitionPoint } from '../shared/utils/lists.ts';
 
 import { DialogueStack } from './dialogue.ts';
 import type { Recognizer } from './highlight/recognizer.ts';
+import { shownLine } from './shown.ts';
 
 /**
  * Single source of truth. Each row = one highlight kind and the LSP token type a theme colours it
@@ -102,17 +104,6 @@ interface TokenSpan {
   readonly type: TokenType;
 }
 
-/** A range `[from, to)` of the run. */
-interface RunRange {
-  readonly from: number;
-  to: number;
-}
-
-/** A stretch of the run that is contiguous in the source, where it starts at `src`. */
-interface Stretch extends RunRange {
-  readonly src: number;
-}
-
 /** How many parts from `at` on form one joined token of `kind`; 1 when none does. */
 function joinedAt(kind: SyntaxNode['kind'], parts: readonly RolePart[], at: number): number {
   for (const roles of JOINED[kind] ?? []) {
@@ -123,21 +114,13 @@ function joinedAt(kind: SyntaxNode['kind'], parts: readonly RolePart[], at: numb
   return 1;
 }
 
-export function buildSemanticTokens(syntax: Syntax, recognizer: Recognizer | undefined): SemanticTokens {
+export function buildSemanticTokens(ast: Ast, recognizer: Recognizer | undefined): SemanticTokens {
   const builder = new SemanticTokensBuilder();
 
   // The tokens of the line being read: no token crosses a line.
   let spans: TokenSpan[] = [];
 
-  // The body-text run a recognizer reads: its text, the source stretches it was joined from (a
-  // ruby's markers and reading are holes), and its ranges inside dialogue, which are not coloured.
-  let runText = '';
-  let stretches: Stretch[] = [];
-  let spoken: RunRange[] = [];
-  let spokenFrom = -1; // where the open dialogue range starts in the run; -1 in narration
-
-  // Document-scoped so it persists across run flushes (a 「…」 may span lines); driven ONLY from
-  // body text in appendBody (never from raw src — see file header).
+  // Document-scoped: a 「…」 may span lines. Fed the prose as shown, never raw source (see file header).
   const dialogue = new DialogueStack();
 
   const mark = (start: number, len: number, type: TokenType): void => {
@@ -146,68 +129,53 @@ export function buildSemanticTokens(syntax: Syntax, recognizer: Recognizer | und
     }
   };
 
-  const flushRun = (): void => {
+  /** The narration of `line`: its corners marked, and what the recognizer finds outside dialogue
+   *  coloured where it was written. */
+  const narration = (line: Ast['lines'][number]): void => {
+    const shown = shownLine(line);
+    const spoken: { from: number; to: number }[] = []; // ranges of the display text inside dialogue
+    let spokenFrom = dialogue.depth > 0 ? 0 : -1; // where the open utterance starts in the text; -1 in narration
+    for (const stretch of shown.prose) {
+      for (const seg of dialogue.feed(shown.text.slice(stretch.from, stretch.to))) {
+        if (seg.kind === 'prose') {
+          continue; // prose, a mismatched closer included, keeps its default colour
+        }
+        mark(stretch.src + seg.from, 1, 'marker'); // 「 『 and a matching 」 』
+        if (seg.depth > 0) {
+          continue; // nested: the outer utterance's range is what masks
+        }
+        if (seg.kind === 'open') {
+          spokenFrom = stretch.from + seg.from; // the opening corner is inside
+        } else {
+          spoken.push({ from: spokenFrom, to: stretch.from + seg.from }); // the closing corner is outside
+          spokenFrom = -1;
+        }
+      }
+    }
     if (recognizer === undefined) {
       return;
     }
-    if (runText !== '') {
-      if (spokenFrom !== -1) {
-        spoken.push({ from: spokenFrom, to: runText.length });
+    if (spokenFrom !== -1) {
+      spoken.push({ from: spokenFrom, to: shown.text.length });
+    }
+    for (const sp of recognizer.recognize(shown.text)) {
+      const inside = spoken[partitionPoint(spoken, (r) => r.to > sp.start)];
+      if (inside !== undefined && inside.from <= sp.start) {
+        continue; // inside dialogue — body text keeps its default colour
       }
-      for (const sp of recognizer.recognize(runText)) {
-        const inside = spoken[partitionPoint(spoken, (r) => r.to > sp.start)];
-        if (inside !== undefined && inside.from <= sp.start) {
-          continue; // inside dialogue — body text keeps its default colour
+      // One token per stretch: where each piece of the word was written.
+      const end = sp.start + sp.len;
+      for (let k = partitionPoint(shown.prose, (s) => s.to > sp.start); k < shown.prose.length; k += 1) {
+        const stretch = shown.prose[k];
+        if (stretch === undefined || stretch.from >= end) {
+          break;
         }
-        // One token per stretch that is contiguous in the SOURCE (a hole appears where a ruby
-        // reading/markers sat between a base and its okurigana).
-        const end = sp.start + sp.len;
-        for (let k = partitionPoint(stretches, (s) => s.to > sp.start); k < stretches.length; k += 1) {
-          const stretch = stretches[k];
-          if (stretch === undefined || stretch.from >= end) {
-            break;
-          }
-          const from = Math.max(sp.start, stretch.from);
-          spans.push({ start: stretch.src + (from - stretch.from), len: Math.min(end, stretch.to) - from, type: sp.kind });
-        }
+        const from = Math.max(sp.start, stretch.from);
+        const to = Math.min(end, stretch.to);
+        const start = stretch.src + (from - stretch.from);
+        spans.push({ start, len: (to === stretch.to ? stretch.end : stretch.src + (to - stretch.from)) - start, type: sp.kind });
       }
     }
-    runText = '';
-    stretches = [];
-    spoken = [];
-    spokenFrom = dialogue.depth > 0 ? 0 : -1;
-  };
-
-  /** Append body text [srcStart, …) to the current run, tracking dialogue. */
-  const appendBody = (text: string, srcStart: number): void => {
-    const base = runText.length;
-    for (const seg of dialogue.feed(text)) {
-      if (seg.kind === 'prose') {
-        continue; // prose, a mismatched closer included, keeps its default colour
-      }
-      mark(srcStart + seg.from, 1, 'marker'); // 「 『 and a matching 」 』
-      if (seg.depth > 0) {
-        continue; // nested: the outer utterance's range is what masks
-      }
-      if (seg.kind === 'open') {
-        spokenFrom = base + seg.from; // the opening corner is inside
-      } else {
-        if (recognizer !== undefined) {
-          spoken.push({ from: spokenFrom, to: base + seg.from }); // the closing corner is outside
-        }
-        spokenFrom = -1;
-      }
-    }
-    if (recognizer === undefined) {
-      return; // nothing reads the run
-    }
-    const last = stretches[stretches.length - 1];
-    if (last !== undefined && last.src + (last.to - last.from) === srcStart) {
-      last.to += text.length;
-    } else {
-      stretches.push({ from: base, to: base + text.length, src: srcStart });
-    }
-    runText += text;
   };
 
   /** One token per part — or per joined run of parts — of an annotation. */
@@ -224,12 +192,11 @@ export function buildSemanticTokens(syntax: Syntax, recognizer: Recognizer | und
     }
   };
 
-  for (const line of syntax.lines) {
+  for (const line of ast.lines) {
     for (const node of line.syntax) {
       switch (node.kind) {
         case 'text':
-          appendBody(node.text, node.span.start); // a ruby base too: it flows into the recognized run
-          break;
+          break; // body text: read as shown, below
         case 'rubyMark':
           mark(node.span.start, node.text.length, 'marker'); // the base nodes follow as themselves
           break;
@@ -238,18 +205,14 @@ export function buildSemanticTokens(syntax: Syntax, recognizer: Recognizer | und
           break;
         case 'comment':
         case 'brokenAnnotation':
-          // Greyed whole. The text never enters appendBody, so a swallowed 「 cannot corrupt the
-          // dialogue stack.
-          flushRun();
-          mark(node.span.start, node.text.length, 'marker');
+          mark(node.span.start, node.text.length, 'marker'); // greyed whole
           break;
         default:
-          flushRun();
           markParts(node, node.parts);
           break;
       }
     }
-    flushRun(); // the line break itself is not body
+    narration(line);
 
     // Emit in source order (markup + recognized spans interleave), at the line's own position.
     spans.sort((a, b) => a.start - b.start);

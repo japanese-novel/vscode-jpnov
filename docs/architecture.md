@@ -91,8 +91,9 @@ The text build prints the nodes.
 `parse` is `scan` followed by `resolve`.
 
 The editor side of the server keeps one scan and one resolve per document
-version (`src/server/parsed.ts`). The highlighter reads the nodes; the syntax
-diagnostics, the lint and the preview read the AST. The builds parse on their
+version (`src/server/parsed.ts`). The highlighter reads the nodes for the markup
+and the AST for the narration; the syntax diagnostics, the hover, the lint and
+the preview read the AST. The builds parse on their
 own, from the files they read through `jpnov/readText`; a cover page, and the
 page furniture, also get the book's values.
 
@@ -163,7 +164,8 @@ Where things live today:
 | Showing a 外字注記 as its character | AST | content is what is shown |
 | What one character shown is: a grapheme cluster, its kana composed | AST | content is what is shown; a target cannot cut one |
 | Dropping a character no output can carry (a C0 control other than tab and the line ends, U+FFFE, U+FFFF) | AST | content is what is shown; the nodes keep it, so the lint reports it |
-| Where each character shown was written in the source | AST | kana are composed, characters dropped, values and 外字注記 substituted there; Output does not read the source |
+| Where each character shown was written in the source | AST | kana are composed, characters dropped, values and 外字注記 substituted there; a ruby and a 縦中横 keep the runs they were joined from; Output does not read the source |
+| The narration a name or a keyword is recognised in | editor (`src/server/shown.ts`, the highlighter) | the body as the AST shows it, so a word the markup cuts (新［＃「新」に傍点］帝都) is one word; what is coloured is where each piece was written |
 | The ダッシュ glyph, 禁則, 分離禁止, ぶら下げ, the space dropped after a line-end 区切り約物, ruby overhang, wrapping, pagination | Output | typesetting, driven by layout settings |
 | The class of a character under 禁則: its first code point's | Output | a rule of typesetting |
 | Which characters a ダッシュ may be typed with (－－, ––), and that ー never is one | editor (lint) | a convention of the manuscript; the typesetting class stays the 分離禁止 one |
