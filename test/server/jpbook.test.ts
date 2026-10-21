@@ -91,17 +91,18 @@ test('diagnoseJpbook surfaces metadata warnings; a colon-less metadata line is a
   assert.deepEqual((byCode.get('jpbook.metaNotKeyValue')?.data as { args: unknown[] }).args, ['no colon here']);
 });
 
-test('diagnoseJpbook flags the unwritten keys that cannot be empty on the fence, and no fence on the first line, even off file:', async () => {
+test('diagnoseJpbook flags an unwritten title on the fence, and no fence on the first line, even off file:', async () => {
   assert.deepEqual(await diagnoseAlone(OFF_FS, parseJpbook(`${meta()}a.jpnov`)), [], 'every key written: nothing');
+  assert.deepEqual(await diagnoseAlone(OFF_FS, parseJpbook(`${HEAD}\n  title: t\n ---\na.jpnov`)), [], 'a title alone: the rest defaults');
 
-  const diags = await diagnoseAlone(OFF_FS, parseJpbook(`${HEAD}\n  title: t\n ---\na.jpnov`));
+  const diags = await diagnoseAlone(OFF_FS, parseJpbook(`${HEAD}\n  header: h\n ---\na.jpnov`));
   assert.deepEqual(
     diags.map((d) => ({ data: d.data as unknown, range: d.range, severity: d.severity })),
-    ['headerAlign', 'footerAlign'].map((key) => ({
-      data: { code: 'jpbook.metaEmptyValue', args: [key] },
+    [{
+      data: { code: 'jpbook.metaEmptyValue', args: ['title'] },
       range: { start: { line: 3, character: 1 }, end: { line: 3, character: 4 } },
       severity: DiagnosticSeverity.Error,
-    })),
+    }],
   );
 
   // No fence: the metadata runs to the end, and that is the one thing reported about it.
@@ -123,7 +124,7 @@ test('diagnoseJpbook flags the unwritten keys that cannot be empty on the fence,
   ]);
 });
 
-test('diagnoseJpbook: a key in Error reports itself on its line; an unwritten key is an empty one', async () => {
+test('diagnoseJpbook: a key in Error reports itself on its line; an unwritten key is its default', async () => {
   const at = (text: string): Promise<unknown[][]> =>
     diagnoseAlone(OFF_FS, parseJpbook(text)).then((diags) =>
       diags.map((d) => [(d.data as { code: string }).code, (d.data as { args: unknown[] }).args, d.severity, d.range.start.line]));
@@ -132,10 +133,9 @@ test('diagnoseJpbook: a key in Error reports itself on its line; an unwritten ke
     ['jpbook.metaEmptyValue', ['title'], DiagnosticSeverity.Error, metaLineOf('title')],
     ['jpbook.metaBadEnum', ['footerAlign', 'どこか', FURNITURE_ALIGNS.join(', ')], DiagnosticSeverity.Error, metaLineOf('footerAlign')],
   ]);
-  // An unwritten title or alignment is the same Error its empty line would be, on the fence.
+  // An unwritten title is the same Error its empty line would be, on the fence; an unwritten alignment is its default.
   assert.deepEqual(await at(meta({}, ['title', 'headerAlign']) + 'a.jpnov'), [
     ['jpbook.metaEmptyValue', ['title'], DiagnosticSeverity.Error, FENCE_LINE - 2],
-    ['jpbook.metaEmptyValue', ['headerAlign'], DiagnosticSeverity.Error, FENCE_LINE - 2],
   ]);
 });
 
@@ -417,12 +417,12 @@ test('diagnoseJpbook: the bare cover: key is clean, an orphan item is an Error',
   // An orphan is a whole-line problem — it has no cover path to point at.
   assert.equal(orphan[0].range.start.character, 0);
 
-  // A `---` right under the header closes an empty metadata block at once: the title and the
-  // alignments are missing there, and the keys below read as (invalid) chapter paths.
+  // A `---` right under the header closes an empty metadata block at once: the title is missing
+  // there, and the keys below read as (invalid) chapter paths.
   const fence = await diagnoseAlone(ws.uri, parseJpbook(`${HEAD}---\n${metaBody()}---\nc.jpnov`));
   assert.deepEqual(
-    fence.slice(0, 4).map((d) => [(d.data as { code: string }).code, d.range.start.line]),
-    [['jpbook.metaEmptyValue', 1], ['jpbook.metaEmptyValue', 1], ['jpbook.metaEmptyValue', 1], ['jpbook.notJpnov', 2]],
+    fence.slice(0, 2).map((d) => [(d.data as { code: string }).code, d.range.start.line]),
+    [['jpbook.metaEmptyValue', 1], ['jpbook.notJpnov', 2]],
   );
 });
 
@@ -487,7 +487,7 @@ test('completeJpbook suppresses cover suggestions once the path names a file', a
 
 // --- the name lists ------------------------------------------------------------------
 
-/** Another book of the root, as the vocabulary store hands it over. */
+/** Another book listing a page of this one, as the vocabulary store hands it over. */
 const neighbour = (fileRel: string, text: string): ReturnType<typeof bookNames> => bookNames('file:///proj', fileRel, text);
 
 test('diagnoseJpbook: name items warn when they are no name or repeat a base, each on the item itself', async () => {

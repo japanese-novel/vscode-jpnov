@@ -14,7 +14,6 @@ import type { BuildChrome, PreviewChrome } from '../compiler/chrome.ts';
 import { EDGE_LINE_STYLES } from '../compiler/chrome.ts';
 import type { PaperOrientation, PaperSize } from '../compiler/geometry.ts';
 import { PAPER_ORIENTATIONS, PAPER_SIZES } from '../compiler/geometry.ts';
-import { VALUE_NAMES, valueAnnotation } from '../ast/notation.ts';
 import type { HtmlSettings, PreviewSettings } from '../protocol.ts';
 import type { LayoutSettings } from './types.ts';
 import { CHARS_MAX, CHARS_MIN, DASH_MODES, KINSOKU_MODES, LAYOUT_DEFAULT, LINE_PITCHES } from './types.ts';
@@ -34,18 +33,14 @@ export const BUILD_PAPER_DEFAULT = {
 } as const satisfies { paperSize: PaperSize; paperOrientation: PaperOrientation };
 
 /**
- * `lineNumbers`/`edgeLine` default the `jpnov.layout.paper.*` settings; the page-furniture fields
- * (`header`/`headerAlign`/`footer`/`footerAlign`) are NOT settings — they are what a new
- * `.jpbook`'s template writes (`bookTemplate`) and what the panel's "Default" footer pick writes.
+ * The defaults of the `jpnov.layout.paper.*` proofing settings. The page-furniture fields of
+ * {@link BuildChrome} (`header`/`headerAlign`/`footer`/`footerAlign`) are NOT settings: they come
+ * from each book's own metadata, `META_DEFAULTS` in `src/shared/book/jpbook.ts` where unwritten.
  */
 export const BUILD_CHROME_DEFAULT = {
   lineNumbers: false,
   edgeLine: 'none',
-  header: '',
-  headerAlign: 'center',
-  footer: `${valueAnnotation(VALUE_NAMES.page)} / ${valueAnnotation(VALUE_NAMES.totalPages)}`,
-  footerAlign: 'right',
-} as const satisfies BuildChrome;
+} as const satisfies Pick<BuildChrome, 'lineNumbers' | 'edgeLine'>;
 
 /** A safe integer clamped to [{@link CHARS_MIN}..{@link CHARS_MAX}]; anything else → `fallback`. */
 function clampChars(value: unknown, fallback: number): number {

@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from '../src/shared/ast/parse.ts';
 import { renderBook } from '../src/shared/compiler/document.ts';
 import { renderPreview } from '../src/shared/compiler/preview.ts';
-import { BUILD_CHROME_DEFAULT } from '../src/shared/config/settings.ts';
+import { META_DEFAULTS } from '../src/shared/book/jpbook.ts';
 
 const OUT = fileURLToPath(new URL('../.scratch/shots/', import.meta.url));
 const IMAGES = fileURLToPath(new URL('../docs/images/', import.meta.url));
@@ -49,10 +49,10 @@ const bookOpts = {
   paperOrientation: 'auto',
 } as const;
 const furniture = {
-  footerAlign: BUILD_CHROME_DEFAULT.footerAlign,
-  footer: BUILD_CHROME_DEFAULT.footer,
+  footerAlign: META_DEFAULTS.footerAlign,
+  footer: META_DEFAULTS.footer,
   header: '吾輩は猫である',
-  headerAlign: BUILD_CHROME_DEFAULT.headerAlign,
+  headerAlign: META_DEFAULTS.headerAlign,
 } as const;
 
 type PreviewOpts = Parameters<typeof renderPreview>[1];

@@ -21,7 +21,7 @@ import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT } from '../../src/shared/config/settings.ts';
 import { INDENT_MAX, indentAnnotation } from '../../src/shared/ast/notation.ts';
 import { blockOf } from '../shared/ast/_shape.ts';
-import { HEADER, JPBOOK_VERSION, META_KEYS } from '../../src/shared/book/jpbook.ts';
+import { HEADER, JPBOOK_VERSION, META_KEYS, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import { CHARS_MIN, LAYOUT_DEFAULT, PROJECT_DEFAULT } from '../../src/shared/config/types.ts';
 import { outDirSubpath } from '../../src/shared/config/validate.ts';
@@ -555,11 +555,13 @@ test('build targets only the roots in projectDirs', async () => {
   assert.equal(result.artifacts[0]?.path, `${wsA.uri}/va/dist/va.txt`);
 });
 
-test('listBooks gives the server the books\' names, root by root, as the union of every book under the root', async () => {
+test('listBooks gives the server each book\'s names with the pages it lists: a chapter is coloured by the books listing it', async () => {
   await using ws = await makeTmpWorkspace();
-  await writeUnder(ws.dir, 'vol1/vol1.jpbook', metaWith('characters:\n  - 山田　太郎\nkeywords:\n  - 王都') + 'a.jpnov');
-  await writeUnder(ws.dir, 'vol2/vol2.jpbook', metaWith('characters:\n  - 山田《やまだ》花子《はなこ》') + 'b.jpnov');
-  await writeUnder(ws.dir, 'sub/root/inner.jpbook', metaWith('characters:\n  - John Smith') + 'c.jpnov');
+  const vol1 = metaWith('characters:\n  - 山田　太郎\nkeywords:\n  - 王都') + 'a.jpnov\n../shared.jpnov';
+  const vol2 = metaWith('characters:\n  - 山田《やまだ》花子《はなこ》') + 'b.jpnov\n../shared.jpnov';
+  await writeUnder(ws.dir, 'vol1/vol1.jpbook', vol1);
+  await writeUnder(ws.dir, 'vol2/vol2.jpbook', vol2);
+  await writeUnder(ws.dir, 'sub/root/inner.jpbook', metaWith('characters:\n  - John Smith') + 'c.jpnov\n../../vol1/a.jpnov');
   const { ctx } = boot();
   const outer = ws.uri;
   const inner = `${ws.uri}/sub/root`;
@@ -567,23 +569,46 @@ test('listBooks gives the server the books\' names, root by root, as the union o
 
   const subject = (doc: string, who: string): boolean =>
     ctx.highlight.recognizerFor(doc)?.recognize(`${who}は`).some((s) => s.kind === 'character') ?? false;
-  // A chapter anywhere under the outer root, in a book or not, sees both volumes' casts…
-  for (const who of ['太郎', '山田', '花子', '山田花子']) {
-    assert.ok(subject(`${outer}/drafts/new.jpnov`, who), who);
-  }
+  // A chapter in one book sees that book's cast; a chapter in no book, however near, sees none.
+  assert.ok(subject(`${outer}/vol1/a.jpnov`, '太郎'));
+  assert.ok(!subject(`${outer}/vol1/a.jpnov`, '花子'));
   assert.ok(ctx.highlight.recognizerFor(`${outer}/vol1/a.jpnov`)?.recognize('王都へ').some((s) => s.kind === 'keyword'));
-  // …and the nested root keeps its own book to itself, in both directions.
-  assert.ok(subject(`${inner}/c.jpnov`, 'John Smith'));
-  assert.ok(!subject(`${inner}/c.jpnov`, '太郎'));
-  assert.ok(!subject(`${outer}/drafts/new.jpnov`, 'John Smith'));
-  // The neighbours of a book: the other books of its root, labelled as the panel lists them.
-  assert.deepEqual(ctx.highlight.othersOf(`${outer}/vol1/vol1.jpbook`).map((b) => b.fileRel), ['vol2/vol2.jpbook']);
-  assert.deepEqual(ctx.highlight.othersOf(`${inner}/inner.jpbook`), []);
-
-  // The next listing replaces the snapshot: a root gone from the request takes its names with it.
-  await handleListBooks(ctx, { projectDirs: projectsFor(inner) });
   assert.equal(ctx.highlight.recognizerFor(`${outer}/drafts/new.jpnov`), undefined);
+  // A chapter both volumes list sees both casts; the roots do not matter, a book of the nested
+  // root lists a chapter of the outer one and colours it too.
+  for (const who of ['太郎', '山田', '花子', '山田花子']) {
+    assert.ok(subject(`${outer}/shared.jpnov`, who), who);
+  }
   assert.ok(subject(`${inner}/c.jpnov`, 'John Smith'));
+  assert.ok(subject(`${outer}/vol1/a.jpnov`, 'John Smith'));
+  // The neighbours of a book: the books listing one of its pages, labelled as the panel lists them.
+  assert.deepEqual(ctx.highlight.othersOf(`${outer}/vol1/vol1.jpbook`, parseJpbook(vol1).lines).map((b) => b.fileRel), ['vol2/vol2.jpbook', 'inner.jpbook']);
+  assert.deepEqual(ctx.highlight.othersOf(`${outer}/vol2/vol2.jpbook`, parseJpbook(vol2).lines).map((b) => b.fileRel), ['vol1/vol1.jpbook']);
+
+  // The next listing replaces the snapshot: a root gone from the request takes its books' pages with it.
+  await handleListBooks(ctx, { projectDirs: projectsFor(inner) });
+  assert.equal(ctx.highlight.recognizerFor(`${outer}/shared.jpnov`), undefined);
+  assert.ok(subject(`${inner}/c.jpnov`, 'John Smith'));
+  assert.ok(subject(`${outer}/vol1/a.jpnov`, 'John Smith'), 'listed by the surviving book');
+  assert.ok(!subject(`${outer}/vol1/a.jpnov`, '太郎'));
+});
+
+test('a book of its title alone builds in every format, the page furniture at its defaults', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx, conn } = boot();
+  await writeUnder(ws.dir, 'lean.jpbook', `${HEAD}title: 作品名\n---\na.jpnov`);
+  await writeUnder(ws.dir, 'a.jpnov', 'あ');
+  for (const format of ['html', 'epub', 'txt'] as const) {
+    const result = await handleBuild(ctx, { format, settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+    assert.deepEqual(result.errors, [], format);
+    const page = result.artifacts[0];
+    assert.ok(page !== undefined && result.artifacts.length === 1, format);
+    if (page.kind === 'html') {
+      assert.match(page.content, /<div class="ft r">/, 'the page numbers, bottom right');
+      assert.ok(!page.content.includes('class="hd'), 'no header');
+    }
+  }
+  assert.ok(conn.diagnostics.every((d) => d.count === 0));
 });
 
 test('listBooks enumerates every jpbook, carrying its title when one is written', async () => {
@@ -1113,6 +1138,16 @@ test('openBooks: a book under no root lists and builds from its own directory, w
   assert.deepEqual(both.books.map((b) => [b.fileRel, b.rootUri]), [['p.jpbook', `${ws.uri}/proj`], ['本.jpbook', null]]);
 });
 
+test('openBooks: a book under no root gives its chapters their vocabulary like any other', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, 'alone/hon.jpbook', metaWith('characters:\n  - 山田　太郎') + 'a.jpnov');
+  const uri = `${ws.uri}/alone/hon.jpbook`;
+  await handleListBooks(ctx, { projectDirs: {}, openBooks: [{ uri, outDir: 'out' }] });
+  assert.ok(ctx.highlight.recognizerFor(`${ws.uri}/alone/a.jpnov`)?.recognize('太郎は').some((s) => s.kind === 'character'));
+  assert.equal(ctx.highlight.recognizerFor(`${ws.uri}/alone/b.jpnov`), undefined);
+});
+
 test("openBooks: a missing entry is that book's error under its file name; the reader's text is what builds", async () => {
   await using ws = await makeTmpWorkspace();
   await writeUnder(ws.dir, 'alone/hon.jpbook', meta() + 'gone.jpnov');
@@ -1455,7 +1490,7 @@ const SYNTAX_FAILURES: readonly {
     diagnostics: 1,
   },
   {
-    // An unwritten key is an empty one: the title cannot be, so its empty-value Error sits on the fence.
+    // An unwritten key is its default: the title has none, so its empty-value Error sits on the fence.
     name: 'the title not written',
     manifest: meta({}, ['title']) + '第一章.jpnov',
     files: ['bad/第一章.jpnov'],
@@ -1463,15 +1498,6 @@ const SYNTAX_FAILURES: readonly {
     code: 'jpbook.metaEmptyValue',
     args: ['title'],
     diagnostics: 1,
-  },
-  {
-    name: 'both alignments not written (reported in key order)',
-    manifest: meta({}, ['footerAlign', 'headerAlign']) + '第一章.jpnov',
-    files: ['bad/第一章.jpnov'],
-    format: 'txt',
-    code: 'jpbook.metaEmptyValue',
-    args: ['headerAlign'],
-    diagnostics: 2,
   },
   {
     // The key counts as written: the error names the empty value, not a missing key.
@@ -1503,14 +1529,14 @@ const SYNTAX_FAILURES: readonly {
     diagnostics: 2,
   },
   {
-    // A lone fence closes an empty metadata block: the title and both alignments are missing.
+    // A lone fence closes an empty metadata block: the title is missing.
     name: 'a lone fence',
     manifest: `${HEAD}---`,
     files: [],
     format: 'txt',
     code: 'jpbook.metaEmptyValue',
     args: ['title'],
-    diagnostics: 3,
+    diagnostics: 1,
   },
   {
     // A `---` right under the header closes the metadata at once; the keys below read as chapters.
@@ -1520,7 +1546,7 @@ const SYNTAX_FAILURES: readonly {
     format: 'txt',
     code: 'jpbook.metaEmptyValue',
     args: ['title'],
-    diagnostics: 4 + META_KEYS.length,
+    diagnostics: 2 + META_KEYS.length,
   },
   {
     // Without a fence the chapter lines read as metadata; the missing fence is the root cause.

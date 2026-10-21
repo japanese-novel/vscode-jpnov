@@ -20,7 +20,7 @@ import type { Finding } from '../../src/server/diagnostics.ts';
 import { computeLintFindings } from '../../src/server/lint/engine.ts';
 import { mergedEdits } from '../../src/server/targets.ts';
 import type { RawLintConfigWire } from '../../src/shared/protocol.ts';
-import { createHighlightStore, type BookNames } from '../../src/server/highlight/vocabulary.ts';
+import { bookNamesOf, createHighlightStore, type BookNames, type ListedBook } from '../../src/server/highlight/vocabulary.ts';
 import { parseJpbook } from '../../src/shared/book/jpbook.ts';
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { errorText } from '../../src/shared/utils/errors.ts';
@@ -102,9 +102,14 @@ export function nodeReader(label = 'utf-8'): ReadText {
   };
 }
 
-/** A book of the vocabulary store, as the listing hands it over: its lists as parsed from `text`. */
+/** A book at `rootUri/fileRel` as the listing hands it to the vocabulary store: `text` parsed. */
+export function listedBook(rootUri: string, fileRel: string, text: string): ListedBook {
+  return { uri: `${rootUri}/${fileRel}`, fileRel, parsed: parseJpbook(text) };
+}
+
+/** What the vocabulary store keeps of {@link listedBook}: the neighbour a conflict diagnostic reads. */
 export function bookNames(rootUri: string, fileRel: string, text: string): BookNames {
-  return { uri: `${rootUri}/${fileRel}`, fileRel, names: parseJpbook(text).names };
+  return bookNamesOf(listedBook(rootUri, fileRel, text));
 }
 
 export function makeContext(conn: FakeConnection, readText: ReadText = nodeReader()): ServerContext {

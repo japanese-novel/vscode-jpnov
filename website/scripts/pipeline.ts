@@ -6,7 +6,7 @@
 import { readdir } from 'node:fs/promises';
 
 import { parse } from '../../src/shared/ast/parse.ts';
-import { checkJpbook, composeBookChrome, entryPathOf, parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, entryPathOf, META_DEFAULTS, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { EDGE_INSET } from '../../src/shared/compiler/geometry.ts';
 import { renderBook } from '../../src/shared/compiler/document.ts';
 import type { BookInput } from '../../src/shared/compiler/document.ts';
@@ -73,7 +73,7 @@ function renderBookSample(texts: Texts, sample: BookSample): { render: BookRende
     ? bookFromJpbook(texts, sample.source.jpbook, sample.chrome)
     : {
         input: { files: [{ name: `${sample.source.specimen}.jpnov`, src: texts.specimen(sample.source.specimen) }] },
-        chrome: { ...BUILD_CHROME_DEFAULT, ...sample.chrome, header: sample.source.header },
+        chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...sample.chrome }, { ...META_DEFAULTS, header: sample.source.header }),
       };
   const html = renderBook({
     books: [book.input],

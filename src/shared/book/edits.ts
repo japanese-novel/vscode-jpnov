@@ -108,6 +108,11 @@ function holdsKey(pl: ParsedLine, key: MetaKey): boolean {
   return metaKeyOf(pl.value)?.normalize('NFKC').toLowerCase() === key.toLowerCase();
 }
 
+/** Every metadata line written for `key`, in document order. */
+function linesOfKey(parsed: ParsedJpbook, key: MetaKey): ParsedLine[] {
+  return metaLinesOf(parsed).filter((pl) => holdsKey(pl, key));
+}
+
 /**
  * Sets `key` to `value` in canonical `key: value` form (`key:` for an empty value). The key's
  * valid line — else the first line written for it — is rewritten in place and every other line
@@ -116,7 +121,7 @@ function holdsKey(pl: ParsedLine, key: MetaKey): boolean {
 export function setMeta(text: string, key: MetaKey, value: string): TextReplace[] {
   const parsed = parseJpbook(text);
   const clean = sanitizeValue(value);
-  const held = metaLinesOf(parsed).filter((pl) => holdsKey(pl, key));
+  const held = linesOfKey(parsed, key);
   const entry = metaLine(key, clean);
   const target = held.find((pl) => pl.kind === 'meta') ?? held[0];
   if (target === undefined) {
@@ -126,6 +131,15 @@ export function setMeta(text: string, key: MetaKey, value: string): TextReplace[
     { start: at(target.line, target.range.startChar), end: at(target.line, target.range.endChar), newText: entry },
     ...deleteLines(parsed.lines, held.filter((pl) => pl !== target)),
   ];
+}
+
+/**
+ * Deletes every line written for `key` (its valid line, a repeat, a line in Error), so the key
+ * goes back to unwritten: its default applies. Empty when no line holds it.
+ */
+export function removeMeta(text: string, key: MetaKey): TextReplace[] {
+  const parsed = parseJpbook(text);
+  return deleteLines(parsed.lines, linesOfKey(parsed, key));
 }
 
 /**
@@ -333,7 +347,7 @@ export function entryLines(lines: readonly ParsedLine[], list: EntryList): numbe
   return lines.filter(isEntryOf(list)).map((pl) => pl.line);
 }
 
-/** Fixed display order + current values for the panel's metadata rows (absent = undefined). */
+/** Fixed display order + the values written for the panel's metadata rows (unwritten = undefined: the default applies). */
 export function metaRows(meta: Partial<JpbookMeta>): { key: MetaKey; value: string | undefined }[] {
   return META_KEYS.map((key) => ({ key, value: meta[key] }));
 }

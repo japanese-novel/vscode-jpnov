@@ -1,7 +1,7 @@
 /**
  * The process-wide server context. Per-root CONFIG state deliberately does NOT live here:
- * `projectDirs` rides each build/listBooks request, and the vocabulary store carries its
- * own root keys.
+ * `projectDirs` rides each build/listBooks request, and the vocabulary store keys on the
+ * pages the books list.
  *
  * vscode-free: only `import type` of the language-server types is used; the runtime
  * `Connection` is injected by server.ts.
@@ -28,6 +28,6 @@ export interface ServerContext {
   /** Enabled prose-lint rules, resolved from the client's `jpnov.lint.*` settings snapshot. Workspace-
    *  (not root-) scoped, so it lives on the context rather than per root. */
   lintSelection: RuleSelection;
-  /** Per-root narration vocabulary: the `characters:`/`keywords:` of the books each `jpnov/listBooks` found. */
+  /** Narration vocabulary: the `characters:`/`keywords:` and the pages of the books each `jpnov/listBooks` found. */
   readonly highlight: HighlightStore;
 }

@@ -110,8 +110,8 @@ async function readDirEntries(dirUri: string): Promise<{ name: string; isDir: bo
 /**
  * Per-line diagnostics for one parsed `.jpbook`: syntax/metadata errors and warnings (from
  * {@link parseJpbook}'s line kinds), then, on a `file:` book, existence (a missing path or one
- * resolving to a directory is an Error), then the names `others` (the other books of the root)
- * write differently. Used by both the live editor handler and the build, so the two never
+ * resolving to a directory is an Error), then the names `others` (the books sharing a page with
+ * this one) write differently. Used by both the live editor handler and the build, so the two never
  * disagree.
  */
 export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook, others: readonly BookNames[]): Promise<Diagnostic[]> {

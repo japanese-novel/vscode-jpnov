@@ -3,10 +3,9 @@
  * composition and the fs-free completion logic.
  *
  * A `.jpbook` opens with its header line ({@link HEADER}: the format and its version), then its
- * metadata — the seven `key: value` lines of {@link META_KEYS} (three required, the rest empty
- * when unwritten), plus the optional lists `cover:`, `characters:` and `keywords:` — closes it
- * with a `---` line, and continues with
- * one chapter path per line.
+ * metadata — the seven `key: value` lines of {@link META_KEYS} (`title` required, the rest at
+ * {@link META_DEFAULTS} when unwritten), plus the optional lists `cover:`, `characters:` and
+ * `keywords:` — closes it with a `---` line, and continues with one chapter path per line.
  *
  * Chapter and cover paths are relative to the DIRECTORY OF THE `.jpbook`, as an `import` is to
  * its module: `a.jpnov`, `./a.jpnov`, `../drafts/a.jpnov`, and nothing bounds them. The
@@ -19,7 +18,7 @@
  */
 import type { BuildChrome, FurnitureAlign } from '../compiler/chrome.ts';
 import { FURNITURE_ALIGNS } from '../compiler/chrome.ts';
-import { indentAnnotation } from '../ast/notation.ts';
+import { indentAnnotation, VALUE_NAMES, valueAnnotation } from '../ast/notation.ts';
 import { scan } from '../ast/scan.ts';
 import { displayText } from '../chars.ts';
 import type { LocalizableMessage } from '../protocol.ts';
@@ -145,15 +144,31 @@ export function isEntryList(v: unknown): v is EntryList {
 }
 
 /**
- * The recognized single-valued metadata keys (`title`, `headerAlign` and `footerAlign` required,
- * the others empty when unwritten); the page-furniture keys are
+ * The recognized single-valued metadata keys (`title` required, the others at their
+ * {@link META_DEFAULTS} when unwritten); the page-furniture keys are
  * shared VERBATIM with {@link BuildChrome}'s field names. Adding a key: extend {@link JpbookMeta},
- * the book template (`create.ts`), the parser's value checks (`isEmptiable`, `isAlignKey`) and —
- * when it feeds the render — {@link composeBookChrome} for page furniture, or the assembly seam
- * (`renderBook`/`concatBookText`) for BODY content like `divider`, which is never chrome.
+ * {@link META_DEFAULTS} (the book template, `create.ts`, writes them), the parser's value checks
+ * (`isEmptiable`, `isAlignKey`) and — when it feeds the render — {@link composeBookChrome} for page
+ * furniture, or the assembly seam (`renderBook`/`concatBookText`) for BODY content like `divider`,
+ * which is never chrome.
  */
 export const META_KEYS = ['title', 'author', 'header', 'headerAlign', 'footer', 'footerAlign', 'divider'] as const;
 export type MetaKey = (typeof META_KEYS)[number];
+
+/**
+ * The value of each key but `title` when no line writes it: what a book created from the panel
+ * starts with, and what 「既定に戻す」 returns a key to by deleting its line. A footer of page
+ * numbers, a centred header, a right-hand footer; nothing else. These are data of the book
+ * format, not settings: the preview, which renders a bare chapter, never sees them.
+ */
+export const META_DEFAULTS = {
+  author: '',
+  header: '',
+  headerAlign: 'center',
+  footer: `${valueAnnotation(VALUE_NAMES.page)} / ${valueAnnotation(VALUE_NAMES.totalPages)}`,
+  footerAlign: 'right',
+  divider: '',
+} as const satisfies Omit<JpbookMeta, 'title'>;
 
 /**
  * The header every book file opens with: the format, then the version it is written in,
@@ -172,7 +187,7 @@ export function isAlignKey(key: string): key is 'headerAlign' | 'footerAlign' {
 }
 
 /** The keys an empty value suits: no author, a hidden header or footer, no divider. The others
- *  (`title`, the alignments) need a value: an empty line and an unwritten key are the same Error. */
+ *  (`title`, the alignments) refuse an empty line: an Error on it. */
 function isEmptiable(key: MetaKey): key is Exclude<MetaKey, 'title' | 'headerAlign' | 'footerAlign'> {
   return key !== 'title' && !isAlignKey(key);
 }
@@ -276,23 +291,22 @@ export function identityOf(list: EntryList, value: string): string {
 }
 
 /**
- * A book's metadata, field names = file keys, values as written. Every key is present: a
- * parse holds the keys its lines took ({@link ParsedJpbook.meta} is partial; an unwritten
- * emptiable key reads as ''), and
- * {@link checkJpbook} hands the build the complete set or the error that stands in its way.
- * `title` is display metadata only and never affects the output path.
+ * A book's metadata, field names = file keys. Every key is present: a parse holds the keys its
+ * valid lines wrote ({@link ParsedJpbook.meta} is partial), and {@link checkJpbook} hands the
+ * build the complete set — the unwritten keys at {@link META_DEFAULTS} — or the error that stands
+ * in its way. `title` is display metadata only and never affects the output path.
  */
 export interface JpbookMeta {
   /** Never empty: the EPUB's dc:title and the panel's label (an empty line is an Error). */
   readonly title: string;
   /** ペンネーム — display metadata (the EPUB package's dc:creator); '' = no author. */
   readonly author: string;
-  /** Header line, filled like `footer`; '' = no header. */
+  /** Header line, filled like `footer`; '' = no header (the default). */
   readonly header: string;
   readonly headerAlign: FurnitureAlign;
   /**
    * Footer line: `.jpnov` notation whose ［＃ここに「…」の値を表示］ fields fill from the book and
-   * the page ({@link BuildChrome.footer}); '' = no footer.
+   * the page ({@link BuildChrome.footer}); '' = no footer; unwritten = the page numbers.
    */
   readonly footer: string;
   readonly footerAlign: FurnitureAlign;
@@ -315,9 +329,9 @@ export interface ParsedJpbook {
   /** One per source line; line 0 is the header (`'header'` when a parser read the book). */
   readonly lines: readonly ParsedLine[];
   /**
-   * The values the valid key lines hold. A key no line wrote is an empty one: `''` for the keys
-   * an empty value suits; `title` and the alignments stay absent (an error in
-   * {@link metaErrors}), as does a key whose line is in Error.
+   * The values the valid key lines hold, as written: a key no line wrote is absent (its default
+   * applies, {@link checkJpbook} fills it; an unwritten `title` is an error in
+   * {@link metaErrors}), as is a key whose line is in Error.
    */
   readonly meta: Partial<JpbookMeta>;
   /**
@@ -327,9 +341,9 @@ export interface ParsedJpbook {
   readonly fence: number | null;
   /**
    * The errors of the metadata as a whole, in document order: no closing fence (marked on the
-   * first non-blank line below the header, else on the header; reported alone), else the keys
-   * that need a value and no line wrote, each marked on the fence. Empty below a header no
-   * parser reads: that line reports itself.
+   * first non-blank line below the header, else on the header; reported alone), else a `title`
+   * no line wrote, marked on the fence. Empty below a header no parser reads: that line reports
+   * itself.
    */
   readonly metaErrors: readonly MetaError[];
   /** {@link namesOf} the lines: the valid items of each name list, repeats left out. */
@@ -421,7 +435,8 @@ const PARSERS: ReadonlyMap<string, BodyParser> = new Map([[JPBOOK_VERSION, parse
  * everywhere; interior whitespace is preserved (a filename may contain spaces). Every line
  * above the first `---` is metadata, and a line there without a key is an Error. Duplicate
  * keys keep the FIRST line (one in Error included: an empty `title:` or a bad alignment takes
- * its key and reports itself). A list opens at the first line of its key (`cover:`,
+ * its key and reports itself). A key no line writes is absent from `meta`; `title` alone is
+ * then an Error. A list opens at the first line of its key (`cover:`,
  * `characters:`, `keywords:`; a value on it is the list's first item), survives blank lines and
  * closes at any other metadata line or the fence. Chapter and cover paths must be
  * backslash-free `.jpnov` (any letter case); later repeats of a path (by {@link entryIdentity})
@@ -621,21 +636,13 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
   };
   if (fence === null) {
     at(firstContent ?? header, { code: 'jpbook.metaUnterminated', args: [] });
-  }
-  for (const key of META_KEYS) {
-    if (takenKeys.has(key)) {
-      continue;
-    }
-    if (isEmptiable(key)) {
-      meta[key] = '';
-    } else if (fence !== null) {
-      at(fence, emptyValue(key));
-    }
+  } else if (!takenKeys.has('title')) {
+    at(fence, emptyValue('title'));
   }
   return { lines, meta, fence: fence?.line ?? null, metaErrors, names: namesOf(lines) };
 }
 
-/** The Error a key that needs a value reports, written empty or not written at all. */
+/** The Error a key that refuses an empty value reports: written empty, or (`title`) not written at all. */
 function emptyValue(key: MetaKey): LocalizableMessage {
   return { code: 'jpbook.metaEmptyValue', args: [key] };
 }
@@ -660,7 +667,7 @@ export type JpbookVerdict =
 /**
  * The build's gate: the first error in document order — an `{ error }` line's, or the
  * metadata's own ({@link ParsedJpbook.metaErrors}), which wins a tie — else the complete
- * metadata. Warnings and duplicates never count.
+ * metadata, the unwritten keys at {@link META_DEFAULTS}. Warnings and duplicates never count.
  */
 export function checkJpbook(parsed: ParsedJpbook): JpbookVerdict {
   const metaError = parsed.metaErrors[0];
@@ -675,8 +682,8 @@ export function checkJpbook(parsed: ParsedJpbook): JpbookVerdict {
   if (metaError !== undefined) {
     return { ok: false, error: metaError.error };
   }
-  // Complete: a key absent from `meta` is written in Error (its line's) or unwritten (the fence's), reported above.
-  return { ok: true, meta: parsed.meta as JpbookMeta };
+  // Complete: a key still absent is unwritten (a line in Error or an unwritten title is reported above).
+  return { ok: true, meta: { ...META_DEFAULTS, ...parsed.meta } as JpbookMeta };
 }
 
 /**
