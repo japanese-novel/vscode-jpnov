@@ -60,6 +60,7 @@ import type {
   TextRange,
 } from '../protocol.ts';
 
+import { BROWSER_NAMES, isBrowser, openInBrowser, PRINT_BROWSER_DEFAULT, PRINT_BROWSER_SETTINGS, printCandidates } from './browser.ts';
 import { applyBookEdits, metaLabel, metaValueParts } from './manage.ts';
 import type { BookNode } from './nodes.ts';
 import { booksHtml } from './webviewHtml.ts';
@@ -86,6 +87,11 @@ const BUILD_REQUEST_TIMEOUT_MS = 120_000;
 /** Hard cap on the enumeration round-trip: a directory walk, so a reply this late means a stuck server. */
 const LIST_REQUEST_TIMEOUT_MS = 30_000;
 
+/** The form of a file URI the OS gets: `#`, `?` and `%` kept percent-encoded as written. */
+function osUrl(uri: string): string {
+  return vscode.Uri.parse(uri).toString();
+}
+
 /**
  * Opens a file URI in the OS. VS Code rebuilds a `Uri` target as `encodeURI(uri.toString(true))`,
  * which lets `#` and `?` through as fragment and query; a string target equal to its own
@@ -93,7 +99,7 @@ const LIST_REQUEST_TIMEOUT_MS = 30_000;
  */
 function openExternally(uri: string): void {
   // openExternal resolves to false on failure rather than rejecting, so void is safe.
-  void vscode.env.openExternal(vscode.Uri.parse(uri).toString() as unknown as vscode.Uri);
+  void vscode.env.openExternal(osUrl(uri) as unknown as vscode.Uri);
 }
 
 /** The book's display label: its `title`, else (the key missing or empty) its file name without `.jpbook`. */
@@ -973,8 +979,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   /**
    * The build driver behind the panel's build buttons (webview `build` messages): render
    * the CHECKED books (or exactly `only`, when given) to `action`'s one
-   * format (`print` = `.html` on the wire, then opened in the OS default browser — the HTML
-   * artifact's only build path; `epub` comes back as member files the client zips), write
+   * format (`print` = `.html` on the wire, then opened in the browser the print setting names
+   * — the HTML artifact's only build path; `epub` comes back as member files the client zips), write
    * the results (the client owns all filesystem writes), and report. An empty selection is
    * a no-op with a nudge rather than a silent "built 0". A failed book opens its detail
    * afterwards (the first one, when several fail).
@@ -1082,13 +1088,25 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         }
 
         if (written.length > 0) {
-          // Print: open each written artifact in the OS default browser — a webview
-          // cannot print (its iframe sandbox has no allow-modals, so print() is a
-          // silent no-op). The tab already presents the output, so print skips the
-          // folder reveal below.
+          // Print: open each written artifact in a browser — a webview cannot print (its
+          // iframe sandbox has no allow-modals, so print() is a silent no-op). A chosen browser
+          // that is not installed falls back to the OS default with one toast; a remote session
+          // always uses the OS default (a process would run on the remote machine). The tab
+          // presents the output, so print skips the folder reveal below.
           if (action === 'print') {
-            for (const file of written) {
-              openExternally(file);
+            const browserSetting = vscode.workspace.getConfiguration().get<string>('jpnov.layout.print.browser');
+            const choice = PRINT_BROWSER_SETTINGS.find((b) => b === browserSetting) ?? PRINT_BROWSER_DEFAULT;
+            const candidates = vscode.env.remoteName === undefined ? printCandidates(choice, process.platform) : [];
+            const unopened = await openInBrowser(written.map(osUrl), candidates);
+            for (const url of unopened) {
+              openExternally(url);
+            }
+            if (unopened.length > 0 && candidates.length > 0) {
+              void vscode.window.showInformationMessage(
+                isBrowser(choice)
+                  ? vscode.l10n.t("Japanese Novel: {0} wasn't found; opened in the default browser instead.", BROWSER_NAMES[choice])
+                  : vscode.l10n.t('Japanese Novel: no Chrome, Edge or Firefox found; opened in the default browser. Safari ignores the paper size and orientation.'),
+              );
             }
           }
           // One artifact per book now (a single format), so the file count IS the book count.

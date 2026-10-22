@@ -23,6 +23,7 @@ import {
   PROJECT_DEFAULT,
 } from '../../../src/shared/config/types.ts';
 import { TXT_ENCODINGS, TXT_ENCODING_DEFAULT } from '../../../src/shared/encoding.ts';
+import { PRINT_BROWSER_DEFAULT, PRINT_BROWSER_SETTINGS } from '../../../src/client/book/browser.ts';
 import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
 import type { RuleMeta, Scope } from '../../../src/shared/lint/catalog.ts';
 
@@ -187,11 +188,23 @@ function layoutSection(): unknown {
         order: 12,
         markdownDescription: '%jpnov.layout.txt.encoding.description%',
       },
+      // The print hand-off: which browser opens the built HTML (client-only; the constants live
+      // in `client/book/browser.ts`). Machine scope: the installed browsers differ per machine.
+      'jpnov.layout.print.browser': {
+        type: 'string',
+        enum: [...PRINT_BROWSER_SETTINGS],
+        default: PRINT_BROWSER_DEFAULT,
+        scope: 'machine-overridable',
+        enumItemLabels: PRINT_BROWSER_SETTINGS.map((v) => `%jpnov.layout.print.browser.${v}.label%`),
+        enumDescriptions: PRINT_BROWSER_SETTINGS.map((v) => `%jpnov.layout.print.browser.${v}.description%`),
+        order: 13,
+        markdownDescription: '%jpnov.layout.print.browser.description%',
+      },
       'jpnov.layout.outDir': {
         type: 'string',
         default: PROJECT_DEFAULT.outDir,
         scope: 'resource',
-        order: 13,
+        order: 14,
         markdownDescription: '%jpnov.layout.outDir.description%',
       },
     },
@@ -215,7 +228,7 @@ const UPDATE_REFS_MODES = ['prompt', 'always', 'never'] as const;
 
 /**
  * The Editor section: typing behavior and in-editor aids, all client-only (never sent to the
- * resolver), so defaults are bare literals here — `autoIndent` mirrored in
+ * resolver). The defaults are bare literals here — `autoIndent` mirrored in
  * `client/editor/autoIndent.ts`, the `updateRefsOnFileMove` triad in `client/book/tracking.ts`.
  * The narration vocabulary is no setting: it is the `characters:`/`keywords:` of the `.jpbook` files.
  */
@@ -275,6 +288,8 @@ function staticNlsKeys(): string[] {
     ...EDGE_LINE_STYLES.flatMap((v) => enumChoiceKeys(`jpnov.layout.paper.edgeLine.${v}`)),
     'jpnov.layout.txt.encoding.description',
     ...TXT_ENCODINGS.flatMap((v) => enumChoiceKeys(`jpnov.layout.txt.encoding.${v}`)),
+    'jpnov.layout.print.browser.description',
+    ...PRINT_BROWSER_SETTINGS.flatMap((v) => enumChoiceKeys(`jpnov.layout.print.browser.${v}`)),
     'jpnov.layout.outDir.description',
     'jpnov.editor.title',
     'jpnov.editor.autoIndent.description',

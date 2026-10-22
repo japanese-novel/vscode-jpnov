@@ -25,9 +25,14 @@ import {
   Uri,
   FileType,
 } from './_vscodeMock.ts';
+import { createFakeSpawn } from './_fakeSpawn.ts';
 
 const state = createMockState();
 mock.module('vscode', { exports: buildVscode(state) });
+
+/** The fake `spawn` behind the print browser: `fallback` says whether a launch finds it. */
+const fakeSpawn = createFakeSpawn();
+mock.module('node:child_process', { exports: { spawn: fakeSpawn.spawn } });
 
 const { BooksViewProvider } = await import('../../src/client/book/view.ts');
 const { raceRequest } = await import('../../src/client/requests.ts');
@@ -38,6 +43,8 @@ const EXT = Uri.parse('file:///ext');
 
 beforeEach(() => {
   resetMockState(state);
+  fakeSpawn.reset();
+  fakeSpawn.fallback = 'enoent';
 });
 
 /** A BookEntry with the fields the provider reads: the book sits in `src/` under its root. */
@@ -426,6 +433,7 @@ for (const [setting, encoding] of TXT_ENCODING_SETTINGS) {
 
 test('print asks the wire for html, writes it, and opens the FILES in the browser — not the folder', async () => {
   const root = 'file:///ws';
+  state.config['jpnov.layout.print.browser'] = 'default'; // the default (auto) searches on macOS, so this test picks the OS browser outright
   const { view, client } = await setup(
     [entry(root, 'a'), entry(root, 'sub/b')],
     {
@@ -445,6 +453,50 @@ test('print asks the wire for html, writes it, and opens the FILES in the browse
   assert.deepEqual(state.writtenFiles.map((w) => w.uri), [`${root}/out/a.html`, `${root}/out/sub/b.html`]);
   // Every written artifact opens in the browser; the folder reveal stays quiet for print.
   assert.deepEqual(state.openedExternal, [`${root}/out/a.html`, `${root}/out/sub/b.html`]);
+  assert.deepEqual(fakeSpawn.spawned, []);
+});
+
+test('a chosen print browser is launched with the encoded url, and openExternal stays out of it', async () => {
+  const root = 'file:///ws';
+  state.config['jpnov.layout.print.browser'] = 'firefox';
+  fakeSpawn.fallback = 0;
+  const { view } = await setup(
+    [entry(root, 'a')],
+    { ok: true, outDirs: [`${root}/out`], artifacts: [{ kind: 'html', path: `${root}/out/a.html`, content: '<p>a</p>' }], errors: [] },
+  );
+  view.webview.receive({ type: 'build', format: 'print' });
+  await tick();
+  assert.equal(fakeSpawn.spawned.length, 1);
+  assert.equal(fakeSpawn.spawned[0]?.args.at(-1), `${root}/out/a.html`); // the url goes last (the mock Uri does not percent-encode; the `#`/`?`/`%` test below covers that)
+  assert.deepEqual(state.openedExternal, []);
+  assert.ok(!state.infoMessages.some((m) => m.includes('default browser')));
+});
+
+test('a chosen print browser that is not installed falls back to openExternal per file, with one toast', async () => {
+  const root = 'file:///ws';
+  state.config['jpnov.layout.print.browser'] = 'edge';
+  const { view } = await setup(
+    [entry(root, 'a'), entry(root, 'b')],
+    {
+      ok: true,
+      outDirs: [`${root}/out`],
+      artifacts: [
+        { kind: 'html', path: `${root}/out/a.html`, content: '<p>a</p>' },
+        { kind: 'html', path: `${root}/out/b.html`, content: '<p>b</p>' },
+      ],
+      errors: [],
+    },
+  );
+  view.webview.receive({ type: 'build', format: 'print' });
+  await tick();
+  // Only the first file probes (one launch per Edge install path of this platform); the second is never tried.
+  assert.ok(fakeSpawn.spawned.length >= 1);
+  assert.ok(fakeSpawn.spawned.every((s) => s.args.at(-1) === `${root}/out/a.html`));
+  assert.deepEqual(state.openedExternal, [`${root}/out/a.html`, `${root}/out/b.html`]);
+  assert.deepEqual(
+    state.infoMessages.filter((m) => m.includes('default browser')),
+    ["Japanese Novel: Microsoft Edge wasn't found; opened in the default browser instead."],
+  );
 });
 
 test('a successful build sets jpnov.hasBuilt (the walkthrough step completion); a cancelled one does not', async () => {
