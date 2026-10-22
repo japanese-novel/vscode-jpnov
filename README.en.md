@@ -319,7 +319,7 @@ Outputs land in `<outDir>/<name>.{html,epub,txt}`, `<name>` being the
 `${workspaceFolder}/dist` (a value without the token counts from the
 `.jpbook`'s own folder). Two book files built together that resolve to the same
 output file fail the build with a diagnostic, and neither is written. A `.jpbook` with
-an error (a missing metadata key or
+an error (no title, a missing
 closing `---`, a backslash in a path, an entry that is not a `.jpnov` file) fails that
 book's build with its first error; the other books still build. Warnings, such
 as unknown keys or duplicates, never stop a build.
@@ -391,7 +391,7 @@ instead.
 
 Page furniture belongs to the book: two volumes in one workspace can carry
 different running heads, and the chapter divider is part of a book's identity
-too. A `.jpbook` therefore opens with the header line `jpbook/1` (the format
+too. A `.jpbook` therefore opens with the line `jpbook/1` (the format
 and its version), then its metadata, one `key: value` line each, closed by a
 `---` line that the chapters follow. Create a Book writes exactly this:
 
@@ -422,16 +422,16 @@ divider:
 | `characters` | — | The cast, one name per item, ruby allowed; highlighted in the narration (see [highlighting](#character--keyword-highlighting)) |
 | `keywords` | — | Coined words, one per item, ruby allowed; bolded in the narration (see [highlighting](#character--keyword-highlighting)) |
 
-The header is the first line, exactly `jpbook/1`: a first line that is anything
+The first line is exactly `jpbook/1`: a first line that is anything
 else, or that names a version this extension has no parser for, fails the build,
-and nothing below it is read. A key that is not written takes its default;
-`title` has none and cannot be empty, so a book without it is not built, and
-its `---` line is flagged. Unknown keys
-warn and are ignored, so future keys stay forward-compatible. The seven keys from `title` to `divider`
-are also editable from the **Book Info** rows in the Books view (every row but
-the title also offers **Restore default**, which deletes the key's line), `cover`
-from its **Cover pages** section, and the two lists from its **Characters** and
-**Keywords** sections.
+and nothing below it is read. The seven keys from `title` to `divider` are the
+**Book Info** rows in the Books view. Every row but the title also offers
+**Restore default**, which sets the value back to what Create a Book writes: in
+the file, the key's line is deleted, and the build uses that same value for a key
+that has no line. `title` has no default and cannot be empty, so a book without it is not
+built, and its `---` line is flagged. Unknown keys warn and are ignored, so
+future keys stay forward-compatible. `cover` is edited from the **Cover pages**
+section, and the two lists from the **Characters** and **Keywords** sections.
 
 The header and footer take the same value annotations as a cover page (below), plus
 ページ番号, the current page; any other annotation or ruby prints as typed.
@@ -482,14 +482,14 @@ A cover file can pull in the book's own metadata:
 ［＃７字下げ］４００字詰め原稿用紙換算［＃縦中横］［＃ここに「原稿用紙換算枚数」の値を表示］［＃縦中横終わり］枚
 ```
 
-A build fills in that book's values. The preview shows each annotation's default — タイトル
+A build fills in that book's values. The preview shows a placeholder for each annotation — タイトル
 and ペンネーム print as their own names, 総ページ数 and 原稿用紙換算枚数 as `0` — so one cover
 file serves any number of books. To decorate a substituted value, wrap it in the
 start/end form (`［＃大見出し］［＃ここに「タイトル」の値を表示］［＃大見出し終わり］`).
 
-ページ番号 defaults to `0`, like 総ページ数. Any other name prints as itself:
+The placeholder for ページ番号 is `0`, like that for 総ページ数. Any other name prints as itself:
 `［＃ここに「13」の値を表示］` renders `13`. Values are filled on cover pages and in the header
-and footer only; in a body chapter every annotation prints its default. On a line that
+and footer only; in a body chapter every annotation prints its placeholder. On a line that
 carries a value annotation, a 対象文字列 that fails to match is not reported.
 
 The manuscript-sheet count is the number of vertical 20 × 20 manuscript sheets

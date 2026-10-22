@@ -8,11 +8,11 @@ import JpRender from '../JpRender.astro';
   <div class="jp-wrap">
     <p class="jp-eyebrow">応募のために</p>
     <h2 id="submission-h" class="jp-section-title">本は、章を読む順に並べた<br />ただのテキストファイルです。</h2>
-    <p class="jp-section-lede">.jpbook には、本のタイトルやヘッダーと、章のファイル名を並べます。多くの新人賞で求められる表紙や扉、あらすじは、表紙に並べたファイルがそのページになり、本文の前に置かれます。表紙のファイルには、本の情報を差し込む注記が書けます。出力すると、その本の値が入ります。</p>
+    <p class="jp-section-lede">本のタイトルやヘッダー、章の並びは「本の一覧」で編集します。.jpbook には、その内容が見本のようなテキストで書かれています。多くの新人賞で求められる表紙や扉、あらすじは、「表紙」に加えたファイルがそのページになり、本文の前に置かれます。表紙のファイルには、本の情報を差し込む注記が書けます。出力すると、その本の値が入ります。</p>
     <div class="jp-submission-grid">
       <figure class="jp-cover-render" data-reveal="left">
         <div class="jp-paper-crop"><JpRender name="cover" /></div>
-        <figcaption>「表紙を追加…」で作った表紙をそのまま出力したページ。タイトルとペンネームは .jpbook の値、総ページ数と原稿用紙換算枚数は出力のときに計算した値です。</figcaption>
+        <figcaption>「表紙を追加…」で作った表紙をそのまま出力したページ。タイトルとペンネームは「本の情報」の値、総ページ数と原稿用紙換算枚数は出力のときに計算した値です。</figcaption>
       </figure>
       <pre class="jp-source" data-reveal="right"><code>{SUBMISSION_JPBOOK}</code></pre>
     </div>

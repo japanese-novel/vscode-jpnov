@@ -56,7 +56,7 @@ export function renderMessage(msg: LocalizableMessage): string {
     case 'jpbook.metaUnterminated':
       return vscode.l10n.t('unterminated metadata block (missing a closing ---)');
     case 'jpbook.headerMissing':
-      return vscode.l10n.t('the first line must be the header "{0}"', s(0));
+      return vscode.l10n.t('the first line must be "{0}"', s(0));
     case 'jpbook.versionUnsupported':
       return vscode.l10n.t('unsupported .jpbook version "{0}" (this extension reads {1})', s(0), s(1));
     case 'jpbook.metaEmptyValue':
@@ -116,7 +116,7 @@ export function renderMessage(msg: LocalizableMessage): string {
     case 'hover.pageBreak':
       return vscode.l10n.t('Page break');
     case 'hover.value':
-      return vscode.l10n.t('Shows the value of "{0}" (the book file sets it)', s(0));
+      return vscode.l10n.t("Shows the value of \"{0}\" (the build fills in the book's value)", s(0));
     case 'hover.gaiji':
       return vscode.l10n.t('External character: {0}', s(0));
     case 'hover.comment':
