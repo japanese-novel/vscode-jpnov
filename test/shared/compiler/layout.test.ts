@@ -963,6 +963,12 @@ test('見出し: every wrapped continuation keeps .midashi (like indent)', () =>
   );
 });
 
+test('chapter: a stamped row keeps its chapter on every wrapped continuation; an unstamped one carries none', () => {
+  const stamped = rowsOf('一二三').map((row) => (row.kind === 'line' ? { ...row, chapter: 2 } : row));
+  assert.deepEqual(paginate(stamped, 2, 34, 'none').flat().map((line) => line.chapter), [2, 2]);
+  assert.deepEqual(paginate(rowsOf('一二三'), 2, 34, 'none').flat().map((line) => 'chapter' in line), [false, false]);
+});
+
 test('見出し composes with 字下げ; a ruby-bearing heading matches its BASE text', () => {
   assert.equal(
     html('［＃２字下げ］序［＃「序」は小見出し］'),

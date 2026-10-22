@@ -132,7 +132,9 @@ Decide the stage first. The rules:
    chapters (`bookCounts`, which also gives the Books view its figures). The
    first three reach the AST of every chapter (`chapterAsts`); the counts reach
    only the AST of a cover page and the page furniture, since a cover page is
-   resolved after the chapters are laid out. The editor resolves without them,
+   resolved after the chapters are laid out. The furniture of a body page also
+   takes the 見出し番号 of the page's chapter: every row of the body flow carries
+   its chapter, and a page where chapters meet numbers the last one begun on it. The editor resolves without them,
    so it does not report an annotation that fails to bind after a value: the real
    value is unknown.
 

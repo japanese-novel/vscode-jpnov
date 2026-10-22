@@ -4,8 +4,10 @@
    classes mirror .ft's (build.footer.css), so a header and a footer on the same side share one
    corner. line-height:1 (as on .ft and .line::before) keeps the furniture box its
    glyph height — an inherited --pitch line box would graze the frame. Horizontal like the sheet
-   it sits on (only the .grid is vertical); ink #000 literal (print, not themed). */
-.hd{position:absolute;top:0;font-size:0.75em;line-height:1;color:#000;}
+   it sits on (only the .grid is vertical); ink #000 literal (print, not themed). One line, never
+   wrapped: an overlong header runs past the paper edge, where .page's overflow:hidden clips it;
+   the pinned side stays. */
+.hd{position:absolute;top:0;font-size:0.75em;line-height:1;color:#000;white-space:nowrap;}
 .hd.c{left:0;right:0;text-align:center;}
 .hd.r{right:1.85rem;}
 .hd.l{left:1.85rem;}

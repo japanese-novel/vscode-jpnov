@@ -565,6 +565,13 @@ test('header and footer: a book without title and author fills them blank', () =
   assert.match(body, /<div class="hd c"><\/div><div class="ft r"><\/div>/);
 });
 
+test('header and footer: one line each, never wrapped; an overlong one runs off the sheet and is clipped', () => {
+  const html = render('本文', { chrome: { header: '柱', footer: PAGE_FOOTER } });
+  assert.match(html, /\.hd\{[^}]*white-space:nowrap[;}]/);
+  assert.match(html, /\.ft\{[^}]*white-space:nowrap[;}]/);
+  assert.match(html, /\.page\{[^}]*overflow:hidden[;}]/);
+});
+
 test('header: a centred furniture div by default, escaped', () => {
   const on = render('本文', { chrome: { header: '第一章' } });
   assert.match(on, /<div class="hd c">第一章<\/div>/);
@@ -713,6 +720,24 @@ test('body: a chapter takes the book\'s タイトル／ペンネーム and its o
   // 見出し番号 is a chapter's own: a cover prints its default.
   const cover = bodyOf(renderBooks([withCover([{ name: 'c.jpnov', src: valueAnnotation(VALUE_NAMES.heading) }], [{ name: 'a.jpnov', src: '本文' }])]));
   assert.match(cover, new RegExp(`<div class="line" data-line="0">${VALUE_DEFAULTS.heading}</div>`));
+});
+
+test('header and footer: 見出し番号 is the chapter of the page; a page where chapters meet takes the last one begun on it', () => {
+  const HEADING_HEADER = { header: valueAnnotation(VALUE_NAMES.heading, VALUE_FORMATS.named) };
+  const headers = (books: readonly BookInput[], linesPerPage: number): string[] =>
+    [...bodyOf(renderBooks(books, { linesPerPage, chrome: HEADING_HEADER })).matchAll(/<div class="hd c">([^<]*)<\/div>/g)].map((m) => m[1] ?? '');
+  const files = (...srcs: string[]): BookInput => book({ files: srcs.map((src, i) => ({ name: `${String(i)}.jpnov`, src })) });
+
+  // A chapter over several pages; then the next begins on a page of its own.
+  assert.deepEqual(headers([files('一\n二\n三', '四')], 2), ['一', '一', '二']);
+  // Chapters meeting on one page without a ［＃改ページ］: the last one begun on it.
+  assert.deepEqual(headers([files('一', '二')], 34), ['二']);
+  assert.deepEqual(headers([files('一', '二', '三')], 34), ['三']);
+  assert.deepEqual(headers([files('一\n［＃改ページ］', '二')], 34), ['一', '二']);
+  // The glue (blank line, divider, blank line) counts as the chapter it closes.
+  assert.deepEqual(headers([{ ...files('一', '二'), divider: '＊' }], 1), ['一', '一', '一', '一', '二']);
+  // Each book numbers its own chapters.
+  assert.deepEqual(headers([files('一', '二'), files('三')], 34), ['二', '一']);
 });
 
 test('cover: covers interleave per book and the footer numbers the bodies continuously', () => {
