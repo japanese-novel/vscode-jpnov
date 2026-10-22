@@ -863,6 +863,7 @@ test('the render carries the layout widget: its nonced stylesheet and the settin
     hint: 'Characters per line × lines per page. Changes here apply to the preview only.',
     reset: 'Reset Preview Layout to Settings',
     save: 'Save Preview Layout to Settings…',
+    font: 'Choose Body Font…',
     show: 'Show Preview Layout Controls',
   });
   assert.equal(lastAdjustedContext(), false, 'every render mirrors the context key');
@@ -894,6 +895,13 @@ test('a widget change re-renders with the override, re-focuses its input once, a
   assert.equal(client.params.length, 3);
   assert.equal(client.params[2]?.settings.charsPerLine, 42);
   assert.equal(readInit(panel).layout.focus, undefined);
+});
+
+test("the widget's font button runs the font command, which needs no panel state", async () => {
+  const { panel } = await openPreviewWith(SERVER_HTML);
+  panel.webview.receive({ type: 'font' });
+  await tick();
+  assert.deepEqual(state.executedCommands.filter((c) => c.command === 'jpnov.preview.pickFont'), [{ command: 'jpnov.preview.pickFont', args: [] }]);
 });
 
 test('malformed, out-of-range or unknown widget messages are dropped', async () => {

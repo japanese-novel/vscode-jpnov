@@ -121,17 +121,25 @@ export const FONT_LIST_MAX = 256;
  * The 本文 font, on the `.book` wrapper of both media: the built-in stack, then
  * `jpnov.layout.fontFamily` — a list the browser cannot parse drops out and the stack stays.
  * The raw setting lands inside the document's one `<style>` block, so it is written only when
- * it is a plain font list, and never repaired: a character that could leave the declaration
- * (`;` `}`), open a block (`{`), a tag (`<` `>`) or an escape (`\`), a control character (a new
- * line ends a quoted name), or, once the closed quoted names are set aside, a quote, a bracket
- * or `*` → the stack alone, as for a blank value or one over {@link FONT_LIST_MAX}.
+ * {@link isFontList} takes it, and never repaired.
  */
 function fontRule(raw: string): string {
   const list = raw.trim();
-  const legal = list !== '' && list.length <= FONT_LIST_MAX &&
+  return `.book{font-family:${DEFAULT_FONT_STACK}${isFontList(list) ? `;font-family:${list}` : ''}}`;
+}
+
+/**
+ * Whether `raw` is a plain font list {@link fontRule} may write (the font picker refuses what it
+ * would drop): a character that could leave the declaration (`;` `}`), open a block (`{`), a tag
+ * (`<` `>`) or an escape (`\`), a control character (a new line ends a quoted name), or, once the
+ * closed quoted names are set aside, a quote, a bracket or `*` → false, as for a blank value or
+ * one over {@link FONT_LIST_MAX}.
+ */
+export function isFontList(raw: string): boolean {
+  const list = raw.trim();
+  return list !== '' && list.length <= FONT_LIST_MAX &&
     !/[;{}<>\\\p{Cc}]/u.test(list) &&
     !/["'()[\]*]/.test(list.replace(/"[^"]*"|'[^']*'/g, ''));
-  return `.book{font-family:${DEFAULT_FONT_STACK}${legal ? `;font-family:${list}` : ''}}`;
 }
 
 /** The `:root{}` dynamic-values rule (insertion order — deterministic output). */

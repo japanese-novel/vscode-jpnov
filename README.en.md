@@ -289,7 +289,9 @@ open the controls and change the characters per line and lines per page on the s
 The values apply to the preview only. While they differ from the settings the chip
 turns yellow and gains two buttons: save writes them to your user settings or the
 open folder's workspace settings, reset restores the values from the settings. Click anywhere else and the
-chip folds back to the one-line summary.
+chip folds back to the one-line summary. The font button beside it picks the body font from a
+list (Hiragino Mincho, Yu Mincho, Noto Serif JP, BIZ UDMincho), accepts a typed CSS font-family list, or
+restores the default; the pick is written straight to your user or workspace settings.
 
 ## Building books
 
@@ -437,7 +439,9 @@ future keys stay forward-compatible. `cover` is edited from the **Cover pages**
 section, and the two lists from the **Characters** and **Keywords** sections.
 
 The header and footer take the same value annotations as a cover page (below), plus
-ページ番号, the current page; any other annotation or ruby prints as typed.
+ページ番号, the current page number; any other annotation or ruby prints as typed. The header picker
+offers **Title** and **Title and chapter number** ready-made: the latter writes the title, a
+full-width space and the page's chapter number in kanji, so the header in chapter 1 reads `作品名　一`.
 
 ### Submission cover sheets and title pages
 
@@ -628,7 +632,7 @@ are not settings: they live in the `.jpbook` files.
 | `jpnov.layout.charsPerLine` | `40` | Characters per line (15–64), preview and builds |
 | `jpnov.layout.linesPerPage` | `34` | Lines per page in builds, and the preview's page-end marks (15–64) |
 | `jpnov.layout.linePitch` | `1.5` | Line pitch as a multiple of the character size: `1.5` / `1.75` / `2` / `2.25`; preview and built pages |
-| `jpnov.layout.fontFamily` | `""` | Body font as a CSS font-family list: blank uses the default Mincho stack; preview and built HTML |
+| `jpnov.layout.fontFamily` | `""` | Body font as a CSS font-family list: blank uses the default Mincho stack; the preview's font button writes it; preview and built HTML |
 | `jpnov.layout.kinsoku` | `strict` | Line-breaking rules: `none` / `relaxed` / `strict` |
 | `jpnov.layout.preview.lineNumbers` | `true` | Line numbers in the preview, continuous through the chapter |
 | `jpnov.layout.preview.edgeLine` | `none` | Column rules in the preview: `none` / `text` / `red` |

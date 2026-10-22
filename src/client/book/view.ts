@@ -751,6 +751,15 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       }
     }
     this.detailChapters = { book: uri, rows };
+    // The walkthrough's chapter and highlight steps (`onContext:` in package.json) complete here:
+    // the detail is reposted on every edit of the open book, 「章を追加…」 included, and a book
+    // written by hand or in an earlier session counts the same.
+    if (chapters.length > 0) {
+      void vscode.commands.executeCommand('setContext', 'jpnov.hasChapters', true);
+    }
+    if (characters.length + keywords.length > 0) {
+      void vscode.commands.executeCommand('setContext', 'jpnov.hasNames', true);
+    }
     const message: DetailMessage = {
       type: 'detail',
       uri,

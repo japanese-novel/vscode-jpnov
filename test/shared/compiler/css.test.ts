@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BuildChrome, PreviewChrome } from '../../../src/shared/compiler/chrome.ts';
 import { FURNITURE_ALIGNS } from '../../../src/shared/compiler/chrome.ts';
-import { DEFAULT_FONT_STACK, FONT_LIST_MAX, reflowStylesheet, stylesheet } from '../../../src/shared/compiler/css.ts';
+import { DEFAULT_FONT_STACK, FONT_LIST_MAX, isFontList, reflowStylesheet, stylesheet } from '../../../src/shared/compiler/css.ts';
 import type { PaperOrientation, PaperSize } from '../../../src/shared/compiler/geometry.ts';
 import { EDGE_INSET, FOOTER_BAND, HEADER_BAND, LINENUM_BAND, PREVIEW_MARGIN_LINES, SIDE_PAD, fitPaper } from '../../../src/shared/compiler/geometry.ts';
 import type { LinePitch } from '../../../src/shared/config/types.ts';
@@ -278,6 +278,7 @@ test('本文 font: a plain font list follows the built-in stack in the same rule
     'x'.repeat(FONT_LIST_MAX),
   ];
   for (const fontFamily of lists) {
+    assert.equal(isFontList(fontFamily), true, fontFamily); // the picker's verdict is the sheet's
     for (const css of fontSheets(fontFamily)) {
       assert.ok(css.endsWith(fontRule(fontFamily.trim())), fontFamily);
     }
@@ -301,7 +302,8 @@ test('本文 font: any other value leaves the stack alone, never a repaired list
     'x'.repeat(FONT_LIST_MAX + 1),
   ];
   const blank = fontSheets('');
-  for (const fontFamily of illegal) {
+  for (const fontFamily of ['', ...illegal]) {
+    assert.equal(isFontList(fontFamily), false, JSON.stringify(fontFamily));
     assert.deepEqual(fontSheets(fontFamily), blank, JSON.stringify(fontFamily));
   }
 });

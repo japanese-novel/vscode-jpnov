@@ -14,7 +14,7 @@ import { posix } from 'node:path';
 
 import * as vscode from 'vscode';
 
-import { INDENT_MAX, VALUE_NAMES, valueAnnotation } from '#/shared/ast/notation.ts';
+import { INDENT_MAX, VALUE_FORMATS, VALUE_NAMES, valueAnnotation } from '#/shared/ast/notation.ts';
 import { bookTemplate, COVER_TEMPLATE, normalizeFileInput, type FileInputError } from '#/shared/book/create.ts';
 import {
   appendEntries,
@@ -701,8 +701,9 @@ async function pickDivider(current: string | undefined): Promise<MetaPick> {
   return composeDividerValue(mark, indentOf(amount));
 }
 
-/** The header the picker offers ready-made: the book's title, as the value annotation. */
+/** The headers the picker offers ready-made: the book's title, and the title with the page's chapter number in 命数 (作品名　一). */
 const HEADER_TITLE = valueAnnotation(VALUE_NAMES.title);
+const HEADER_TITLE_HEADING = `${HEADER_TITLE}　${valueAnnotation(VALUE_NAMES.heading, VALUE_FORMATS.named)}`;
 
 /**
  * One dialog for a free-text line (the header, the footer, the author): the typed line rides as
@@ -717,6 +718,7 @@ function pickLine(key: 'header' | 'footer' | 'author', current: string | undefin
         placeholder: vscode.l10n.t('Type the header, or pick one below'),
         fixed: [
           { label: vscode.l10n.t('Title'), description: HEADER_TITLE, alwaysShow: true, value: HEADER_TITLE },
+          { label: vscode.l10n.t('Title and chapter number'), description: HEADER_TITLE_HEADING, alwaysShow: true, value: HEADER_TITLE_HEADING },
           { label: vscode.l10n.t('No header'), alwaysShow: true, value: '' },
         ],
       }

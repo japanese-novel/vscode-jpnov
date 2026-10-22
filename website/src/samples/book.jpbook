@@ -1,7 +1,7 @@
 jpbook/1
 title: 作品名
 author: ペンネーム
-header: 作品名　一
+header: ［＃ここに「タイトル」の値を表示］　［＃ここに「見出し番号」の値を命数で表示］
 headerAlign: center
 footer: ［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］
 footerAlign: right

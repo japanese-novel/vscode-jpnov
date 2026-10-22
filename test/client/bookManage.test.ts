@@ -460,6 +460,11 @@ test('editMeta edits the lines of ONE key and saves the book', async () => {
       [{ range: [1, 10, 1, 10], newText: '\nheader: ［＃ここに「タイトル」の値を表示］' }],
     ],
     [
+      'the header pick "Title and chapter number" writes the title, a full-width space and the chapter number in 命数',
+      'title: 作品名\n---\n', 'header', { picked: [{ pick: 'Title and chapter number' }, 'accept'] },
+      [{ range: [1, 10, 1, 10], newText: '\nheader: ［＃ここに「タイトル」の値を表示］　［＃ここに「見出し番号」の値を命数で表示］' }],
+    ],
+    [
       'the header pick "No header" is written as `header:`',
       'title: 作品名\nheader: 作品名　一\n---\n', 'header', { picked: [{ pick: 'No header' }, 'accept'] },
       [{ range: [2, 0, 2, 13], newText: 'header:' }],
@@ -586,7 +591,12 @@ test('the line pickers list what each key offers, the default last, and say what
     assert.ok(qp, key);
     return qp.items.map((i) => [i.label, i.description]);
   };
-  assert.deepEqual(await rows('header'), [['Title', '［＃ここに「タイトル」の値を表示］'], ['No header', undefined], ['Restore default', '(hidden)']]);
+  assert.deepEqual(await rows('header'), [
+    ['Title', '［＃ここに「タイトル」の値を表示］'],
+    ['Title and chapter number', '［＃ここに「タイトル」の値を表示］　［＃ここに「見出し番号」の値を命数で表示］'],
+    ['No header', undefined],
+    ['Restore default', '(hidden)'],
+  ]);
   assert.deepEqual(await rows('footer'), [['No footer', undefined], ['Restore default', '［＃ここに「ページ番号」の値を表示］ / ［＃ここに「総ページ数」の値を表示］']]);
   assert.deepEqual(await rows('author'), [['Restore default', '(not set)']]);
 });

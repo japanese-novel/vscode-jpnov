@@ -38,6 +38,7 @@ import type {
 } from '../protocol.ts';
 
 import { bootScript, cspMeta, makeNonce } from '../nonce.ts';
+import { saveSettings } from './settingsTarget.ts';
 import { lastPathSegment } from '../paths.ts';
 import { buildPreviewSettings } from '../renderConfig.ts';
 import { LOADING_CSS, PREVIEW_JS, WIDGET_CSS } from './webviewBundle.generated.ts';
@@ -131,6 +132,7 @@ export class Preview {
       linesPerPage: vscode.l10n.t('Lines per page'),
       reset: vscode.l10n.t('Reset Preview Layout to Settings'),
       save: vscode.l10n.t('Save Preview Layout to Settings…'),
+      font: vscode.l10n.t('Choose Body Font…'),
       show: vscode.l10n.t('Show Preview Layout Controls'),
     };
     this.followed = this.previewableEditor(vscode.window.activeTextEditor);
@@ -280,31 +282,7 @@ export class Preview {
       return;
     }
     this.scheduledFocus = undefined; // a change committed just before the click: rendered, but under the pick
-    const config = vscode.workspace.getConfiguration();
-    const shadowed = entries.some(([key]) => {
-      const scopes = config.inspect<number>(`jpnov.layout.${key}`);
-      return scopes?.workspaceValue !== undefined || scopes?.workspaceFolderValue !== undefined;
-    });
-    const items: (vscode.QuickPickItem & { readonly target: vscode.ConfigurationTarget })[] = [{
-      label: vscode.l10n.t('User Settings'),
-      description: vscode.l10n.t('Applies to every folder you open'),
-      ...(shadowed ? { detail: vscode.l10n.t('A workspace setting already exists and takes precedence') } : {}),
-      target: vscode.ConfigurationTarget.Global,
-    }];
-    if ((vscode.workspace.workspaceFolders ?? []).length > 0) {
-      items.push({
-        label: vscode.l10n.t('Workspace Settings'),
-        description: vscode.l10n.t('Applies to the open folder only'),
-        target: vscode.ConfigurationTarget.Workspace,
-      });
-    }
-    const pick = await vscode.window.showQuickPick(items, { placeHolder: vscode.l10n.t('Select where to save') });
-    if (pick === undefined) {
-      return;
-    }
-    for (const [key, { value }] of entries) {
-      await config.update(`jpnov.layout.${key}`, value, pick.target);
-    }
+    await saveSettings(entries.map(([key, { value }]) => [`jpnov.layout.${key}`, value]));
   }
 
   dispose(): void {
@@ -407,6 +385,8 @@ export class Preview {
     } else if (message.type === 'save') {
       // Through the command, so its popup boundary covers the webview path too.
       void vscode.commands.executeCommand('jpnov.preview.saveLayout');
+    } else if (message.type === 'font') {
+      void vscode.commands.executeCommand('jpnov.preview.pickFont');
     }
   }
 

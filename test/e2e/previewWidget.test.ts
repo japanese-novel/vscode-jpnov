@@ -26,6 +26,7 @@ const LABELS = {
   hint: 'HINT',
   reset: 'RESET',
   save: 'SAVE',
+  font: 'FONT',
   show: 'SHOW',
 } as const;
 
@@ -146,7 +147,7 @@ test('folded by default, the widget opens on its summary, clamps and de-duplicat
   assert.deepEqual(report.names, ['CPL', 'LPP']);
   assert.deepEqual(report.bounds, ['15', '64']);
   assert.deepEqual(report.fields, ['字', '行']);
-  assert.deepEqual(report.buttons, [], 'no reset/save buttons while the values are the settings');
+  assert.deepEqual(report.buttons, ['FONT'], 'no reset/save buttons while the values are the settings; the font button is always there');
   assert.equal(report.summaryName, 'SHOW');
   assert.equal(report.summaryText, '34 字 × 15 行', 'the summary follows the committed values');
   assert.deepEqual(report.steps, [
@@ -179,20 +180,22 @@ test('a render caused by the widget opens it on the named input, and the buttons
   step('refocused', () => { window.dispatchEvent(new Event('focus')); });
   step('reset', () => { button('RESET').click(); });
   step('save', () => { button('SAVE').click(); });
+  step('font', () => { button('FONT').click(); });
   step('focus-leaves', () => { leave(cpl, null); });
   `);
   const report = JSON.parse(await measurePage(browser, page(init), driver, 'preview-widget-adjusted', cleanups)) as Report;
 
   assert.equal(report.adjusted, true);
-  assert.deepEqual(report.buttons, ['RESET', 'SAVE']);
+  assert.deepEqual(report.buttons, ['RESET', 'SAVE', 'FONT'], 'the font button keeps the right end');
   assert.equal(report.summaryText, '42 字 × 34 行');
-  const [loaded, refocused, reset, save, left] = report.steps;
+  const [loaded, refocused, reset, save, font, left] = report.steps;
   assert.deepEqual(loaded, { name: 'loaded', posted: [], values: ['42', '34'], active: loaded?.active ?? null, ...OPEN }, 'opens at once');
   // Focus lands on the input either at once (the document already had focus) or when the
   // workbench hands focus back after the swap (the window `focus` event).
   assert.equal(refocused?.active, 'cpl');
   assert.deepEqual(reset?.posted, [{ type: 'reset' }]);
   assert.deepEqual(save?.posted, [{ type: 'save' }]);
+  assert.deepEqual(font?.posted, [{ type: 'font' }]);
   assert.deepEqual(left, { name: 'focus-leaves', posted: [], values: ['42', '34'], active: 'cpl', ...FOLDED }, 'folds to the framed summary');
 });
 
