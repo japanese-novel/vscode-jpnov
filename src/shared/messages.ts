@@ -1,220 +1,130 @@
 /**
- * The English message templates for every {@link MsgCode}, single-sourced and vscode-free.
- *
- * The forked server (no `vscode.l10n`) uses {@link renderEnglish} to fill the English
- * `Diagnostic.message` FALLBACK and to give thrown {@link LocalizedError}s a readable message.
- * The CLIENT does NOT use this file — it localizes via `vscode.l10n.t()` in
- * `src/client/messages.ts`, whose English literals MUST match these byte-for-byte (a unit test
- * asserts parity across every code). Keep the two in lockstep when adding a code.
+ * The English message templates for every {@link MsgCode}, single-sourced and vscode-free. A
+ * template is the l10n bundle key (`vscode.l10n.t` looks the English string up): the client passes
+ * it to `vscode.l10n.t` with the args, the server fills it with {@link renderEnglish}.
  *
  * Imports only the wire types; never `vscode` (this stays a dependency-free leaf the server can use).
  */
 import type { LocalizableMessage, MsgCode } from './protocol.ts';
 
-/** Render a code + positional args to its English string. */
+/** The English template of each code; `{n}` is the n-th positional argument. */
+export const TEMPLATES: Readonly<Record<MsgCode, string>> = {
+  'book.entryFileNotFound': 'cannot read "{0}": file not found',
+  'book.entryReadFailed': 'cannot read "{0}": {1}',
+  'book.entryNotText': 'cannot read "{0}": not a text file',
+  'book.entryNoReply': 'cannot read "{0}": the editor did not answer',
+  'build.outPathCollision': 'output path "{0}" is claimed by multiple book files: {1}',
+  'build.failed': 'build failed: {0}',
+  'jpbook.backslashSeparator': 'use "/" as the path separator, not "\\": {0}',
+  'jpbook.notJpnov': 'book entries must be .jpnov files: {0}',
+  'jpbook.duplicateEntry': 'duplicate entry "{0}" (already listed above)',
+  'jpbook.entryIsDirectory': '"{0}" is a directory, not a .jpnov file',
+  'jpbook.fileNotFound': 'file not found: {0}',
+  'jpbook.metaNotKeyValue': 'metadata lines must be "key: value": {0}',
+  'jpbook.metaUnknownKey': 'unknown metadata key "{0}" (known keys: {1})',
+  'jpbook.metaDuplicateKey': 'duplicate metadata key "{0}" (the first value wins)',
+  'jpbook.dividerNotEncodable': '"{0}" can become 〓 in the text output; use another divider mark',
+  'jpbook.metaBadEnum': 'invalid value "{1}" for {0} (allowed: {2})',
+  'jpbook.metaUnterminated': 'unterminated metadata block (missing a closing ---)',
+  'jpbook.headerMissing': 'the first line must be "{0}"',
+  'jpbook.versionUnsupported': 'unsupported .jpbook version "{0}" (this extension reads {1})',
+  'jpbook.metaEmptyValue': '{0} needs a value',
+  'jpbook.itemWithoutKey': 'a "- " item needs a "cover:", "characters:" or "keywords:" line above it; any other key ends the list: {0}',
+  'jpbook.nameEmpty': 'an empty item (nothing to recognise); it is ignored',
+  'jpbook.nameNotPlain': 'a name is text and ruby only, no annotation and no 「」『』; this item is ignored: {0}',
+  'jpbook.nameConflict': '"{0}" is also listed in {1}, written differently (ruby or split)',
+  'syntax.unclosedAnnotation': 'unterminated ［＃ annotation (missing ］)',
+  'syntax.unterminatedBlock': 'unterminated block annotation (missing ［＃ここで…終わり］)',
+  'syntax.danglingBlockEnd': 'block-end annotation without a matching start',
+  'syntax.unterminatedSpan': 'unterminated start/end annotation (missing ［＃…終わり］)',
+  'syntax.danglingSpanEnd': 'end annotation without a matching start',
+  'syntax.spanAlreadyOpen': 'start annotation while {0} is already in effect',
+  'syntax.spanFormMismatch': 'end annotation does not match the form of its start (write {0})',
+  'syntax.postfixTargetMissing': 'annotation target "{0}" is not on this line, or is not aligned to a character boundary',
+  'syntax.unterminatedTcy': 'unterminated 縦中横 (missing ［＃縦中横終わり］ before the end of the line)',
+  'syntax.danglingTcyEnd': '［＃縦中横終わり］ without a matching ［＃縦中横］',
+  'syntax.tcyTooLong': '縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)',
+  'syntax.rubyBaseMissing': 'ruby reading 《{0}》 has no base text before it (it prints as typed; for brackets, write the 二重山括弧 外字注記)',
+  'syntax.rubyReadingEmpty': 'empty ruby reading 《》 (it prints as typed)',
+  'syntax.rubyInTcy': 'ruby reading {0} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)',
+  'syntax.indentTooLarge': '字下げ is too large (keep it to {0} or less for it to take effect)',
+  'syntax.valueFormatUnknown': 'Unknown function "{0}" (the value prints as it is)',
+  // hover (the lines of a jpnov/hover reply; see protocol.ts).
+  'hover.postfix': '{0} (forward reference)',
+  'hover.rubyLeft': 'Left ruby: {0} (forward reference)',
+  'hover.spanStart': '{0} start (start/end form)',
+  'hover.spanEnd': '{0} end (start/end form)',
+  'hover.blockStart': '{0} start (block form)',
+  'hover.blockEnd': '{0} end (block form)',
+  'hover.indent': 'Indent by {0} ({0} full-width spaces here)',
+  'hover.pageBreak': 'Page break',
+  'hover.value': "Shows the value of \"{0}\" (the build fills in the book's value)",
+  'hover.valueFormat': "Shows the value of \"{0}\" as {1} (the build fills in the book's value)",
+  'hover.gaiji': 'External character: {0}',
+  'hover.comment': 'Unrecognized annotation (not in the output)',
+  'hover.broken': 'Unclosed annotation (prints as typed)',
+  'hover.ruby': 'Ruby: {0}',
+  'hover.rubyBase': 'Base: {0}',
+  'hover.target': 'Target: {0}',
+  'hover.targetMissing': 'Target not found',
+  'hover.pairEnd': 'Ends at {0} (line {1})',
+  'hover.pairStart': 'Starts at {0} (line {1})',
+  'hover.endMissing': 'No end annotation',
+  'hover.replaced': 'Replaced by the 字下げ on line {0}',
+  'hover.startMissing': 'No start annotation',
+  'hover.holds': 'Holds: {0}',
+  // prose lint (one code per (scope, rule); see lint/catalog.ts); `common` rules run on both 地の文 and セリフ under one code.
+  'lint.common.sentenceLength': 'this sentence is too long',
+  'lint.common.maxTen': 'too many commas (、) in one sentence',
+  'lint.common.maxKanjiRun': 'too many consecutive kanji',
+  'lint.common.dash': 'use the configured dash character ({0})',
+  'lint.common.dash.parity': 'use an even number of dashes',
+  'lint.common.ellipsis': 'use the ellipsis (……) here',
+  'lint.common.ellipsis.parity': 'use an even number of ellipsis characters (…)',
+  'lint.common.exclamationSpace': 'put a full-width space after ！ or ？',
+  'lint.common.exclamationRun': 'use the half-width pair !? so it can sit in one square',
+  'lint.common.exclamationRun.long': 'too many ！ or ？ in a row',
+  'lint.common.exclamationRun.single': 'use the full-width mark for a single ！ or ？',
+  'lint.common.questionExclamationMarks': 'replace {0} with {1} so it sits in one square',
+  'lint.common.questionExclamationMarks.tcy': 'add the 縦中横 annotation so {0} sits in one square',
+  'lint.common.questionExclamationMarks.cut': 'annotation target "{0}" takes only one mark of "{1}" (the pair stays on its side)',
+  'lint.common.arabicDigits': 'too many digits in an Arabic numeral',
+  'lint.common.noTrailingSpace': 'spaces at the end of the line',
+  'lint.common.blankRun': 'more blank lines than the setting allows',
+  'lint.common.noUnmatchedPair': 'unmatched bracket or quote',
+  'lint.common.noHankakuKana': 'half-width kana; use full-width kana',
+  'lint.common.noNfd': 'decomposed (NFD) characters; use composed (NFC) form',
+  'lint.common.noZeroWidth': 'zero-width space',
+  'lint.common.noControlChar': 'invalid control character',
+  'lint.common.shiftJisSafe': '"{0}" (U+{1}) is missing from Shift JIS (often an old-form or variant character); use another',
+  'lint.common.noHalfWidthSpace': 'space between full-width characters',
+  'lint.common.noStrayLetter': 'a stray letter between Japanese characters',
+  'lint.common.minusPosition': 'a minus sign is allowed only before a number',
+  'lint.narration.indent': 'the line does not start with a full-width space (　)',
+  'lint.narration.endPeriod': 'this sentence does not end with a period (。)',
+  'lint.dialogue.closingPunct': 'a period or comma right before the closing bracket',
+  'lint.dialogue.noIndent': 'a dialogue line starts with a full-width space',
+  'lint.ruby.kana': 'ruby reading should be all hiragana or all katakana',
+  'codeAction.openSetting': 'Open the "{0}" setting',
+  'server.unexpected': 'unexpected error: {0}',
+};
+
+/** A template's `{n}` slot: one digit, as `vscode.l10n.t` reads it. */
+const SLOT = /\{(\d)\}/g;
+
+/** `template` with every `{n}` slot filled from `args`; a missing argument renders as ''. */
+export function fillSlots(template: string, args: readonly (string | number)[]): string {
+  return template.replace(SLOT, (_, i: string) => String(args[Number(i)] ?? ''));
+}
+
+/** How many slots each template has (the highest `{n}` plus one), counted once. */
+export const SLOT_COUNTS: Readonly<Record<MsgCode, number>> = Object.fromEntries(
+  Object.entries(TEMPLATES).map(([code, template]) => [code, Math.max(0, ...[...template.matchAll(SLOT)].map((m) => Number(m[1]) + 1))]),
+) as Record<MsgCode, number>;
+
+/** Render a code + positional args to its English string; a missing argument renders as ''. */
 export function renderEnglish(code: MsgCode, args: readonly (string | number)[] = []): string {
-  const a = (i: number): string => String(args[i] ?? '');
-  switch (code) {
-    case 'book.entryFileNotFound':
-      return `cannot read "${a(0)}": file not found`;
-    case 'book.entryReadFailed':
-      return `cannot read "${a(0)}": ${a(1)}`;
-    case 'book.entryNotText':
-      return `cannot read "${a(0)}": not a text file`;
-    case 'book.entryNoReply':
-      return `cannot read "${a(0)}": the editor did not answer`;
-    case 'build.outPathCollision':
-      return `output path "${a(0)}" is claimed by multiple book files: ${a(1)}`;
-    case 'build.failed':
-      return `build failed: ${a(0)}`;
-    case 'jpbook.backslashSeparator':
-      return `use "/" as the path separator, not "\\": ${a(0)}`;
-    case 'jpbook.notJpnov':
-      return `book entries must be .jpnov files: ${a(0)}`;
-    case 'jpbook.duplicateEntry':
-      return `duplicate entry "${a(0)}" (already listed above)`;
-    case 'jpbook.entryIsDirectory':
-      return `"${a(0)}" is a directory, not a .jpnov file`;
-    case 'jpbook.fileNotFound':
-      return `file not found: ${a(0)}`;
-    case 'jpbook.metaNotKeyValue':
-      return `metadata lines must be "key: value": ${a(0)}`;
-    case 'jpbook.metaUnknownKey':
-      return `unknown metadata key "${a(0)}" (known keys: ${a(1)})`;
-    case 'jpbook.metaDuplicateKey':
-      return `duplicate metadata key "${a(0)}" (the first value wins)`;
-    case 'jpbook.dividerNotEncodable':
-      return `"${a(0)}" can become 〓 in the text output; use another divider mark`;
-    case 'jpbook.metaBadEnum':
-      return `invalid value "${a(1)}" for ${a(0)} (allowed: ${a(2)})`;
-    case 'jpbook.metaUnterminated':
-      return 'unterminated metadata block (missing a closing ---)';
-    case 'jpbook.headerMissing':
-      return `the first line must be "${a(0)}"`;
-    case 'jpbook.versionUnsupported':
-      return `unsupported .jpbook version "${a(0)}" (this extension reads ${a(1)})`;
-    case 'jpbook.metaEmptyValue':
-      return `${a(0)} needs a value`;
-    case 'jpbook.itemWithoutKey':
-      return `a "- " item needs a "cover:", "characters:" or "keywords:" line above it; any other key ends the list: ${a(0)}`;
-    case 'jpbook.nameEmpty':
-      return 'an empty item (nothing to recognise); it is ignored';
-    case 'jpbook.nameNotPlain':
-      return `a name is text and ruby only, no annotation and no 「」『』; this item is ignored: ${a(0)}`;
-    case 'jpbook.nameConflict':
-      return `"${a(0)}" is also listed in ${a(1)}, written differently (ruby or split)`;
-    case 'syntax.unclosedAnnotation':
-      return 'unterminated ［＃ annotation (missing ］)';
-    case 'syntax.unterminatedBlock':
-      return 'unterminated block annotation (missing ［＃ここで…終わり］)';
-    case 'syntax.danglingBlockEnd':
-      return 'block-end annotation without a matching start';
-    case 'syntax.unterminatedSpan':
-      return 'unterminated start/end annotation (missing ［＃…終わり］)';
-    case 'syntax.danglingSpanEnd':
-      return 'end annotation without a matching start';
-    case 'syntax.spanAlreadyOpen':
-      return `start annotation while ${a(0)} is already in effect`;
-    case 'syntax.spanFormMismatch':
-      return `end annotation does not match the form of its start (write ${a(0)})`;
-    case 'syntax.postfixTargetMissing':
-      return `annotation target "${a(0)}" is not on this line, or is not aligned to a character boundary`;
-    case 'syntax.unterminatedTcy':
-      return 'unterminated 縦中横 (missing ［＃縦中横終わり］ before the end of the line)';
-    case 'syntax.danglingTcyEnd':
-      return '［＃縦中横終わり］ without a matching ［＃縦中横］';
-    case 'syntax.tcyTooLong':
-      return '縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)';
-    case 'syntax.rubyBaseMissing':
-      return `ruby reading 《${a(0)}》 has no base text before it (it prints as typed; for brackets, write the 二重山括弧 外字注記)`;
-    case 'syntax.rubyReadingEmpty':
-      return 'empty ruby reading 《》 (it prints as typed)';
-    case 'syntax.rubyInTcy':
-      return `ruby reading ${a(0)} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)`;
-    case 'syntax.indentTooLarge':
-      return `字下げ is too large (keep it to ${a(0)} or less for it to take effect)`;
-    case 'syntax.valueFormatUnknown':
-      return `Unknown function "${a(0)}" (the value prints as it is)`;
-    // hover (the lines of a jpnov/hover reply; see protocol.ts).
-    case 'hover.postfix':
-      return `${a(0)} (forward reference)`;
-    case 'hover.rubyLeft':
-      return `Left ruby: ${a(0)} (forward reference)`;
-    case 'hover.spanStart':
-      return `${a(0)} start (start/end form)`;
-    case 'hover.spanEnd':
-      return `${a(0)} end (start/end form)`;
-    case 'hover.blockStart':
-      return `${a(0)} start (block form)`;
-    case 'hover.blockEnd':
-      return `${a(0)} end (block form)`;
-    case 'hover.indent':
-      return `Indent by ${a(0)} (${a(0)} full-width spaces here)`;
-    case 'hover.pageBreak':
-      return 'Page break';
-    case 'hover.value':
-      return `Shows the value of "${a(0)}" (the build fills in the book's value)`;
-    case 'hover.valueFormat':
-      return `Shows the value of "${a(0)}" as ${a(1)} (the build fills in the book's value)`;
-    case 'hover.gaiji':
-      return `External character: ${a(0)}`;
-    case 'hover.comment':
-      return 'Unrecognized annotation (not in the output)';
-    case 'hover.broken':
-      return 'Unclosed annotation (prints as typed)';
-    case 'hover.ruby':
-      return `Ruby: ${a(0)}`;
-    case 'hover.rubyBase':
-      return `Base: ${a(0)}`;
-    case 'hover.target':
-      return `Target: ${a(0)}`;
-    case 'hover.targetMissing':
-      return 'Target not found';
-    case 'hover.pairEnd':
-      return `Ends at ${a(0)} (line ${a(1)})`;
-    case 'hover.pairStart':
-      return `Starts at ${a(0)} (line ${a(1)})`;
-    case 'hover.endMissing':
-      return 'No end annotation';
-    case 'hover.replaced':
-      return `Replaced by the 字下げ on line ${a(0)}`;
-    case 'hover.startMissing':
-      return 'No start annotation';
-    case 'hover.holds':
-      return `Holds: ${a(0)}`;
-    // prose lint (one code per (scope, rule); see lint/catalog.ts).
-    // `common` rules run on both 地の文 + セリフ under one code; JA lives in bundle.l10n.ja.json.
-    case 'lint.common.sentenceLength':
-      return 'this sentence is too long';
-    case 'lint.common.maxTen':
-      return 'too many commas (、) in one sentence';
-    case 'lint.common.maxKanjiRun':
-      return 'too many consecutive kanji';
-    case 'lint.common.dash':
-      return `use the configured dash character (${a(0)})`;
-    case 'lint.common.dash.parity':
-      return 'use an even number of dashes';
-    case 'lint.common.ellipsis':
-      return 'use the ellipsis (……) here';
-    case 'lint.common.ellipsis.parity':
-      return 'use an even number of ellipsis characters (…)';
-    case 'lint.common.exclamationSpace':
-      return 'put a full-width space after ！ or ？';
-    case 'lint.common.exclamationRun':
-      return 'use the half-width pair !? so it can sit in one square';
-    case 'lint.common.exclamationRun.long':
-      return 'too many ！ or ？ in a row';
-    case 'lint.common.exclamationRun.single':
-      return 'use the full-width mark for a single ！ or ？';
-    case 'lint.common.questionExclamationMarks':
-      return `replace ${a(0)} with ${a(1)} so it sits in one square`;
-    case 'lint.common.questionExclamationMarks.tcy':
-      return `add the 縦中横 annotation so ${a(0)} sits in one square`;
-    case 'lint.common.questionExclamationMarks.cut':
-      return `annotation target "${a(0)}" takes only one mark of "${a(1)}" (the pair stays on its side)`;
-    case 'lint.common.arabicDigits':
-      return 'too many digits in an Arabic numeral';
-    case 'lint.common.noTrailingSpace':
-      return 'spaces at the end of the line';
-    case 'lint.common.blankRun':
-      return 'more blank lines than the setting allows';
-    case 'lint.common.noUnmatchedPair':
-      return 'unmatched bracket or quote';
-    case 'lint.common.noHankakuKana':
-      return 'half-width kana; use full-width kana';
-    case 'lint.common.noNfd':
-      return 'decomposed (NFD) characters; use composed (NFC) form';
-    case 'lint.common.noZeroWidth':
-      return 'zero-width space';
-    case 'lint.common.noControlChar':
-      return 'invalid control character';
-    case 'lint.common.shiftJisSafe':
-      return `"${a(0)}" (U+${a(1)}) is missing from Shift JIS (often an old-form or variant character); use another`;
-    case 'lint.common.noHalfWidthSpace':
-      return 'space between full-width characters';
-    case 'lint.common.noStrayLetter':
-      return 'a stray letter between Japanese characters';
-    case 'lint.common.minusPosition':
-      return 'a minus sign is allowed only before a number';
-    case 'lint.narration.indent':
-      return 'the line does not start with a full-width space (　)';
-    case 'lint.narration.endPeriod':
-      return 'this sentence does not end with a period (。)';
-    case 'lint.dialogue.closingPunct':
-      return 'a period or comma right before the closing bracket';
-    case 'lint.dialogue.noIndent':
-      return 'a dialogue line starts with a full-width space';
-    case 'lint.ruby.kana':
-      return 'ruby reading should be all hiragana or all katakana';
-    case 'codeAction.openSetting':
-      return `Open the "${a(0)}" setting`;
-    case 'server.unexpected':
-      return `unexpected error: ${a(0)}`;
-    default: {
-      const exhaustive: never = code;
-      throw new Error(`renderEnglish: unhandled code ${String(exhaustive)}`);
-    }
-  }
+  return fillSlots(TEMPLATES[code], args);
 }
 
 /**

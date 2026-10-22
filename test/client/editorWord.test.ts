@@ -19,11 +19,10 @@ import {
   wordLeft,
   wordRight,
   type Lines,
-  type Span,
   type WordSegment,
 } from '../../src/client/editor/word.ts';
 import { comparePositions } from '../../src/shared/utils/position.ts';
-import type { Position } from '../../src/shared/utils/position.ts';
+import type { Position, Range } from '../../src/shared/utils/position.ts';
 import { D } from '../shared/_kana.ts';
 import { REPO_ROOT } from '../shared/repo.ts';
 
@@ -199,7 +198,7 @@ function at(line: number, character: number): Position {
   return { line, character };
 }
 
-function span(start: Position, end: Position): Span {
+function span(start: Position, end: Position): Range {
   return { start, end };
 }
 

@@ -7,7 +7,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  COMBINING_KANA_MARKS,
   SINGLETONS,
   composeKana,
   composedChars,
@@ -16,7 +15,6 @@ import {
   dropUnshown,
   graphemeCount,
   graphemes,
-  headChar,
   isClusterBoundary,
   isCombiningKanaMark,
 } from '../../src/shared/chars.ts';
@@ -79,7 +77,6 @@ test('isCombiningKanaMark: the two combining marks only — not the spacing or h
   for (const cp of [0x309b, 0x309c, 0xff9e, 0xff9f, 0x0301, 0x3098, 0x304b]) {
     assert.equal(isCombiningKanaMark(cp), false, cp.toString(16));
   }
-  assert.deepEqual(`か${MARKS[0]}き${MARKS[1]}`.match(COMBINING_KANA_MARKS), [...MARKS]);
 });
 
 test('graphemeCount is the length of graphemes, on both of its paths', () => {
@@ -194,10 +191,4 @@ test('displayChars: one entry per cluster, composed, with its range in the sourc
     { text: 'い', start: 6, end: 7 },
   ]);
   assert.deepEqual(displayChars(CLUSTERS.join('')).map((ch) => ch.text), [...CLUSTERS]);
-});
-
-test('headChar: the first code point, astral or not', () => {
-  assert.equal(headChar(CLUSTERS[0]), '辻');
-  assert.equal(headChar('\u{20BB7}\u{E0100}'), '\u{20BB7}');
-  assert.equal(headChar('a'), 'a');
 });

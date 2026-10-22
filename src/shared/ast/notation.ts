@@ -14,6 +14,9 @@ export const RUBY_CLOSE = '》';
 export const BASE_MARK = '｜';
 export const CORNER_OPEN = '「';
 export const CORNER_CLOSE = '」';
+/** The markers, as the body of a character class: text holding one writes markup (a 「…」 target or a name cannot hold one). */
+export const MARKUP_CHARS = `${ANNOTATION_OPEN.charAt(0)}${ANNOTATION_CLOSE}${RUBY_OPEN}${RUBY_CLOSE}${BASE_MARK}${CORNER_OPEN}${CORNER_CLOSE}`;
+export const MARKUP = new RegExp(`[${MARKUP_CHARS}]`);
 
 export const PAGE_BREAK = '改ページ';
 export const SPAN_END = '終わり';
@@ -349,6 +352,17 @@ export function fullWidthDigits(n: number): string {
 /** ［＃N字下げ］, its digits full-width: the only form that is read, for N up to {@link INDENT_MAX}. */
 export function indentAnnotation(amount: number): string {
   return annotation(`${fullWidthDigits(amount)}${INDENT}`);
+}
+
+/** A chapter divider split into its mark and position: `indent` null = centred at build time. */
+export interface DividerValue {
+  readonly mark: string;
+  readonly indent: number | null;
+}
+
+/** The divider line as written: the mark behind its ［＃○字下げ］ when it has one. */
+export function composeDividerValue({ mark, indent }: DividerValue): string {
+  return indent === null ? mark : indentAnnotation(indent) + mark;
 }
 
 /**

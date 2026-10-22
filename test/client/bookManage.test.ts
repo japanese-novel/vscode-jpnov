@@ -13,12 +13,13 @@ import assert from 'node:assert/strict';
 import { fullWidthDigits, INDENT_MAX } from '../../src/shared/ast/notation.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import { buildVscode, createMockState, doc, FakeQuickPick, FileType, resetMockState, Uri } from './_vscodeMock.ts';
+import type { EntryNode, ListNode, MetaNode } from '../../src/client/book/manage.ts';
 import { HEAD } from '../shared/book/_fixture.ts';
 
 const state = createMockState();
 mock.module('vscode', { exports: buildVscode(state) });
 
-const { registerBookCommands } = await import('../../src/client/book/manage.ts');
+const { addEntries, editEntry, editMeta, moveEntry, removeEntryRow } = await import('../../src/client/book/manage.ts');
 const { COVER_TEMPLATE } = await import('../../src/shared/book/create.ts');
 
 const ROOT = 'file:///ws';
@@ -28,8 +29,8 @@ const BOOK = `${ROOT}/book.jpbook`;
 type List = 'chapters' | 'covers' | 'characters' | 'keywords';
 const ENTRY = { uri: BOOK, rootUri: ROOT, fileRel: 'book.jpbook' };
 
-function listNode(list: List = 'chapters', entry: typeof ENTRY = ENTRY): unknown {
-  return { kind: 'list', list, entry };
+function listNode(list: List = 'chapters', entry: typeof ENTRY = ENTRY): ListNode {
+  return { list, entry };
 }
 
 /** The book document with `text` below the header (fixtures and expected lines count from there), and the .jpnov sweep results of its folder. */
@@ -40,9 +41,7 @@ function seed(text: string, files: readonly string[], book = BOOK): void {
 }
 
 async function runAddFiles(list: List = 'chapters', entry: typeof ENTRY = ENTRY): Promise<void> {
-  const handler = state.registeredCommands.get('jpbook.addEntries');
-  assert.ok(handler, 'jpbook.addEntries must be registered');
-  await handler(listNode(list, entry));
+  await addEntries(listNode(list, entry));
 }
 
 /** The one picker the run opened. */
@@ -67,7 +66,6 @@ const CREATE_CHAPTER = 'Create a new chapter';
 
 beforeEach(() => {
   resetMockState(state);
-  registerBookCommands();
 });
 
 test('addFiles(chapters) offers unlisted .jpnov files sorted, split into label/description', async () => {
@@ -330,32 +328,41 @@ test('a new cover in a book with empty metadata opens the list right above the f
   assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [1, 0, 1, 0], newText: 'cover:\n  - cover.jpnov\n' }]);
 });
 
-/** Runs a row command with a node naming the row as the panel rendered it (`version` = the document's, 1). */
-async function runEntry(command: string, list: List, line: number, path: string, version = 1): Promise<void> {
-  const handler = state.registeredCommands.get(command);
-  assert.ok(handler, `${command} must be registered`);
-  await handler({ kind: 'entry', list, line, path, version, entry: ENTRY });
+/** A node naming the row as the panel rendered it (`version` = the document's, 1). */
+function entryNode(list: List, line: number, path: string, version = 1): EntryNode {
+  return { list, line, path, version, entry: ENTRY };
+}
+
+/** Runs a row verb on the seeded book; no verb toasts. */
+async function runEntry(verb: (node: EntryNode) => Promise<void>, list: List, line: number, path: string, version = 1): Promise<void> {
+  await verb(entryNode(list, line, path, version));
   assert.deepEqual(state.errorMessages, []);
 }
 
-test('removeEntry / moveEntryUp / moveEntryDown plan edits inside the named list only', async () => {
+/** Moves the row before `before` (null = the end of the list), as the up/down buttons and a drop ask. */
+const runMove = (list: List, line: number, path: string, before: { line: number; path: string } | null, version = 1): Promise<void> =>
+  runEntry((node) => moveEntry(node, before), list, line, path, version);
+
+test('removeEntryRow / moveEntry plan edits inside the named list only', async () => {
   // The mock records edits without rewriting the document, so every run sees this text.
   seed('cover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
 
-  await runEntry('jpbook.removeEntry', 'covers', 2, 'a.jpnov');
+  await runEntry(removeEntryRow, 'covers', 2, 'a.jpnov');
   assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 0, 3, 0], newText: '' }]);
   state.appliedEdits.length = 0;
 
-  await runEntry('jpbook.moveEntryDown', 'covers', 2, 'a.jpnov');
+  await runMove('covers', 2, 'a.jpnov', null); // down from the first of two: to the end
   assert.deepEqual(state.appliedEdits, [
     { uri: BOOK, range: [2, 0, 3, 0], newText: '' },
     { uri: BOOK, range: [3, 11, 3, 11], newText: '\n  - a.jpnov' },
   ]);
   state.appliedEdits.length = 0;
 
-  await runEntry('jpbook.moveEntryUp', 'covers', 2, 'a.jpnov'); // already first
-  await runEntry('jpbook.removeEntry', 'chapters', 2, 'a.jpnov'); // a cover line is not a chapter
-  await runEntry('jpbook.moveEntryDown', 'chapters', 2, 'a.jpnov');
+  await runMove('covers', 2, 'a.jpnov', { line: 2, path: 'a.jpnov' }); // before itself: a no-op
+  await runMove('covers', 2, 'a.jpnov', { line: 3, path: 'b.jpnov' }); // already there
+  await runEntry(removeEntryRow, 'chapters', 2, 'a.jpnov'); // a cover line is not a chapter
+  await runMove('chapters', 2, 'a.jpnov', null);
+  await runMove('covers', 2, 'a.jpnov', { line: 5, path: 'x.jpnov' }); // the target is not in the list
   assert.deepEqual(state.appliedEdits, []);
 });
 
@@ -363,12 +370,13 @@ test('a row the panel rendered before the text changed plans nothing (#77)', asy
   seed('cover:\n  - a.jpnov\n  - b.jpnov\n---\nx.jpnov\n', []);
 
   // The text moved past the version the row came from (an earlier verb, an unsaved edit).
-  await runEntry('jpbook.removeEntry', 'covers', 2, 'a.jpnov', 2);
-  await runEntry('jpbook.moveEntryDown', 'covers', 2, 'a.jpnov', 0);
+  await runEntry(removeEntryRow, 'covers', 2, 'a.jpnov', 2);
+  await runMove('covers', 2, 'a.jpnov', null, 0);
   // Same version, but the line no longer lists the row's path (a neighbour slid in).
-  await runEntry('jpbook.removeEntry', 'covers', 3, 'a.jpnov');
-  await runEntry('jpbook.moveEntryDown', 'covers', 2, 'b.jpnov');
-  await runEntry('jpbook.moveEntryUp', 'covers', 3, 'a.jpnov');
+  await runEntry(removeEntryRow, 'covers', 3, 'a.jpnov');
+  await runMove('covers', 2, 'b.jpnov', null);
+  await runMove('covers', 3, 'a.jpnov', { line: 2, path: 'a.jpnov' });
+  await runMove('covers', 3, 'b.jpnov', { line: 2, path: 'b.jpnov' }); // the target moved
   assert.deepEqual(state.appliedEdits, []);
 });
 
@@ -388,7 +396,7 @@ function lastValidator(): (value: string) => string | null | Promise<string | nu
   return validate;
 }
 
-/** Runs `jpbook.editMeta` on the seeded book as the panel dispatches it; returns how often the book was saved. */
+/** Runs `editMeta` on the seeded book as the panel dispatches it; returns how often the book was saved. */
 async function runEditMeta(metaKey: string): Promise<number> {
   let saves = 0;
   const book = state.textDocuments.find((d) => d.uri.toString() === BOOK);
@@ -397,9 +405,7 @@ async function runEditMeta(metaKey: string): Promise<number> {
     saves += 1;
     return Promise.resolve(true);
   };
-  const handler = state.registeredCommands.get('jpbook.editMeta');
-  assert.ok(handler, 'jpbook.editMeta must be registered');
-  await handler({ kind: 'meta', entry: ENTRY, metaKey, value: undefined });
+  await editMeta({ entry: ENTRY, metaKey: metaKey as MetaNode['metaKey'], value: undefined });
   assert.deepEqual(state.errorMessages, []);
   return saves;
 }
@@ -626,11 +632,7 @@ test('a dismissed dialog applies nothing and saves nothing', async () => {
 });
 
 test('a refused edit or a failed save is toasted (#90)', async () => {
-  const run = async (): Promise<void> => {
-    const handler = state.registeredCommands.get('jpbook.removeEntry');
-    assert.ok(handler, 'jpbook.removeEntry must be registered');
-    await handler({ kind: 'entry', list: 'chapters', entry: ENTRY, line: 2, path: 'a.jpnov', version: 1 });
-  };
+  const run = (): Promise<void> => removeEntryRow(entryNode('chapters', 2, 'a.jpnov'));
 
   let saves = 0;
   const book = (save: boolean): void => {
@@ -647,7 +649,6 @@ test('a refused edit or a failed save is toasted (#90)', async () => {
   assert.equal(saves, 0);
 
   resetMockState(state);
-  registerBookCommands();
   book(false);
   await run();
   assert.equal(state.appliedEdits.length, 1);
@@ -707,7 +708,7 @@ test('the name input refuses an empty value, a non-ruby annotation, and a base a
 test('editEntry rewrites a name in place, prefilled with the item as written; its own base is no duplicate', async () => {
   seed('characters:\n  - 山田　太郎\n  - 山田　花子\n---\na.jpnov\n', []);
   state.inputBoxQueue.push('山田《やまだ》太郎《たろう》');
-  await runEntry('jpbook.editEntry', 'characters', 2, '山田　太郎');
+  await runEntry(editEntry, 'characters', 2, '山田　太郎');
   assert.equal(state.inputBoxCalls[0]?.options?.value, '山田　太郎');
   assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 4, 2, 9], newText: '山田《やまだ》太郎《たろう》' }]);
   const validate = lastValidator();
@@ -717,18 +718,18 @@ test('editEntry rewrites a name in place, prefilled with the item as written; it
 
   // A stale row, or a row of a file list, plans nothing.
   state.inputBoxQueue.push('x');
-  await runEntry('jpbook.editEntry', 'characters', 2, '山田　太郎', 2);
+  await runEntry(editEntry, 'characters', 2, '山田　太郎', 2);
   state.inputBoxQueue.push('x');
-  await runEntry('jpbook.editEntry', 'chapters', 5, 'a.jpnov');
+  await runEntry(editEntry, 'chapters', 5, 'a.jpnov');
   assert.deepEqual(state.appliedEdits, []);
 });
 
-test('removeEntry / moveEntryDown work on a name list like any other', async () => {
+test('removeEntryRow / moveEntry work on a name list like any other', async () => {
   seed('characters:\n  - 山田　太郎\n  - 山田　花子\n---\na.jpnov\n', []);
-  await runEntry('jpbook.removeEntry', 'characters', 2, '山田　太郎');
+  await runEntry(removeEntryRow, 'characters', 2, '山田　太郎');
   assert.deepEqual(state.appliedEdits, [{ uri: BOOK, range: [2, 0, 3, 0], newText: '' }]);
   state.appliedEdits.length = 0;
-  await runEntry('jpbook.moveEntryDown', 'characters', 2, '山田　太郎');
+  await runMove('characters', 2, '山田　太郎', null);
   assert.deepEqual(state.appliedEdits, [
     { uri: BOOK, range: [2, 0, 3, 0], newText: '' },
     { uri: BOOK, range: [3, 9, 3, 9], newText: '\n  - 山田　太郎' },

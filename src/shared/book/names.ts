@@ -11,9 +11,9 @@
  * report. Pure and vscode-free; the Scanner's nodes gate what the item may hold, the AST's content
  * gives the bases and readings.
  */
-import { ANNOTATION_CLOSE, ANNOTATION_OPEN, BASE_MARK, RUBY_CLOSE, RUBY_OPEN } from '../ast/notation.ts';
+import { MARKUP_CHARS } from '../ast/notation.ts';
 import { parse } from '../ast/parse.ts';
-import { CORNERS, displayText } from '../chars.ts';
+import { CORNERS } from '../chars.ts';
 
 /** One part of a name: its base text and the reading written for it, if any. */
 export interface NamePart {
@@ -42,7 +42,7 @@ export type ReadName =
 
 /** A marker left in the text: a ｜ with no reading, an unmatched 《, a lone ［ or ］, or a dialogue
  *  corner ({@link CORNERS}). */
-const LEFTOVER_MARKUP = new RegExp(`[${ANNOTATION_OPEN.charAt(0)}${ANNOTATION_CLOSE}${RUBY_OPEN}${RUBY_CLOSE}${BASE_MARK}${CORNERS}]`);
+const LEFTOVER_MARKUP = new RegExp(`[${MARKUP_CHARS}${CORNERS}]`);
 
 /** Runs of the spaces a name splits on, half- or full-width. */
 const SPACES = /[ 　]+/;
@@ -87,9 +87,9 @@ export function nameBase(name: ListedName): string {
   return name.parts.map((p) => p.base).join('');
 }
 
-/** Text as an output shows it, NFC: how bases compare. */
+/** The AST's text (what an output shows) in NFC: how bases compare. */
 function norm(text: string): string {
-  return displayText(text).normalize('NFC');
+  return text.normalize('NFC');
 }
 
 /** What makes two items one entry: the base text alone. */
@@ -107,17 +107,17 @@ export function sameWriting(a: ListedName, b: ListedName): boolean {
 }
 
 /**
- * The surfaces a character is recognised by, as the body shows them ({@link displayText}): the
+ * The surfaces a character is recognised by, as the body shows them (the AST's content): the
  * text as written (a Western name keeps its space), the parts joined (how a full Japanese name is
  * typeset), and each part alone.
  */
 export function nameSurfaces(name: ListedName): string[] {
-  return [name.text, nameBase(name), ...name.parts.map((p) => p.base)].map(displayText);
+  return [name.text, nameBase(name), ...name.parts.map((p) => p.base)];
 }
 
 /** The surface a keyword is recognised by, as the body shows it: the text as written. */
 export function keywordSurface(name: ListedName): string {
-  return displayText(name.text);
+  return name.text;
 }
 
 /** Another book's list, labelled for the message. */

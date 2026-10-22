@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { expectedConfiguration, expectedNlsKeys } from './_configSchema.ts';
+import { RULES } from '../../../src/shared/lint/catalog.ts';
+
+import { expectedConfiguration, expectedNlsKeys, ruleDescriptionKey } from './_configSchema.ts';
 
 const ROOT = new URL('../../../', import.meta.url); // repo root, from test/shared/lint/
 
@@ -42,5 +44,18 @@ test('no orphaned configuration nls keys linger in either bundle', () => {
         assert.ok(expected.has(key), `orphaned nls key in ${bundle}: ${key}`);
       }
     }
+  }
+});
+
+test('a threshold description recommends the value the catalog suggests', () => {
+  const en = readJson('package.nls.json');
+  const ja = readJson('package.nls.ja.json');
+  for (const rule of RULES) {
+    if (rule.kind !== 'threshold') {
+      continue;
+    }
+    const key = ruleDescriptionKey(rule);
+    assert.ok(String(en[key]).includes(`Recommended: ${String(rule.suggested)}.`), `EN ${key}`);
+    assert.ok(String(ja[key]).includes(`推奨: ${String(rule.suggested)}。`), `JA ${key}`);
   }
 });

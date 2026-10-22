@@ -36,12 +36,12 @@ import {
   type ProblemsResult,
 } from '#/shared/protocol.ts';
 
-import { entryKeyOf, entryLines, metaRows, moveEntryTo, resolveEntry, type EntryRef } from '#/shared/book/edits.ts';
+import { entryKeyOf, entryLines, metaRows, type EntryRef } from '#/shared/book/edits.ts';
 import { parseJpbook, type EntryList, isEntryList, isNameList, jpbookStem, META_KEYS, type MetaKey, type ParsedLine } from '#/shared/book/jpbook.ts';
 import { encodeTxt, TXT_ENCODING_DEFAULT, TXT_ENCODINGS } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/utils/errors.ts';
 import { isRecord } from '#/shared/utils/guards.ts';
-import { compareRanges } from '#/shared/utils/position.ts';
+import { compareRanges, type Position, type Range } from '#/shared/utils/position.ts';
 import { ocfZip } from '#/shared/compiler/ocf.ts';
 
 import type {
@@ -49,7 +49,6 @@ import type {
   BuildAction,
   ChapterProblemsVM,
   CountsVM,
-  Cursor,
   DetailMessage,
   EntryVM,
   MetaVM,
@@ -57,14 +56,14 @@ import type {
   ProblemsMessage,
   ProblemVM,
   StateMessage,
-  TextRange,
 } from '../protocol.ts';
 
 import { BROWSER_NAMES, isBrowser, openInBrowser, PRINT_BROWSER_DEFAULT, PRINT_BROWSER_SETTINGS, printCandidates } from './browser.ts';
-import { applyBookEdits, metaLabel, metaValueParts } from './manage.ts';
-import type { BookNode } from './nodes.ts';
+import { addEntries, applyBookEdits, editEntry, editMeta, metaLabel, metaValueParts, moveEntry, removeEntryRow, type EntryNode } from './manage.ts';
 import { booksHtml } from './webviewHtml.ts';
+import { guarded } from '../commands.ts';
 import { renderMessage } from '../messages.ts';
+import { toVsRange } from '../ranges.ts';
 import { bookDir, compareStr, lastPathSegment, resolveUri, splitRelPath } from '../paths.ts';
 import { bookTargets, isOpenBook } from '../projectConfig.ts';
 import { readText } from './readText.ts';
@@ -123,7 +122,7 @@ interface ChapterRow {
 }
 
 /** A position a webview verb names, or null unless both coordinates are counts (what `vscode.Range` accepts). */
-function cursorOf(value: unknown): Cursor | null {
+function cursorOf(value: unknown): Position | null {
   const count = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
   return isRecord(value) && count(value.line) && count(value.character)
     ? { line: value.line, character: value.character }
@@ -131,7 +130,7 @@ function cursorOf(value: unknown): Cursor | null {
 }
 
 /** The span a webview verb names, or null unless both ends are positions. */
-function textRangeOf(value: unknown): TextRange | null {
+function textRangeOf(value: unknown): Range | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -508,17 +507,13 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.dispatchEditMeta(m.uri, m.metaKey);
         break;
       case 'addEntries':
-        await this.dispatchList('jpbook.addEntries', m.uri, m.list);
+        await this.dispatchList(m.uri, m.list);
         break;
       case 'editEntry':
-        await this.runEntryVerb(m.uri, () => this.dispatchEntry('jpbook.editEntry', m.uri, m.list, rowRefOf(m)));
+        await this.runEntryVerb(m.uri, () => this.dispatchEntry(editEntry, m.uri, m.list, rowRefOf(m)));
         break;
       case 'removeEntry':
-        await this.runEntryVerb(m.uri, () => this.dispatchEntry('jpbook.removeEntry', m.uri, m.list, rowRefOf(m)));
-        break;
-      case 'moveEntry':
-        await this.runEntryVerb(m.uri, () =>
-          this.dispatchEntry(m.dir === -1 ? 'jpbook.moveEntryUp' : 'jpbook.moveEntryDown', m.uri, m.list, rowRefOf(m)));
+        await this.runEntryVerb(m.uri, () => this.dispatchEntry(removeEntryRow, m.uri, m.list, rowRefOf(m)));
         break;
       case 'moveEntryTo':
         await this.runEntryVerb(m.uri, () => this.dispatchMoveTo(m.uri, m.list, rowRefOf(m), m.before, m.beforePath));
@@ -533,7 +528,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         const range = textRangeOf(m.range);
         if (typeof m.uri === 'string' && this.detailChapters.rows.has(m.uri) && range !== null) {
           await vscode.window.showTextDocument(vscode.Uri.parse(m.uri), {
-            selection: new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character),
+            selection: toVsRange(range),
           });
         }
         break;
@@ -554,18 +549,16 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     } catch {
       return;
     }
-    const node: BookNode = { kind: 'meta', entry, metaKey: metaKey as MetaKey, value };
-    await vscode.commands.executeCommand('jpbook.editMeta', node);
+    await guarded(() => editMeta({ entry, metaKey: metaKey as MetaKey, value }));
   }
 
-  /** Dispatch a list command with a synthesized list node. */
-  private async dispatchList(command: string, uri: unknown, list: unknown): Promise<void> {
+  /** Runs the add verb on the named list. */
+  private async dispatchList(uri: unknown, list: unknown): Promise<void> {
     const entry = this.entryOf(uri);
     if (entry === undefined || !isEntryList(list)) {
       return;
     }
-    const node: BookNode = { kind: 'list', list, entry };
-    await vscode.commands.executeCommand(command, node);
+    await guarded(() => addEntries({ list, entry }));
   }
 
   /**
@@ -576,11 +569,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
    */
   private runEntryVerb(uri: unknown, verb: () => Promise<void>): Promise<void> {
     const run = async (): Promise<void> => {
-      try {
-        await verb();
-      } catch {
-        // already reported at the command boundary
-      }
+      await verb(); // never rejects: every verb runs under guarded()
       if (typeof uri === 'string' && uri === this.openDetailUri) {
         await this.postDetail(uri);
       }
@@ -606,31 +595,24 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     void this.refresh();
   }
 
-  /** Dispatch an entry command (remove / move) with a synthesized node — `manage.ts` checks the row against the live text. */
-  private async dispatchEntry(command: string, uri: unknown, list: unknown, ref: RowRef | null): Promise<void> {
+  /** The row an entry verb names, or null unless the book, the list and the row are all named. */
+  private entryNodeOf(uri: unknown, list: unknown, ref: RowRef | null): EntryNode | null {
     const entry = this.entryOf(uri);
-    if (entry === undefined || !isEntryList(list) || ref === null) {
-      return;
-    }
-    const node: BookNode = { kind: 'entry', list, entry, ...ref };
-    await vscode.commands.executeCommand(command, node);
+    return entry === undefined || !isEntryList(list) || ref === null ? null : { list, entry, ...ref };
   }
 
-  /**
-   * Drag-and-drop reorder: move the row `ref` to sit before the row `before`/`beforePath` (both
-   * null = end of its list), through the same planner + save path as the up/down buttons. Both
-   * rows must still be where the panel showed them (version + resolveEntry); otherwise, as for a
-   * no-op move, nothing is planned — never a fallback to the end of the list.
-   */
-  private async dispatchMoveTo(
-    uri: unknown,
-    list: unknown,
-    ref: RowRef | null,
-    before: unknown,
-    beforePath: unknown,
-  ): Promise<void> {
-    const entry = this.entryOf(uri);
-    if (entry === undefined || !isEntryList(list) || ref === null) {
+  /** Runs an entry verb (edit / remove) on the named row — `manage.ts` checks the row against the live text. */
+  private async dispatchEntry(verb: (node: EntryNode) => Promise<void>, uri: unknown, list: unknown, ref: RowRef | null): Promise<void> {
+    const node = this.entryNodeOf(uri, list, ref);
+    if (node !== null) {
+      await guarded(() => verb(node));
+    }
+  }
+
+  /** Moves the row `ref` before the row `before`/`beforePath` (both null = the end of its list): the up/down buttons and a drop. */
+  private async dispatchMoveTo(uri: unknown, list: unknown, ref: RowRef | null, before: unknown, beforePath: unknown): Promise<void> {
+    const node = this.entryNodeOf(uri, list, ref);
+    if (node === null) {
       return;
     }
     let target: EntryRef | null;
@@ -641,26 +623,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     } else {
       return;
     }
-    let doc: vscode.TextDocument;
-    try {
-      doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(entry.uri));
-    } catch {
-      return;
-    }
-    if (doc.version !== ref.version) {
-      return;
-    }
-    const text = doc.getText();
-    const lines = parseJpbook(text).lines;
-    const from = resolveEntry(lines, list, ref);
-    const beforeLine = target === null ? null : resolveEntry(lines, list, target);
-    if (from === null || (target !== null && beforeLine === null)) {
-      return;
-    }
-    const edits = moveEntryTo(text, list, from, beforeLine);
-    if (edits !== null) {
-      await applyBookEdits(doc.uri, edits);
-    }
+    await guarded(() => moveEntry(node, target));
   }
 
   /** Runs an empty-state welcome-link action (create book / open guide). */
@@ -918,7 +881,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const byChapter = Map.groupBy(refs, (r) => r.chapter);
     const targets = chapters.flatMap((ch) => {
       const only = byChapter.get(ch.uri);
-      return only === undefined ? [] : [{ uri: ch.uri, only: only.map(({ range, code }) => ({ range, code })) }];
+      // The wire carries the problem alone: the chapter is the key it was grouped by.
+      return only === undefined ? [] : [{ uri: ch.uri, only: only.map(({ range, code }): ProblemRef => ({ range, code })) }];
     });
     const { fixed, touched } = targets.length === 0
       ? { fixed: 0, touched: 0 }
@@ -963,8 +927,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (result.edits.length === 0) {
       return undefined;
     }
-    const replaces = result.edits.map((e) => ({ start: e.range.start, end: e.range.end, newText: e.newText }));
-    return (await applyBookEdits(doc.uri, replaces, !doc.isDirty)) ? result.fixed : undefined;
+    return (await applyBookEdits(doc.uri, result.edits, !doc.isDirty)) ? result.fixed : undefined;
   }
 
   /**

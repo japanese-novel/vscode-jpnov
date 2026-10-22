@@ -7,7 +7,7 @@ import { readdir } from 'node:fs/promises';
 
 import type { CountsVM } from '../../src/client/protocol.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
-import { checkJpbook, composeBookChrome, entryPathOf, META_DEFAULTS, parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { checkJpbook, composeBookChrome, entryPathOf, META_DEFAULTS, parseDividerValue, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { EDGE_INSET } from '../../src/shared/compiler/geometry.ts';
 import { bookCounts, renderBook } from '../../src/shared/compiler/document.ts';
 import type { BookInput } from '../../src/shared/compiler/document.ts';
@@ -62,7 +62,7 @@ function bookFromJpbook(texts: Texts, name: string, chrome: BookSample['chrome']
     .map((entry) => ({ name: entry.value, src: texts.sample(entry.value) }));
   const input: BookInput = {
     files,
-    divider: verdict.meta.divider,
+    divider: parseDividerValue(verdict.meta.divider),
     title: verdict.meta.title,
     author: verdict.meta.author,
     ...(covers.length > 0 ? { cover: { files: covers } } : {}),

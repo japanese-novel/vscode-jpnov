@@ -178,19 +178,6 @@ const host = {
         books.forEach((b) => { b.checked = false; });
         this.state();
         break;
-      case 'moveEntry': {
-        const d = this.details.get(m.uri);
-        const list = d[m.list];
-        const i = m.line - 3;
-        const fresh = m.version === d.version && list[i] === m.path;
-        if (fresh) {
-          const [e] = list.splice(i, 1);
-          list.splice(i + m.dir, 0, e);
-          d.version += 1;
-        }
-        this.answer(fresh);
-        break;
-      }
       case 'removeEntry': {
         const d = this.details.get(m.uri);
         const list = d[m.list];
@@ -511,9 +498,9 @@ const EXPECT: Readonly<Record<string, Expected>> = {
   L10: { landed: null },
   D10a: { landed: 'back', posted: ['openDetail'] },
   D10b: { landed: book(B), posted: ['closeDetail'] },
-  D1a: { landed: entry('chapters', 'up', C2), chapters: [C1, C3, C2], posted: ['moveEntry'] },
-  D1b: { landed: entry('chapters', 'up', C2), chapters: [C1, C2, C3], posted: ['moveEntry'] },
-  D2: { landed: entry('chapters', 'down', C2), chapters: [C2, C1, C3], posted: ['moveEntry'] },
+  D1a: { landed: entry('chapters', 'up', C2), chapters: [C1, C3, C2], posted: ['moveEntryTo'] },
+  D1b: { landed: entry('chapters', 'up', C2), chapters: [C1, C2, C3], posted: ['moveEntryTo'] },
+  D2: { landed: entry('chapters', 'down', C2), chapters: [C2, C1, C3], posted: ['moveEntryTo'] },
   D3: { landed: entry('chapters', 'open', C3), chapters: [C1, C3], posted: ['removeEntry'] },
   D4: { landed: entry('chapters', 'open', C2), chapters: [C1, C2], posted: ['removeEntry'] },
   D5a: { landed: entry('chapters', 'open', C1), chapters: [C1] },
@@ -548,7 +535,7 @@ const EXPECT: Readonly<Record<string, Expected>> = {
   K5f: { landed: ch('open', C1), posted: [] },
   // Alt+arrows move the row through its own buttons (focus follows, as after a click); at the top
   // the disabled "up" makes Alt+ArrowUp a no-op.
-  K6a: { landed: ch('open', C2), chapters: [C1, C3, C2], posted: ['moveEntry'], pending: 0 },
+  K6a: { landed: ch('open', C2), chapters: [C1, C3, C2], posted: ['moveEntryTo'], pending: 0 },
   K6b: { landed: ch('open', C1), chapters: [C1, C3, C2], posted: [], pending: 0 },
   K7a: { landed: ch('open', C3), chapters: [C1, C3], posted: ['removeEntry'] },
   K7b: { landed: ch('open', C1), chapters: [C1], posted: ['removeEntry'] },

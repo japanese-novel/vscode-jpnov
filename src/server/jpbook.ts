@@ -22,6 +22,7 @@ import type { CompletionItem, Diagnostic, DocumentLink, Range } from 'vscode-lan
 
 import { scan } from '#/shared/ast/scan.ts';
 import {
+  charRange,
   completeEntryLine,
   completeMetaLine,
   COVER_KEY,
@@ -32,10 +33,10 @@ import {
   NAME_LISTS,
   writtenKeysOf,
   type JpbookCompletion,
-  type JpbookRange,
   type ParsedJpbook,
   type ParsedLine,
 } from '#/shared/book/jpbook.ts';
+import { afterSpace } from '#/shared/utils/strings.ts';
 import { nameConflicts } from '#/shared/book/names.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
 
@@ -43,14 +44,6 @@ import { diagnostic } from './diagnostics.ts';
 import { isFileScheme, resolveUri } from './fsUri.ts';
 import type { BookNames } from './highlight/vocabulary.ts';
 import { INDENT_TOO_LARGE } from './syntax.ts';
-
-/** A column span on `line` as an LSP {@link Range}. */
-function charRange(line: number, span: JpbookRange): Range {
-  return {
-    start: { line, character: span.startChar },
-    end: { line, character: span.endChar },
-  };
-}
 
 /** The on-line span of a parsed line as an LSP {@link Range}. */
 function lineRange(pl: ParsedLine): Range {
@@ -118,8 +111,9 @@ export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook, other
   const canCheckFs = isFileScheme(dirUri);
   const diagnostics: Diagnostic[] = [];
 
-  for (const metaError of parsed.metaErrors) {
-    diagnostics.push(diagnostic(charRange(metaError.line, metaError.range), metaError.error, DiagnosticSeverity.Error));
+  if (parsed.metaError !== null) {
+    const { line, range, error } = parsed.metaError;
+    diagnostics.push(diagnostic(charRange(line, range), error, DiagnosticSeverity.Error));
   }
 
   for (const pl of parsed.lines) {
@@ -213,10 +207,7 @@ function toCompletionItem(c: JpbookCompletion, line: number): CompletionItem {
     label: c.label,
     kind,
     textEdit: {
-      range: {
-        start: { line, character: c.replace.startChar },
-        end: { line, character: c.replace.endChar },
-      },
+      range: charRange(line, c.replace),
       newText: c.insertText,
     },
   };
@@ -228,7 +219,7 @@ function toCompletionItem(c: JpbookCompletion, line: number): CompletionItem {
 
 /** Path start column on a cover line (a `- ` item or `cover: `), from the cursor prefix; null off-shape. */
 function coverPathStart(prefix: string): number | null {
-  const indent = prefix.length - prefix.trimStart().length;
+  const indent = afterSpace(prefix);
   const shape = itemShape(prefix.slice(indent), COVER_KEY);
   return shape === null ? null : indent + shape.offset;
 }
@@ -277,7 +268,7 @@ export async function completeJpbook(
       }
     }
 
-    const pathSoFar = prefix.slice(pathStart).replace(/^\s+/, '');
+    const pathSoFar = prefix.slice(afterSpace(prefix, pathStart));
     const lastSlash = pathSoFar.lastIndexOf('/');
     // No directory part lists the book's own directory; `..` its parent.
     const listDirUri = resolveUri(dirUri, pathSoFar.slice(0, lastSlash + 1));

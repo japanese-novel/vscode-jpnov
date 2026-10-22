@@ -6,7 +6,7 @@
  */
 import { isCjkIdeograph, isHiragana, isKatakana } from '#/shared/chars.ts';
 import { comparePositions } from '#/shared/utils/position.ts';
-import type { Position } from '#/shared/utils/position.ts';
+import type { Position, Range } from '#/shared/utils/position.ts';
 
 export interface WordCommand {
   /** `jpnov.` + {@link builtin}. */
@@ -158,11 +158,6 @@ export function stopAfter(text: string, offset: number): number {
   return text.length;
 }
 
-export interface Span {
-  readonly start: Position;
-  readonly end: Position;
-}
-
 /** The part of `vscode.TextDocument` the commands read. */
 export interface Lines {
   readonly lineCount: number;
@@ -200,7 +195,7 @@ export function wordRight(doc: Lines, at: Position): Position {
 }
 
 /** What ⌥⌫ deletes from a caret: back to where ⌥← goes, but only the line break at a line's start. */
-export function deleteLeft(doc: Lines, at: Position): Span | null {
+export function deleteLeft(doc: Lines, at: Position): Range | null {
   if (at.character > 0) {
     return { start: wordLeft(doc, at), end: at };
   }
@@ -211,7 +206,7 @@ export function deleteLeft(doc: Lines, at: Position): Span | null {
 }
 
 /** What ⌥⌦ deletes from a caret: up to where ⌥→ goes, but only the line break at a line's end. */
-export function deleteRight(doc: Lines, at: Position): Span | null {
+export function deleteRight(doc: Lines, at: Position): Range | null {
   if (at.character < doc.lineAt(at.line).text.length) {
     return { start: at, end: wordRight(doc, at) };
   }
@@ -222,8 +217,8 @@ export function deleteRight(doc: Lines, at: Position): Span | null {
 }
 
 /** `spans` in order, with overlapping or touching ones merged: an edit rejects overlapping ranges. */
-export function mergeSpans(spans: readonly Span[]): Span[] {
-  const out: Span[] = [];
+export function mergeSpans(spans: readonly Range[]): Range[] {
+  const out: Range[] = [];
   for (const span of spans.toSorted((a, b) => comparePositions(a.start, b.start))) {
     const prev = out.at(-1);
     if (prev !== undefined && comparePositions(span.start, prev.end) <= 0) {

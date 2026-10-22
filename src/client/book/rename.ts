@@ -13,20 +13,13 @@
  */
 import { posix } from 'node:path';
 
-import { entryPathOf, parseJpbook } from '#/shared/book/jpbook.ts';
+import { charRange, entryPathOf, parseJpbook } from '#/shared/book/jpbook.ts';
+import type { TextReplace } from '#/shared/utils/position.ts';
 
 /** One rename from the event, as normalized absolute paths. */
 export interface FileRename {
   readonly oldPath: string;
   readonly newPath: string;
-}
-
-/** A single-line replacement (LSP-style 0-based line, [startChar, endChar) span). */
-export interface BookEdit {
-  readonly line: number;
-  readonly startChar: number;
-  readonly endChar: number;
-  readonly newText: string;
 }
 
 /** Backslashes → `/` (Windows `fsPath`); POSIX paths pass through unchanged. */
@@ -55,11 +48,11 @@ function movedTo(abs: string, renames: readonly FileRename[]): string | null {
  * error/warning lines are never touched. Each edit replaces exactly the path span — a cover
  * line's `- `/`cover: ` marker and any surrounding whitespace survive.
  */
-export function planBookEdits(bookPath: string, text: string, renames: readonly FileRename[]): BookEdit[] {
+export function planBookEdits(bookPath: string, text: string, renames: readonly FileRename[]): TextReplace[] {
   const inverted = renames.map((r) => ({ oldPath: r.newPath, newPath: r.oldPath }));
   const oldDir = posix.dirname(movedTo(bookPath, inverted) ?? bookPath);
   const newDir = posix.dirname(bookPath);
-  const edits: BookEdit[] = [];
+  const edits: TextReplace[] = [];
 
   for (const pl of parseJpbook(text).lines) {
     const entry = entryPathOf(pl);
@@ -70,7 +63,7 @@ export function planBookEdits(bookPath: string, text: string, renames: readonly 
     const newAbs = movedTo(oldAbs, renames) ?? oldAbs;
     if (posix.resolve(newDir, entry.value) !== newAbs) {
       const rel = posix.relative(newDir, newAbs);
-      edits.push({ line: pl.line, startChar: entry.range.startChar, endChar: entry.range.endChar, newText: rel });
+      edits.push({ range: charRange(pl.line, entry.range), newText: rel });
     }
   }
   return edits;

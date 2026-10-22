@@ -10,6 +10,7 @@
  * another list.
  */
 import {
+  charRange,
   FENCE,
   KNOWN_KEYS,
   identityOf,
@@ -27,14 +28,7 @@ import {
   type ParsedJpbook,
   type ParsedLine,
 } from './jpbook.ts';
-import type { Position } from '../utils/position.ts';
-
-/** One replacement (LSP coordinates; `end` exclusive; insertion = zero-width range). */
-export interface TextReplace {
-  readonly start: Position;
-  readonly end: Position;
-  readonly newText: string;
-}
+import type { Position, TextReplace } from '../utils/position.ts';
 
 /** README-style list item prefix, used when the list has no existing item to mirror. */
 const ITEM_PREFIX = '  - ';
@@ -44,9 +38,13 @@ function eolOf(text: string): string {
   return text.includes('\r\n') ? '\r\n' : '\n';
 }
 
-function at(line: number, character: number): { line: number; character: number } {
+function at(line: number, character: number): Position {
   return { line, character };
 }
+
+const replace = (start: Position, end: Position, newText: string): TextReplace => ({ range: { start, end }, newText });
+/** A zero-width replace: `newText` goes in at (`line`, `character`). */
+const insert = (line: number, character: number, newText: string): TextReplace => replace(at(line, character), at(line, character), newText);
 
 /** Single-line values only: a pasted newline would break the line-per-entry grammar. */
 function sanitizeValue(value: string): string {
@@ -62,14 +60,14 @@ function appendAtEnd(lines: readonly ParsedLine[], eol: string, text: string): T
   const last = lines[lines.length - 1];
   if (last === undefined || last.raw === '') {
     const line = last?.line ?? 0;
-    return { start: at(line, 0), end: at(line, 0), newText: `${text}${eol}` };
+    return insert(line, 0, `${text}${eol}`);
   }
-  return { start: at(last.line, last.raw.length), end: at(last.line, last.raw.length), newText: `${eol}${text}` };
+  return insert(last.line, last.raw.length, `${eol}${text}`);
 }
 
 /** Inserts `text` right after `pl`'s content — safe on the document's last line and in CRLF files. */
 function appendAfterLine(pl: ParsedLine, text: string): TextReplace {
-  return { start: at(pl.line, pl.raw.length), end: at(pl.line, pl.raw.length), newText: text };
+  return insert(pl.line, pl.raw.length, text);
 }
 
 /**
@@ -78,11 +76,11 @@ function appendAfterLine(pl: ParsedLine, text: string): TextReplace {
  */
 function deleteRun(lines: readonly ParsedLine[], first: ParsedLine, last: ParsedLine): TextReplace {
   if (last.line + 1 < lines.length) {
-    return { start: at(first.line, 0), end: at(last.line + 1, 0), newText: '' };
+    return replace(at(first.line, 0), at(last.line + 1, 0), '');
   }
   const prev = lines[first.line - 1];
   const start = prev === undefined ? at(first.line, 0) : at(prev.line, prev.raw.length);
-  return { start, end: at(last.line, last.raw.length), newText: '' };
+  return replace(start, at(last.line, last.raw.length), '');
 }
 
 /** Deletes whole lines, each run of neighbours as ONE range: an edit overlapping another is dropped whole. */
@@ -128,7 +126,7 @@ export function setMeta(text: string, key: MetaKey, value: string): TextReplace[
     return [insertMeta(parsed, eolOf(text), key, entry)];
   }
   return [
-    { start: at(target.line, target.range.startChar), end: at(target.line, target.range.endChar), newText: entry },
+    { range: charRange(target.line, target.range), newText: entry },
     ...deleteLines(parsed.lines, held.filter((pl) => pl !== target)),
   ];
 }
@@ -165,7 +163,7 @@ function insertMeta(parsed: ParsedJpbook, eol: string, key: MetaKey, entry: stri
   }
   const later = held.slice(order + 1).find((pl) => pl !== undefined);
   if (later !== undefined) {
-    return { start: at(later.line, 0), end: at(later.line, 0), newText: `${entry}${eol}` };
+    return insert(later.line, 0, `${entry}${eol}`);
   }
   return insertAtMetaEnd(parsed, eol, entry);
 }
@@ -176,7 +174,7 @@ function insertAtMetaEnd(parsed: ParsedJpbook, eol: string, block: string): Text
   if (parsed.fence === null) {
     return appendAtEnd(parsed.lines, eol, block);
   }
-  return { start: at(parsed.fence, 0), end: at(parsed.fence, 0), newText: `${block}${eol}` };
+  return insert(parsed.fence, 0, `${block}${eol}`);
 }
 
 /** The value an entry line lists (an item's marker excluded) — what the panel rows show and dedupe by. */
@@ -270,7 +268,7 @@ export function removeEntry(text: string, list: EntryList, line: number): TextRe
   }
   const inlineKey = inlineKeyOf(pl);
   if (inlineKey !== null) {
-    return { start: at(pl.line, pl.range.startChar), end: at(pl.line, pl.range.endChar), newText: metaLine(inlineKey, '') };
+    return { range: charRange(pl.line, pl.range), newText: metaLine(inlineKey, '') };
   }
   return deleteRun(parsed.lines, pl, pl);
 }
@@ -286,7 +284,7 @@ export function replaceEntry(text: string, list: EntryList, line: number, value:
   if (pl?.item === undefined || clean === '') {
     return null;
   }
-  return { start: at(pl.line, pl.item.range.startChar), end: at(pl.line, pl.item.range.endChar), newText: clean };
+  return { range: charRange(pl.line, pl.item.range), newText: clean };
 }
 
 /**
@@ -330,9 +328,9 @@ export function moveEntryTo(
     const inlineKey = inlineKeyOf(target);
     if (inlineKey !== null) {
       const block = [metaLine(inlineKey, ''), asItem(from), asItem(target)].join(eol);
-      return [removal, { start: at(target.line, target.range.startChar), end: at(target.line, target.range.endChar), newText: block }];
+      return [removal, { range: charRange(target.line, target.range), newText: block }];
     }
-    return [removal, { start: at(beforeLine, 0), end: at(beforeLine, 0), newText: `${asItem(from)}${eol}` }];
+    return [removal, insert(beforeLine, 0, `${asItem(from)}${eol}`)];
   }
 
   const last = entries[entries.length - 1];

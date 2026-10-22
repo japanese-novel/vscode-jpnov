@@ -20,7 +20,8 @@ import {
   effectiveIndent,
   emitUnits,
   insepClass,
-  unitKey,
+  insepRunEnd,
+  mergeRun,
   type Row,
   type RubyText,
   type Unit,
@@ -83,28 +84,12 @@ function bindInsepRuns(units: readonly Unit[]): Unit[] {
       continue;
     }
     const cls = insepClass(head, { bang: false });
-    let end = i + 1;
-    if (cls !== undefined) {
-      while (end < units.length) {
-        const next = units[end];
-        if (next === undefined || insepClass(next, { bang: false }) !== cls || unitKey(next) !== unitKey(head)) {
-          break;
-        }
-        end += 1;
-      }
-    }
+    const end = cls === undefined ? i + 1 : insepRunEnd(units, head, i, cls, false);
     if (end - i >= 2) {
-      // Channels spread from `head` — the run requires them equal, like the engine's mergeRun.
       // The run html joins member html (each one escaped glyph; a dash unit's is the translated
       // em dash) — rebuilding it from `text` would smuggle the source glyphs back in.
-      const members = units.slice(i, end);
-      out.push({
-        ...head,
-        cells: end - i,
-        html: `<span class="insep">${members.map((u) => u.html).join('')}</span>`,
-        text: members.map((u) => u.text).join(''),
-        cssClass: 'insep',
-      });
+      const merged = mergeRun(units, head, i, end);
+      out.push({ ...merged, html: `<span class="insep">${merged.html}</span>`, cssClass: 'insep' });
     } else {
       out.push(head);
     }
@@ -128,9 +113,9 @@ export function reflowSegments(
   rows: readonly Row[],
   charsPerLine: number,
   used: Set<string>,
-  dash?: DashMode,
+  dash: DashMode,
 ): ReflowSegment[] {
-  const want = dash === undefined ? undefined : DASH_BY_MODE[dash];
+  const want = DASH_BY_MODE[dash];
   const segments: ReflowSegment[] = [];
   let body = '';
   let heading: string | null = null;
@@ -158,7 +143,7 @@ export function reflowSegments(
       // The label is a nav entry, where the spaces of a ［＃○字下げ］ or a typed indent have no
       // place: the row's text trimmed. The <hN> keeps them, as the paginated page shows them.
       const raw = row.units.map((u) => u.text).join('').trim();
-      const text = want === undefined ? raw : raw.replaceAll(want, DASH_GLYPH);
+      const text = raw.replaceAll(want, DASH_GLYPH);
       heading = nonBlank(text);
     }
     const tag = row.heading === undefined ? 'p' : `h${String(row.heading)}`;

@@ -14,11 +14,10 @@ import { posix } from 'node:path';
 
 import * as vscode from 'vscode';
 
-import { INDENT_MAX, VALUE_FORMATS, VALUE_NAMES, valueAnnotation } from '#/shared/ast/notation.ts';
+import { composeDividerValue, INDENT_MAX, VALUE_FORMATS, VALUE_NAMES, valueAnnotation } from '#/shared/ast/notation.ts';
 import { bookTemplate, COVER_TEMPLATE, normalizeFileInput, type FileInputError } from '#/shared/book/create.ts';
 import {
   appendEntries,
-  entryLines,
   listedEntries,
   moveEntryTo,
   removeEntry,
@@ -26,16 +25,17 @@ import {
   replaceEntry,
   resolveEntry,
   setMeta,
+  type EntryRef,
 } from '#/shared/book/edits.ts';
-import type { TextReplace } from '#/shared/book/edits.ts';
+import type { TextReplace } from '#/shared/utils/position.ts';
 import {
-  composeDividerValue,
   DIVIDER_PRESETS,
   entryIdentity,
   identityOf,
   isAlignKey,
   isNameList,
   META_DEFAULTS,
+  type EntryList,
   type FileList,
   type NameList,
   parseDividerValue,
@@ -48,14 +48,12 @@ import { nameIdentity, readName } from '#/shared/book/names.ts';
 import { FURNITURE_ALIGNS, type FurnitureAlign } from '#/shared/compiler/chrome.ts';
 import { unencodableChars } from '#/shared/encoding.ts';
 import { errorText } from '#/shared/utils/errors.ts';
-import { isRecord } from '#/shared/utils/guards.ts';
 import type { BookEntry } from '#/shared/protocol.ts';
 
-import { command } from '../commands.ts';
+import { toVsRange } from '../ranges.ts';
 import { renderMessage } from '../messages.ts';
 import { bookDir, compareStr, FIND_FILES_EXCLUDE, lastPathSegment, resolveUri, splitRelPath } from '../paths.ts';
 import { normalizeFsPath } from './rename.ts';
-import type { BookNode, EntryNode } from './nodes.ts';
 import type { BooksViewProvider } from './view.ts';
 
 /** Localized display name of a metadata key (the meta row's label and edit prompt). */
@@ -129,7 +127,7 @@ function restoreItem(key: Exclude<MetaKey, 'title'>): vscode.QuickPickItem {
 export async function applyBookEdits(uri: vscode.Uri, replaces: readonly TextReplace[], save = true): Promise<boolean> {
   const edit = new vscode.WorkspaceEdit();
   for (const r of replaces) {
-    edit.replace(uri, new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character), r.newText);
+    edit.replace(uri, toVsRange(r.range), r.newText);
   }
   const name = lastPathSegment(uri.toString());
   if (!(await vscode.workspace.applyEdit(edit))) {
@@ -147,6 +145,31 @@ export async function applyBookEdits(uri: vscode.Uri, replaces: readonly TextRep
   return true;
 }
 
+/**
+ * The Books panel's verbs take the row as the panel rendered it. `list` names one of the book's
+ * entry lists (chapters / covers / characters / keywords); a `MetaNode` carries one of the fixed
+ * metadata keys (META_KEYS) and its current value; an `EntryNode` carries the row (`line`, `path`,
+ * the document `version`), which the verb checks against the live text.
+ */
+export interface ListNode {
+  readonly list: EntryList;
+  readonly entry: BookEntry;
+}
+
+export interface MetaNode {
+  readonly entry: BookEntry;
+  readonly metaKey: MetaKey;
+  readonly value: string | undefined;
+}
+
+export interface EntryNode extends ListNode {
+  /** 0-based document line of this entry (the edit planners key on it). */
+  readonly line: number;
+  /** The value on that line (a path, a name) and the `TextDocument.version` the panel rendered it from. */
+  readonly path: string;
+  readonly version: number;
+}
+
 /** The book's live text (dirty buffer included) and its version — every planner starts from this. */
 async function bookText(entry: BookEntry): Promise<{ uri: vscode.Uri; text: string; version: number }> {
   const uri = vscode.Uri.parse(entry.uri);
@@ -159,10 +182,6 @@ async function bookText(entry: BookEntry): Promise<{ uri: vscode.Uri; text: stri
  *  shows the live rows. */
 function rowLine(node: EntryNode, lines: readonly ParsedLine[], version: number): number | null {
   return version === node.version ? resolveEntry(lines, node.list, node) : null;
-}
-
-function nodeOf(arg: unknown): BookNode | null {
-  return isRecord(arg) && 'kind' in arg ? (arg as BookNode) : null;
 }
 
 async function fileExists(uri: vscode.Uri): Promise<boolean> {
@@ -369,16 +388,12 @@ async function askName(list: NameList, listed: ReadonlySet<string>, current: str
 }
 
 /**
- * `jpbook.addEntries` — a list's one way in. A name list asks for one name in an input box and
- * appends it. A file list opens the picker: tick files already on disk, type a name to create, or
- * both. The ticked files are appended first and the new ones after them, as one edit; the last
- * new file opens in the editor.
+ * The add verb, a list's one way in. A name list asks for one name in an input box and appends
+ * it. A file list opens the picker: tick files already on disk, type a name to create, or both.
+ * The ticked files are appended first and the new ones after them, as one edit; the last new
+ * file opens in the editor.
  */
-async function addEntries(arg: unknown): Promise<void> {
-  const node = nodeOf(arg);
-  if (node?.kind !== 'list') {
-    return;
-  }
+export async function addEntries(node: ListNode): Promise<void> {
   if (isNameList(node.list)) {
     const listed = listedEntries(parseJpbook((await bookText(node.entry)).text).lines, node.list);
     const name = await askName(node.list, listed, undefined);
@@ -546,10 +561,9 @@ export async function createFile(view: BooksViewProvider | undefined): Promise<v
   await view?.revealNewBook(target);
 }
 
-/** `jpbook.editEntry` — a name row's input box, prefilled with the item as written; the value is rewritten in place. */
-async function editEntry(arg: unknown): Promise<void> {
-  const node = nodeOf(arg);
-  if (node?.kind !== 'entry' || !isNameList(node.list)) {
+/** The edit verb: a name row's input box, prefilled with the item as written; the value is rewritten in place. A file row has no edit. */
+export async function editEntry(node: EntryNode): Promise<void> {
+  if (!isNameList(node.list)) {
     return;
   }
   const listed = listedEntries(parseJpbook((await bookText(node.entry)).text).lines, node.list);
@@ -568,11 +582,8 @@ async function editEntry(arg: unknown): Promise<void> {
   }
 }
 
-async function removeEntryCmd(arg: unknown): Promise<void> {
-  const node = nodeOf(arg);
-  if (node?.kind !== 'entry') {
-    return;
-  }
+/** Removes the row's line. */
+export async function removeEntryRow(node: EntryNode): Promise<void> {
   const { uri, text, version } = await bookText(node.entry);
   const line = rowLine(node, parseJpbook(text).lines, version);
   if (line === null) {
@@ -584,31 +595,20 @@ async function removeEntryCmd(arg: unknown): Promise<void> {
   }
 }
 
-async function moveEntry(arg: unknown, direction: -1 | 1): Promise<void> {
-  const node = nodeOf(arg);
-  if (node?.kind !== 'entry') {
-    return;
-  }
+/**
+ * Moves the row to sit before the row `before` (null = the end of its list): the up/down buttons
+ * and a drop alike. Both rows must still be where the panel showed them (version + resolveEntry);
+ * otherwise, as for a no-op move, nothing is planned — never a fallback to the end of the list.
+ */
+export async function moveEntry(node: EntryNode, before: EntryRef | null): Promise<void> {
   const { uri, text, version } = await bookText(node.entry);
-  const parsed = parseJpbook(text);
-  const line = rowLine(node, parsed.lines, version);
-  if (line === null) {
+  const lines = parseJpbook(text).lines;
+  const from = rowLine(node, lines, version);
+  const beforeLine = before === null ? null : resolveEntry(lines, node.list, before);
+  if (from === null || (before !== null && beforeLine === null)) {
     return;
   }
-  const lines = entryLines(parsed.lines, node.list);
-  const index = lines.indexOf(line); // ≥ 0: rowLine found it among this list's entries
-  // Up: insert before the previous entry. Down: insert before the one PAST the next
-  // (or at the end when the next entry is the last).
-  const before =
-    direction === -1
-      ? lines[index - 1]
-      : index + 2 < lines.length
-        ? lines[index + 2]
-        : null;
-  if (before === undefined || (direction === 1 && index + 1 >= lines.length)) {
-    return; // already first / already last
-  }
-  const edits = moveEntryTo(text, node.list, line, before);
+  const edits = moveEntryTo(text, node.list, from, beforeLine);
   if (edits !== null) {
     await applyBookEdits(uri, edits);
   }
@@ -698,7 +698,7 @@ async function pickDivider(current: string | undefined): Promise<MetaPick> {
   if (amount === undefined) {
     return undefined;
   }
-  return composeDividerValue(mark, indentOf(amount));
+  return composeDividerValue({ mark, indent: indentOf(amount) });
 }
 
 /** The headers the picker offers ready-made: the book's title, and the title with the page's chapter number in 命数 (作品名　一). */
@@ -741,12 +741,8 @@ function pickLine(key: 'header' | 'footer' | 'author', current: string | undefin
   return runQuickPick(qp, (): MetaPick => qp.selectedItems[0]?.value);
 }
 
-async function editMeta(arg: unknown): Promise<void> {
-  const node = nodeOf(arg);
-  if (node?.kind !== 'meta') {
-    return;
-  }
-
+/** Edits one metadata value through its own dialog: the divider's two steps, a line's picker, an align's list, or an input box. */
+export async function editMeta(node: MetaNode): Promise<void> {
   let value: MetaPick;
   if (node.metaKey === 'divider') {
     value = await pickDivider(node.value);
@@ -778,16 +774,4 @@ async function editMeta(arg: unknown): Promise<void> {
   if (edits.length > 0) {
     await applyBookEdits(uri, edits);
   }
-}
-
-/** Registers the six panel commands (plain — they only fire from the Books panel). */
-export function registerBookCommands(): vscode.Disposable[] {
-  return [
-    command('jpbook.addEntries', addEntries),
-    command('jpbook.editEntry', editEntry),
-    command('jpbook.removeEntry', removeEntryCmd),
-    command('jpbook.moveEntryUp', (arg?: unknown) => moveEntry(arg, -1)),
-    command('jpbook.moveEntryDown', (arg?: unknown) => moveEntry(arg, 1)),
-    command('jpbook.editMeta', editMeta),
-  ];
 }

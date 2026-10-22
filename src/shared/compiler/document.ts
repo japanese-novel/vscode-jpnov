@@ -1,5 +1,5 @@
 import type { Ast, Line, SpanChannel, ValueLookup } from '../ast/nodes.ts';
-import { VALUE_NAMES, closingAnnotations, indentAnnotation, spanChannel } from '../ast/notation.ts';
+import { VALUE_NAMES, closingAnnotations, composeDividerValue, indentAnnotation, spanChannel, type DividerValue } from '../ast/notation.ts';
 import { parse } from '../ast/parse.ts';
 import { printLine } from '../ast/print.ts';
 import { dropUnshown, graphemeCount } from '../chars.ts';
@@ -17,11 +17,11 @@ export const MANUSCRIPT_SHEET = { charsPerLine: 20, linesPerPage: 20 } as const;
 export interface BookInput {
   readonly files: readonly { readonly name: string; readonly src: string }[];
   /**
-   * Chapter divider from the book's front matter ('' / absent = none) — a line of `.jpnov`
-   * notation inserted between chapters by {@link chapterGlue}. Explicit `| undefined` so the
-   * server can assign `meta.divider` verbatim under exactOptionalPropertyTypes.
+   * Chapter divider from the book's front matter, split into its mark and position by
+   * `parseDividerValue` (absent or an empty mark = none): a line of `.jpnov` notation inserted
+   * between chapters by {@link chapterGlue}.
    */
-  readonly divider?: string | undefined;
+  readonly divider?: DividerValue | undefined;
   /**
    * タイトル／ペンネーム for ［＃ここに「…」の値を表示］ in the chapters, on cover pages and in the
    * page furniture, decided by the caller (the build passes the book's `title:`, never empty);
@@ -42,19 +42,14 @@ export interface BookInput {
 /** A book with its title decided: an EPUB must carry one (dc:title). */
 export type TitledBook = BookInput & { readonly title: string };
 
-/** True iff a 見出し opens on this line (block or inline form). */
-function opensHeading(line: Line): boolean {
-  return line.syntax.some((node) => node.kind === 'headingSpanStart');
-}
-
 /** Only comments and white space: nothing of the line shows (a lone directive has no content at all). */
 function blankContent(line: Line): boolean {
   return line.content.every((item) => item.kind === 'comment' || (item.kind === 'chars' && item.text.trim() === ''));
 }
 
-/** A line that shows nothing at a chapter edge: no ［＃改ページ］, no 見出し on or opened by it, blank content. */
+/** A line that shows nothing at a chapter edge: no ［＃改ページ］, no 見出し, blank content. */
 function showsNothing(line: Line): boolean {
-  return !line.pageBreak && line.heading === undefined && !opensHeading(line) && blankContent(line);
+  return !line.pageBreak && line.heading === undefined && blankContent(line);
 }
 
 /** The first (or last) line of a chapter that shows something; null when none does. */
@@ -63,11 +58,11 @@ function edgeLine(ast: Ast, edge: 'first' | 'last'): Line | null {
   return (edge === 'first' ? ast.lines.find(shows) : ast.lines.findLast(shows)) ?? null;
 }
 
-/** True iff the chapter opens with a 見出し: its first shown line is a heading, or paints nothing
- *  and opens one (a leading ［＃ここから２字下げ］ or comment line is passed over). */
+/** True iff the chapter opens with a 見出し: its first shown line is a heading (a leading
+ *  ［＃ここから２字下げ］, block opener or comment line is passed over). */
 function opensWithHeading(ast: Ast): boolean {
   const line = edgeLine(ast, 'first');
-  return line !== null && (line.heading !== undefined || (!line.pageBreak && opensHeading(line)));
+  return line?.heading !== undefined;
 }
 
 /** True iff the chapter's junction side reaches a ［＃改ページ］ before (first) / after (last) content. */
@@ -92,20 +87,18 @@ function sumUnits(rows: readonly Row[], measure: (u: Unit) => number): number {
 /**
  * The divider LINE as it appears in the output: a bare mark gains a centring ［＃N字下げ］
  * prefix, N = `floor((charsPerLine − cells) / 2)` with cells measured by the layout itself
- * (a ruby/縦中横-bearing mark centres on its true advance); a value already carrying a
- * ［＃○字下げ］ prefix passes through verbatim, and N = 0 emits the bare mark — never a
- * ［＃０字下げ］. The annotation spelling keeps the offset out of the `.txt` prose while the
- * HTML side shows the same string as N full-width spaces. `charsPerLine`
- * null = no centring, the bare mark as written.
+ * (a ruby/縦中横-bearing mark centres on its true advance); a value with its own 字下げ is
+ * composed as written, and N = 0 emits the bare mark — never a ［＃０字下げ］. The annotation
+ * spelling keeps the offset out of the `.txt` prose while the HTML side shows the same string as
+ * N full-width spaces. `charsPerLine` null = no centring, the bare mark as written.
  */
-function dividerLine(divider: string, charsPerLine: number | null): string {
-  const ast = parse(divider);
-  if (charsPerLine === null || ast.lines[0]?.syntax[0]?.kind === 'indent') {
-    return divider;
+function dividerLine(divider: DividerValue, charsPerLine: number | null): string {
+  if (charsPerLine === null || divider.indent !== null) {
+    return composeDividerValue(divider);
   }
-  const cells = sumUnits(buildRows(ast), (u) => u.cells);
+  const cells = sumUnits(buildRows(parse(divider.mark)), (u) => u.cells);
   const pad = Math.max(0, Math.floor((charsPerLine - cells) / 2));
-  return pad > 0 ? indentAnnotation(pad) + divider : divider;
+  return pad > 0 ? indentAnnotation(pad) + divider.mark : divider.mark;
 }
 
 /**
@@ -127,9 +120,10 @@ function dividerLine(divider: string, charsPerLine: number | null): string {
  * `charsPerLine` is the width a bare divider centres on; null = no centring, the bare mark at
  * the line head (the 原稿用紙換算枚数 count).
  */
-export function chapterGlue(prev: Ast, next: Ast, divider: string, charsPerLine: number | null): string {
+export function chapterGlue(prev: Ast, next: Ast, divider: DividerValue | undefined, charsPerLine: number | null): string {
   if (
-    divider !== '' &&
+    divider !== undefined &&
+    divider.mark !== '' &&
     !opensWithHeading(next) &&
     !pageBreakAt(prev, 'last') &&
     !pageBreakAt(next, 'first')
@@ -228,7 +222,7 @@ export function chapterAsts(book: BookInput): Chapter[] {
 function bodyFlow(book: BookInput, dash: DashMode): (charsPerLine: number | null) => Row[] {
   const chapters = chapterAsts(book).map(({ ast }, ci) => ({ ast, rows: stampLines(buildRows(ast, { dash }), { chapter: ci }) }));
   return (charsPerLine) => {
-    const divider = book.divider ?? '';
+    const divider = book.divider;
     return chapters.flatMap(({ ast, rows }, ci, all): Row[] => {
       const prev = all[ci - 1];
       const glue = prev === undefined
@@ -401,7 +395,7 @@ export function concatBookText(book: BookInput, charsPerLine: number): string {
   // be what shows there. The text printed is the nodes, so no value reaches it.
   const chapters = chapterAsts(book).map(({ ast }) => ({ ast, text: chapterText(ast) }));
   const eol = chapters.some(({ ast }) => ast.lines.some((line) => line.eol === '\r\n')) ? '\r\n' : '\n';
-  const divider = dropUnshown(book.divider ?? '');
+  const divider = book.divider === undefined ? undefined : { ...book.divider, mark: dropUnshown(book.divider.mark) };
   const joined = chapters.reduce((acc, { ast, text }, i) => {
     const prev = chapters[i - 1];
     if (prev === undefined) {

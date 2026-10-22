@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { TextDocument } from 'vscode-languageserver-textdocument';
+
 import * as edits from '../../../src/shared/book/edits.ts';
-import { entryLines, listedEntries, metaRows, resolveEntry, type TextReplace } from '../../../src/shared/book/edits.ts';
+import { entryLines, listedEntries, metaRows, resolveEntry } from '../../../src/shared/book/edits.ts';
+import type { TextReplace } from '../../../src/shared/utils/position.ts';
 import {
   META_KEYS,
   metaKeyOf,
@@ -12,14 +15,12 @@ import {
   type MetaKey,
   type ParsedJpbook,
 } from '../../../src/shared/book/jpbook.ts';
-import { below, HEAD } from './_fixture.ts';
+import { below, HEAD, shiftReplace } from './_fixture.ts';
 
 // The fixtures below are the lines under the header: the planners run on `HEAD + text`, with the
 // line arguments and the positions they return shifted across the header line, and a parse is
 // numbered from below it too. No edit ever lands on the header (a position there would shift to -1).
-type Position = TextReplace['start'];
-const up = (p: Position): Position => ({ line: p.line - 1, character: p.character });
-const shift = (r: TextReplace): TextReplace => ({ start: up(r.start), end: up(r.end), newText: r.newText });
+const shift = (r: TextReplace): TextReplace => shiftReplace(r);
 const setMeta = (text: string, key: MetaKey, value: string): TextReplace[] => edits.setMeta(HEAD + text, key, value).map(shift);
 const removeMeta = (text: string, key: MetaKey): TextReplace[] => edits.removeMeta(HEAD + text, key).map(shift);
 const appendEntries = (text: string, list: EntryList, rels: readonly string[]): TextReplace | null => {
@@ -34,26 +35,9 @@ const moveEntryTo = (text: string, list: EntryList, from: number, before: number
   edits.moveEntryTo(HEAD + text, list, from + 1, before === null ? null : before + 1)?.map(shift) ?? null;
 const parseJpbook = (text: string): ParsedJpbook => below(parseWhole(HEAD + text), 1);
 
-/**
- * Applies LSP-style replaces to `text` (offsets computed per line) — the test's oracle. Edits may
- * touch but never overlap: VS Code drops a whole `WorkspaceEdit` whose ranges overlap.
- */
-function apply(text: string, replaces: readonly { start: { line: number; character: number }; end: { line: number; character: number }; newText: string }[]): string {
-  const offsets: number[] = [0];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\n') {
-      offsets.push(i + 1);
-    }
-  }
-  const abs = (p: { line: number; character: number }): number => (offsets[p.line] ?? text.length) + p.character;
-  const sorted = [...replaces].sort((a, b) => abs(b.start) - abs(a.start));
-  let out = text;
-  for (const [i, r] of sorted.entries()) {
-    const before = sorted[i + 1];
-    assert.ok(before === undefined || abs(before.end) <= abs(r.start), `overlapping edits: ${JSON.stringify(replaces)}`);
-    out = out.slice(0, abs(r.start)) + r.newText + out.slice(abs(r.end));
-  }
-  return out;
+/** `replaces` applied to `text` as the editor applies a WorkspaceEdit; overlapping edits throw. */
+function apply(text: string, replaces: readonly TextReplace[]): string {
+  return TextDocument.applyEdits(TextDocument.create('mem://x.jpbook', 'jpbook', 1, text), [...replaces]);
 }
 
 // --- setMeta -------------------------------------------------------------------
@@ -260,8 +244,8 @@ test('removeMeta deletes every line of the key, so its default applies; nothing 
   // The valid line, a repeat in another case, and a line in Error all go; the neighbours stay.
   const text = 'title: 作品名\nFooterAlign: left\nheader: h\nfooterAlign: right\nfooterAlign:\n---\na.jpnov\n';
   assert.deepEqual(removeMeta(text, 'footerAlign'), [
-    { start: { line: 1, character: 0 }, end: { line: 2, character: 0 }, newText: '' },
-    { start: { line: 3, character: 0 }, end: { line: 5, character: 0 }, newText: '' },
+    { range: { start: { line: 1, character: 0 }, end: { line: 2, character: 0 } }, newText: '' },
+    { range: { start: { line: 3, character: 0 }, end: { line: 5, character: 0 } }, newText: '' },
   ]);
   assert.equal(apply(text, removeMeta(text, 'footerAlign')), 'title: 作品名\nheader: h\n---\na.jpnov\n');
   assert.deepEqual(removeMeta(text, 'author'), []);
@@ -303,7 +287,7 @@ function kindsOf(text: string): string[] {
 test('appendEntries(covers) inserts after the last item, mirroring its indent and marker', () => {
   const text = ['title: 一', 'cover:', '  - c1.jpnov', '---', 'a.jpnov', ''].join('\n');
   const edit = appendEntries(text, 'covers', ['c1.jpnov', 'c2.jpnov', 'sub/c3.jpnov']);
-  assert.deepEqual(edit, { start: { line: 2, character: 12 }, end: { line: 2, character: 12 }, newText: '\n  - c2.jpnov\n  - sub/c3.jpnov' });
+  assert.deepEqual(edit, { range: { start: { line: 2, character: 12 }, end: { line: 2, character: 12 } }, newText: '\n  - c2.jpnov\n  - sub/c3.jpnov' });
   const out = apply(text, [edit]);
   assert.equal(out, ['title: 一', 'cover:', '  - c1.jpnov', '  - c2.jpnov', '  - sub/c3.jpnov', '---', 'a.jpnov', ''].join('\n'));
   assert.deepEqual(kindsOf(out), ['meta', 'cover', 'coverEntry', 'coverEntry', 'coverEntry', 'fence', 'ok', 'blank']);
@@ -325,14 +309,14 @@ test('appendEntries(covers) follows the existing marker style', () => {
 test('appendEntries(covers) anchors an empty list on its key line with the default prefix', () => {
   const text = 'cover:\n---\na.jpnov\n';
   const edit = appendEntries(text, 'covers', ['x.jpnov']);
-  assert.deepEqual(edit, { start: { line: 0, character: 6 }, end: { line: 0, character: 6 }, newText: '\n  - x.jpnov' });
+  assert.deepEqual(edit, { range: { start: { line: 0, character: 6 }, end: { line: 0, character: 6 } }, newText: '\n  - x.jpnov' });
   assert.equal(apply(text, [edit]), 'cover:\n  - x.jpnov\n---\na.jpnov\n');
 });
 
 test('appendEntries(covers) without a key adds one right above the fence', () => {
   const text = 'title: t\n---\na.jpnov\n';
   const edit = appendEntries(text, 'covers', ['x.jpnov']);
-  assert.deepEqual(edit, { start: { line: 1, character: 0 }, end: { line: 1, character: 0 }, newText: 'cover:\n  - x.jpnov\n' });
+  assert.deepEqual(edit, { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: 'cover:\n  - x.jpnov\n' });
   assert.equal(apply(text, [edit]), 'title: t\ncover:\n  - x.jpnov\n---\na.jpnov\n');
   const empty = '---\na.jpnov\n';
   const e2 = appendEntries(empty, 'covers', ['x.jpnov']);
@@ -411,7 +395,7 @@ test('removeEntry and moveEntryTo keep the list open around an inline `cover: pa
 test('appendEntries(covers) extends the OPEN list; a muted second list is neither anchor nor dedupe source', () => {
   const text = 'cover:\n  - a.jpnov\ncover:\n  - m.jpnov\n---\n';
   const edit = appendEntries(text, 'covers', ['b.jpnov', 'm.jpnov']);
-  assert.deepEqual(edit, { start: { line: 1, character: 11 }, end: { line: 1, character: 11 }, newText: '\n  - b.jpnov\n  - m.jpnov' });
+  assert.deepEqual(edit, { range: { start: { line: 1, character: 11 }, end: { line: 1, character: 11 } }, newText: '\n  - b.jpnov\n  - m.jpnov' });
   const out = apply(text, [edit]);
   assert.equal(out, 'cover:\n  - a.jpnov\n  - b.jpnov\n  - m.jpnov\ncover:\n  - m.jpnov\n---\n');
   assert.deepEqual(kindsOf(out), ['cover', 'coverEntry', 'coverEntry', 'coverEntry', 'warning', 'warning', 'fence', 'blank']);
@@ -420,7 +404,7 @@ test('appendEntries(covers) extends the OPEN list; a muted second list is neithe
 test('the two lists dedupe independently (a file may be both a cover and a chapter)', () => {
   const text = 'cover:\n  - a.jpnov\n---\na.jpnov\nb.jpnov\n';
   const covers = appendEntries(text, 'covers', ['a.jpnov', 'b.jpnov']);
-  assert.deepEqual(covers, { start: { line: 1, character: 11 }, end: { line: 1, character: 11 }, newText: '\n  - b.jpnov' });
+  assert.deepEqual(covers, { range: { start: { line: 1, character: 11 }, end: { line: 1, character: 11 } }, newText: '\n  - b.jpnov' });
   assert.equal(appendEntries(text, 'chapters', ['a.jpnov', 'b.jpnov']), null);
   const coverOnly = 'cover:\n  - a.jpnov\n---\n';
   const chapter = appendEntries(coverOnly, 'chapters', ['a.jpnov']);
@@ -437,7 +421,7 @@ test('a coverDuplicate item counts as listed and as a row', () => {
 test('removeEntry(covers) deletes the item and keeps the bare key', () => {
   const text = 'cover:\n  - a.jpnov\n---\nx.jpnov\n';
   const edit = removeEntry(text, 'covers', 1);
-  assert.deepEqual(edit, { start: { line: 1, character: 0 }, end: { line: 2, character: 0 }, newText: '' });
+  assert.deepEqual(edit, { range: { start: { line: 1, character: 0 }, end: { line: 2, character: 0 } }, newText: '' });
   const out = apply(text, [edit]);
   assert.equal(out, 'cover:\n---\nx.jpnov\n');
   assert.deepEqual(kindsOf(out), ['cover', 'fence', 'ok', 'blank']);
@@ -446,7 +430,7 @@ test('removeEntry(covers) deletes the item and keeps the bare key', () => {
 test('removeEntry(covers) of the final document line swallows the PRECEDING newline', () => {
   const text = 'cover:\n  - a.jpnov';
   const edit = removeEntry(text, 'covers', 1);
-  assert.deepEqual(edit, { start: { line: 0, character: 6 }, end: { line: 1, character: 11 }, newText: '' });
+  assert.deepEqual(edit, { range: { start: { line: 0, character: 6 }, end: { line: 1, character: 11 } }, newText: '' });
   assert.equal(apply(text, [edit]), 'cover:');
 });
 
@@ -462,8 +446,8 @@ test('moveEntryTo(covers) moves an item before another; blanks stay put', () => 
   const text = 'cover:\n  - a.jpnov\n\n  - b.jpnov\n  - c.jpnov\n---\nx.jpnov\n';
   const edits = moveEntryTo(text, 'covers', 4, 1); // c before a
   assert.deepEqual(edits, [
-    { start: { line: 4, character: 0 }, end: { line: 5, character: 0 }, newText: '' },
-    { start: { line: 1, character: 0 }, end: { line: 1, character: 0 }, newText: '  - c.jpnov\n' },
+    { range: { start: { line: 4, character: 0 }, end: { line: 5, character: 0 } }, newText: '' },
+    { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: '  - c.jpnov\n' },
   ]);
   assert.equal(apply(text, edits), 'cover:\n  - c.jpnov\n  - a.jpnov\n\n  - b.jpnov\n---\nx.jpnov\n');
 });
@@ -472,8 +456,8 @@ test('moveEntryTo(covers, null) moves an item after the last one, still inside t
   const text = 'cover:\n  - a.jpnov\n\n  - b.jpnov\n  - c.jpnov\n---\nx.jpnov\n';
   const edits = moveEntryTo(text, 'covers', 1, null);
   assert.deepEqual(edits, [
-    { start: { line: 1, character: 0 }, end: { line: 2, character: 0 }, newText: '' },
-    { start: { line: 4, character: 11 }, end: { line: 4, character: 11 }, newText: '\n  - a.jpnov' },
+    { range: { start: { line: 1, character: 0 }, end: { line: 2, character: 0 } }, newText: '' },
+    { range: { start: { line: 4, character: 11 }, end: { line: 4, character: 11 } }, newText: '\n  - a.jpnov' },
   ]);
   assert.equal(apply(text, edits), 'cover:\n\n  - b.jpnov\n  - c.jpnov\n  - a.jpnov\n---\nx.jpnov\n');
 });

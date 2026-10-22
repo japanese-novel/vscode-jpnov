@@ -12,12 +12,12 @@ import type { DocumentHighlight, Range, TextEdit, WorkspaceEdit } from 'vscode-l
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Ast, PairedNode, PostfixNode, Ruby, Span, SyntaxNode } from '../shared/ast/nodes.ts';
-import { TCY, fullWidthDigits, headingLiteralOf, isValueFormat, markOf, spanMark } from '../shared/ast/notation.ts';
+import { MARKUP, TCY, fullWidthDigits, headingLiteralOf, isValueFormat, markOf, spanMark } from '../shared/ast/notation.ts';
 import type { Channel } from '../shared/ast/notation.ts';
 import { displayText } from '../shared/chars.ts';
 import type { HoverResult, LocalizableMessage, Position } from '../shared/protocol.ts';
 
-import { MARKUP, eligibleTargets, isPostfix, rangeOf, syncedTargets, targetEdits } from './targets.ts';
+import { eligibleTargets, isPostfix, rangeOf, syncedTargets, targetEdits } from './targets.ts';
 import type { EligibleTarget } from './targets.ts';
 
 const GUIDE = 'https://www.aozora.gr.jp/annotation/';
