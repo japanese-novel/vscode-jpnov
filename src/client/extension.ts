@@ -45,6 +45,7 @@ import { folderIsNovelProject } from './probe.ts';
 import { isLocalizableMessage, renderMessage } from './messages.ts';
 import { documentSync } from './documentSync.ts';
 import { Preview } from './preview/preview.ts';
+import { pickFont } from './preview/font.ts';
 import { affectsRenderSettings } from './renderConfig.ts';
 import { registerRenameTracking } from './book/tracking.ts';
 import { readText } from './book/readText.ts';
@@ -343,6 +344,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // rendered, and `preview?.` covers the pre-start case). The palette lists them while adjusted.
     command('jpnov.preview.resetLayout', () => preview?.resetLayout()),
     command('jpnov.preview.saveLayout', () => preview?.saveLayout()),
+    // The widget's font button and the palette: no panel needed, the pick writes the settings.
+    command('jpnov.preview.pickFont', pickFont),
     // Plain command (no server needed): the Books panel's welcome views link here. The id
     // is resolved at runtime so the walkthrough opens under any publisher, including the
     // Extension Development Host's `undefined_publisher`.

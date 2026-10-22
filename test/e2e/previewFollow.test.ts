@@ -140,7 +140,7 @@ test('the preview parks the column holding the cursor, at the reveal position', 
       adjusted: false,
       min: CHARS_MIN,
       max: CHARS_MAX,
-      labels: { chars: '字', lines: '行', charsPerLine: 'CPL', linesPerPage: 'LPP', hint: 'HINT', reset: 'RESET', save: 'SAVE', show: 'SHOW' },
+      labels: { chars: '字', lines: '行', charsPerLine: 'CPL', linesPerPage: 'LPP', hint: 'HINT', reset: 'RESET', save: 'SAVE', font: 'FONT', show: 'SHOW' },
     },
   };
   const steps = [

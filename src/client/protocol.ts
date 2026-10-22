@@ -298,7 +298,8 @@ export type PreviewLayoutKey = 'charsPerLine' | 'linesPerPage';
 export type PreviewOutbound =
   | { readonly type: 'layout'; readonly key: PreviewLayoutKey; readonly value: number }
   | { readonly type: 'reset' }
-  | { readonly type: 'save' };
+  | { readonly type: 'save' }
+  | { readonly type: 'font' };
 
 /** Localized strings the layout widget renders; baked into `__INIT` like the Books panel's Labels. */
 export interface PreviewLayoutLabels {
@@ -310,9 +311,10 @@ export interface PreviewLayoutLabels {
   readonly linesPerPage: string;
   /** The widget's tooltip: what the values mean, or, while adjusted, what the settings still say. */
   readonly hint: string;
-  /** Tooltips of the reset / save buttons (the command titles). */
+  /** Tooltips of the reset / save / font buttons (the command titles). */
   readonly reset: string;
   readonly save: string;
+  readonly font: string;
   /** Accessible name of the folded widget's summary (clicking it opens the controls). */
   readonly show: string;
 }

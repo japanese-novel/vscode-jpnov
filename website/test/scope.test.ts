@@ -19,7 +19,7 @@ const book = (): string => renderBook({
   ...LAYOUT_DEFAULT,
   paperSize: 'a4',
   paperOrientation: 'auto',
-  chrome: { lineNumbers: true, edgeLine: 'red', footerAlign: 'right', footer: META_DEFAULTS.footer, header: '作品名　一', headerAlign: 'center' },
+  chrome: { lineNumbers: true, edgeLine: 'red', footerAlign: 'right', footer: META_DEFAULTS.footer, header: '［＃ここに「タイトル」の値を表示］　［＃ここに「見出し番号」の値を命数で表示］', headerAlign: 'center' },
 });
 
 test('a preview fragment keeps every rule under its scope and no root or viewport dependency', () => {

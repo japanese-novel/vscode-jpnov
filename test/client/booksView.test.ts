@@ -52,6 +52,10 @@ function entry(rootUri: string, rel: string, title?: string) {
   return { uri: `${rootUri}/src/${rel}.jpbook`, rootUri, fileRel: `src/${rel}.jpbook`, title };
 }
 
+/** The context keys the provider set to true so far (`setContext` calls, in order). */
+const contextsSet = (): string[] =>
+  state.executedCommands.filter((c) => c.command === 'setContext' && c.args[1] === true).map((c) => String(c.args[0]));
+
 /** A BookEntry for a `.jpbook` open under no workspace folder. */
 function openEntry(uri: string, title?: string) {
   return { uri, rootUri: null, fileRel: uri.slice(uri.lastIndexOf('/') + 1), title };
@@ -507,8 +511,7 @@ test('a successful build sets jpnov.hasBuilt (the walkthrough step completion); 
     artifacts: [{ kind: 'txt', path: `${root}/out/a.txt`, content: 'a' }],
     errors: [],
   };
-  const hasBuilt = (): boolean =>
-    state.executedCommands.some((c) => c.command === 'setContext' && c.args[0] === 'jpnov.hasBuilt' && c.args[1] === true);
+  const hasBuilt = (): boolean => contextsSet().includes('jpnov.hasBuilt');
   {
     const { view } = await setup([entry(root, 'a')], result);
     state.progressCancelled = true;
@@ -522,6 +525,24 @@ test('a successful build sets jpnov.hasBuilt (the walkthrough step completion); 
     view.webview.receive({ type: 'build', format: 'txt' });
     await tick();
     assert.equal(hasBuilt(), true);
+  }
+});
+
+test('opening a book that already lists chapters or names seeds the walkthrough context keys; an empty one sets none', async () => {
+  const root = 'file:///ws';
+  const cases = [
+    ['a', 'title: A\n---\n', []],
+    ['b', 'title: B\nkeywords:\n  - 王都\n---\nch1.jpnov\n', ['jpnov.hasChapters', 'jpnov.hasNames']],
+  ] as const;
+  for (const [name, body, expected] of cases) {
+    resetMockState(state);
+    const bookUri = `${root}/src/${name}.jpbook`;
+    state.textDocuments.push(doc(bookUri, 'jpbook', HEAD + body));
+    const { view } = await setup([entry(root, name, name)]);
+    state.executedCommands.length = 0;
+    view.webview.receive({ type: 'openDetail', uri: bookUri });
+    await tick();
+    assert.deepEqual(contextsSet().filter((k) => k.startsWith('jpnov.has')), expected, name);
   }
 });
 
