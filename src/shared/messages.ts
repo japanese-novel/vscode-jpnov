@@ -206,6 +206,8 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return 'a dialogue line starts with a full-width space';
     case 'lint.ruby.kana':
       return 'ruby reading should be all hiragana or all katakana';
+    case 'codeAction.openSetting':
+      return `Open the "${a(0)}" setting`;
     case 'server.unexpected':
       return `unexpected error: ${a(0)}`;
     default: {

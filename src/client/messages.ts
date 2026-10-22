@@ -209,6 +209,8 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('a dialogue line starts with a full-width space');
     case 'lint.ruby.kana':
       return vscode.l10n.t('ruby reading should be all hiragana or all katakana');
+    case 'codeAction.openSetting':
+      return vscode.l10n.t('Open the "{0}" setting', s(0));
     case 'server.unexpected':
       return vscode.l10n.t('unexpected error: {0}', s(0));
     default: {

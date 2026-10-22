@@ -1,10 +1,13 @@
 /**
- * Pure builder turning {@link Finding}s (syntax and lint alike) into LSP code actions: a quick-fix per fixable finding
- * overlapping the requested range, plus one "fix all" bundling every fixable finding in the document.
+ * Pure builder turning {@link Finding}s (syntax and lint alike) into LSP code actions: for each finding
+ * overlapping the requested range a quick-fix when it has a fix and, for a lint finding, "open the setting
+ * of this rule" (a VS Code command the client runs as is); plus one "fix all" bundling every fixable
+ * finding in the document.
  *
  * Titles are English here (the vscode-free server cannot localize); the client's `provideCodeActions`
  * middleware swaps in the localized text — a quick-fix reuses its diagnostic's localized message, the
- * fix-all is recognized by its `source.fixAll` kind.
+ * setting action carries its own {@link LocalizableMessage} in `data`, the fix-all is recognized by its
+ * `source.fixAll` kind.
  *
  * A fix that lands inside a 対象文字列 brings the edit of that 「…」 with it (`Fix.within`,
  * merged by `mergedEdits`): the quick-fix carries both, and the fix-all rewrites each 「…」 once,
@@ -13,8 +16,10 @@
 import { CodeActionKind } from 'vscode-languageserver/node';
 import type { CodeAction, Position, Range, TextEdit } from 'vscode-languageserver/node';
 
-import type { Finding, Fix } from '../diagnostics.ts';
-import type { ProblemRef } from '../../shared/protocol.ts';
+import { OPEN_SETTINGS_COMMAND } from '../diagnostics.ts';
+import type { Finding, Fix, JpnovDiagnostic } from '../diagnostics.ts';
+import { renderEnglish } from '../../shared/messages.ts';
+import type { LocalizableMessage, ProblemRef } from '../../shared/protocol.ts';
 import { comparePositions, compareRanges, rangeKey } from '../../shared/utils/position.ts';
 import { mergedEdits, rangesOverlap } from '../targets.ts';
 
@@ -36,16 +41,34 @@ function nonOverlapping<T extends { readonly range: Range }>(edits: readonly T[]
   return out;
 }
 
-function quickFix(uri: string, f: FixableFinding): CodeAction {
+function quickFix(uri: string, diagnostic: JpnovDiagnostic, fix: Fix): CodeAction {
   // `Diagnostic.message` is typed `string | MarkupContent`; ours is always the English string render.
   // This title is only a fallback — the client middleware localizes it from the diagnostic's data.
-  const title = typeof f.diagnostic.message === 'string' ? f.diagnostic.message : 'Fix';
+  const title = typeof diagnostic.message === 'string' ? diagnostic.message : 'Fix';
   return {
     title,
     kind: CodeActionKind.QuickFix,
-    diagnostics: [f.diagnostic],
+    diagnostics: [diagnostic],
     isPreferred: true,
-    edit: { changes: { [uri]: nonOverlapping(mergedEdits([f.fix])) } },
+    edit: { changes: { [uri]: nonOverlapping(mergedEdits([fix])) } },
+  };
+}
+
+/**
+ * The settings editor filtered to the rule's setting: the same place the diagnostic's code links to.
+ * Named after the last segment of the setting key, what the settings editor and the code both show.
+ * A `quickfix` so it sits in the lightbulb right under the fix (a kindless action goes to "More
+ * actions…"); VS Code's quick-fix is any action offered for a diagnostic, not only an edit.
+ */
+function openSetting(diagnostic: JpnovDiagnostic, setting: string): CodeAction {
+  const message: LocalizableMessage = { code: 'codeAction.openSetting', args: [setting.slice(setting.lastIndexOf('.') + 1)] };
+  const title = renderEnglish(message.code, message.args);
+  return {
+    title,
+    kind: CodeActionKind.QuickFix,
+    diagnostics: [diagnostic],
+    data: message,
+    command: { title, command: OPEN_SETTINGS_COMMAND, arguments: [setting] },
   };
 }
 
@@ -74,9 +97,9 @@ function wants(only: readonly string[] | undefined, kind: string): boolean {
 }
 
 /**
- * Builds the code actions for one request: a quick-fix per fixable finding overlapping
- * `requestedRange`, plus a single fix-all over every fixable finding in the document. Honors the
- * client's `only` kind filter. Returns `[]` when nothing is fixable.
+ * Builds the code actions for one request: per finding overlapping `requestedRange` its quick-fix
+ * (when fixable) and, below it, "open the setting of this rule" (when a lint finding); plus a single
+ * fix-all over every fixable finding in the document. Honors the client's `only` kind filter.
  */
 export function buildCodeActions(
   uri: string,
@@ -84,20 +107,25 @@ export function buildCodeActions(
   requestedRange: Range,
   only: readonly string[] | undefined,
 ): CodeAction[] {
-  const fixable = findings.filter((f): f is FixableFinding => f.fix !== undefined);
-  if (fixable.length === 0) {
-    return [];
-  }
   const actions: CodeAction[] = [];
   if (wants(only, CodeActionKind.QuickFix)) {
-    for (const f of fixable) {
-      if (rangesOverlap(f.diagnostic.range, requestedRange)) {
-        actions.push(quickFix(uri, f));
+    for (const f of findings) {
+      if (!rangesOverlap(f.diagnostic.range, requestedRange)) {
+        continue;
+      }
+      if (f.fix !== undefined) {
+        actions.push(quickFix(uri, f.diagnostic, f.fix));
+      }
+      if (f.setting !== undefined) {
+        actions.push(openSetting(f.diagnostic, f.setting));
       }
     }
   }
   if (wants(only, CodeActionKind.SourceFixAll)) {
-    actions.push({ title: FIX_ALL_TITLE, kind: CodeActionKind.SourceFixAll, edit: { changes: { [uri]: fixAllEdits(fixable).edits } } });
+    const { edits, fixed } = fixAllEdits(findings);
+    if (fixed > 0) {
+      actions.push({ title: FIX_ALL_TITLE, kind: CodeActionKind.SourceFixAll, edit: { changes: { [uri]: edits } } });
+    }
   }
   return actions;
 }

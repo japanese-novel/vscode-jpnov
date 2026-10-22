@@ -123,6 +123,7 @@ export type MsgCode =
   | 'lint.common.exclamationRun.single' // args: [] — its third fault: a lone half-width ! or ?
   | 'lint.common.questionExclamationMarks.tcy' // args: [pair] — the `questionExclamationMarks` rule in its `tcy` mode: `pair` has no 縦中横 annotation (the bare code, args: [pair, char], is the `fullWidth` mode)
   | 'lint.common.questionExclamationMarks.cut' // args: [target, pair] — the `tcy` mode's second fault: the annotation naming `target` takes one mark of `pair`
+  | 'codeAction.openSetting' // args: [rule] — the code action opening a lint rule's setting; `rule` is the last segment of the setting key
   | 'server.unexpected'; // args: [detail]  (detail = raw unexpected server error, untranslatable)
 
 /** A server-produced message: a code plus the positional args its template substitutes. */

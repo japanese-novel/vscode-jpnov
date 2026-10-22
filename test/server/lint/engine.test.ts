@@ -76,6 +76,8 @@ test('a rule message reaches Diagnostic.data whole, args included', () => {
   assert.deepEqual(findings[0].diagnostic.codeDescription, {
     href: 'command:workbench.action.openSettings?%22jpnov.lint.common.dash%22',
   });
+  // The finding keeps the key itself, for the "open the setting of this rule" code action.
+  assert.equal(findings[0].setting, 'jpnov.lint.common.dash');
 });
 
 test('a sub-code links to the setting of its rule', () => {
