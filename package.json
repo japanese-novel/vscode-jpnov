@@ -321,11 +321,39 @@
             "order": 12,
             "markdownDescription": "%jpnov.layout.txt.encoding.description%"
           },
+          "jpnov.layout.print.browser": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "default",
+              "chrome",
+              "edge",
+              "firefox"
+            ],
+            "default": "auto",
+            "scope": "machine-overridable",
+            "enumItemLabels": [
+              "%jpnov.layout.print.browser.auto.label%",
+              "%jpnov.layout.print.browser.default.label%",
+              "%jpnov.layout.print.browser.chrome.label%",
+              "%jpnov.layout.print.browser.edge.label%",
+              "%jpnov.layout.print.browser.firefox.label%"
+            ],
+            "enumDescriptions": [
+              "%jpnov.layout.print.browser.auto.description%",
+              "%jpnov.layout.print.browser.default.description%",
+              "%jpnov.layout.print.browser.chrome.description%",
+              "%jpnov.layout.print.browser.edge.description%",
+              "%jpnov.layout.print.browser.firefox.description%"
+            ],
+            "order": 13,
+            "markdownDescription": "%jpnov.layout.print.browser.description%"
+          },
           "jpnov.layout.outDir": {
             "type": "string",
             "default": "${workspaceFolder}/dist",
             "scope": "resource",
-            "order": 13,
+            "order": 14,
             "markdownDescription": "%jpnov.layout.outDir.description%"
           }
         }
@@ -890,7 +918,7 @@
     "prewatch": "npm run gen",
     "watch": "npm run watch:tsc & npm run watch:tsc:webview & npm run watch:esbuild & wait",
     "pretest": "npm run type-check",
-    "test": "node --import ./test/register.mjs --test --experimental-test-module-mocks \"test/shared/**/*.test.ts\" \"test/server/highlight/**/*.test.ts\" \"test/server/lint/**/*.test.ts\" \"test/server/parsed.test.ts\" \"test/server/targets.test.ts\" \"test/server/dialogue.test.ts\" \"test/server/shown.test.ts\" \"test/server/annotations.test.ts\" \"test/client/bookRename.test.ts\" \"test/client/documentSync.test.ts\" \"test/client/editorIndent.test.ts\" \"test/client/editorWord.test.ts\"",
+    "test": "node --import ./test/register.mjs --test --experimental-test-module-mocks \"test/shared/**/*.test.ts\" \"test/server/highlight/**/*.test.ts\" \"test/server/lint/**/*.test.ts\" \"test/server/parsed.test.ts\" \"test/server/targets.test.ts\" \"test/server/dialogue.test.ts\" \"test/server/shown.test.ts\" \"test/server/annotations.test.ts\" \"test/client/bookRename.test.ts\" \"test/client/browser.test.ts\" \"test/client/documentSync.test.ts\" \"test/client/editorIndent.test.ts\" \"test/client/editorWord.test.ts\"",
     "pretest:integration": "npm run gen",
     "test:integration": "node --import ./test/register.mjs --test --experimental-test-module-mocks \"test/client/bookCreate.test.ts\" \"test/client/bookManage.test.ts\" \"test/client/booksView.test.ts\" \"test/client/extension.test.ts\" \"test/client/hover.test.ts\" \"test/client/messages.test.ts\" \"test/client/preview.test.ts\" \"test/client/probe.test.ts\" \"test/client/readText.test.ts\" \"test/server/build.test.ts\" \"test/server/jpbook.test.ts\"",
     "pretest:e2e": "npm run build:dev",

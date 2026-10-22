@@ -7,6 +7,8 @@
   "Japanese Novel: couldn't write {0}. {1}": "小説: {0} を書き込めませんでした。{1}",
   "Japanese Novel: build error for {0}. {1}": "小説: {0} の出力に失敗しました。{1}",
   "Japanese Novel: built {0} {1} file(s).": "小説: {0} 個の {1} ファイルを出力しました。",
+  "Japanese Novel: no Chrome, Edge or Firefox found; opened in the default browser. Safari ignores the paper size and orientation.": "小説: Chrome・Edge・Firefox が見つからないため、既定のブラウザーで開きました。Safari は用紙サイズと向きの指定を読みません。",
+  "Japanese Novel: {0} wasn't found; opened in the default browser instead.": "小説: {0} が見つからないため、既定のブラウザーで開きました。",
   "Japanese Novel: nothing to build.": "小説: 出力するものがありません。",
   "Japanese Novel: {0} character(s) became 〓 in the text output.": "小説: テキスト出力で {0} 文字が 〓 になりました。",
   "Japanese Novel: files were renamed or moved — update the paths in {0} book file(s)?": "小説: ファイルの名前や場所が変わりました。{0} 冊の本のファイルに書かれたパスを更新しますか?",

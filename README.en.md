@@ -297,13 +297,15 @@ The **Books** view in the Activity Bar lists every discovered `.jpbook` as
 a book with a checkbox (labelled by its `title`). The buttons at the bottom of the view build the checked books (EPUB
 is an icon button):
 
-- **Print / Save as PDF** — builds the HTML and opens it in your default
-  browser. The same button floating on the page (印刷／PDF 保存)
-  brings up the browser's print dialog; print on paper, or save it as a PDF
-  instead. Use Chrome (recommended) or Firefox. Safari is not recommended:
-  it ignores the paper size and orientation the HTML declares (`@page size`),
-  so you would have to pick them in its print dialog (landscape by default)
-  and leave its headers and footers off. The `.html` itself lands in the output
+- **Print / Save as PDF** — builds the HTML and opens it in a browser: on
+  macOS the first of Chrome, Edge and Firefox that is installed, on other OSes
+  your default browser; Print: Browser in the "Japanese Novel — Layout & Output"
+  settings picks one. The same
+  button floating on the page (印刷／PDF 保存) brings up the browser's print
+  dialog; print on paper, or save it as a PDF instead. Safari is not
+  recommended: it ignores the paper size and orientation the HTML declares
+  (`@page size`), so you would have to pick them in its print dialog (landscape
+  by default) and leave its headers and footers off. The `.html` itself lands in the output
   folder: one standalone, paginated vertical file per book (inline CSS, no
   external assets) that prints the same way whenever you reopen it.
 - **TXT** — the chapters concatenated as Aozora-format `.txt` (an
@@ -635,6 +637,7 @@ are not settings: they live in the `.jpbook` files.
 | `jpnov.layout.paper.lineNumbers` | `false` | Line numbers in built pages, restarting per page |
 | `jpnov.layout.paper.edgeLine` | `none` | Column rules + page frame in built pages: `none` / `text` / `red` |
 | `jpnov.layout.txt.encoding` | `shiftJis` | Encoding of built `.txt`: `shiftJis` / `utf8` / `utf8Bom` |
+| `jpnov.layout.print.browser` | `auto` | Browser that opens the built HTML on print: `auto` (on macOS the first of Chrome, Edge, Firefox installed; elsewhere the default browser) / `default` / `chrome` / `edge` / `firefox`; a browser not installed falls back to the default one with a notice |
 | `jpnov.layout.outDir` | `${workspaceFolder}/dist` | Output folder: `${workspaceFolder}/…` counts from the book's workspace folder, anything else from the `.jpbook`'s own folder (per workspace folder or user settings) |
 
 The running head and page number are **per-book** properties and live in each

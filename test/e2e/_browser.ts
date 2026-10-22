@@ -1,6 +1,6 @@
 /**
  * TEST-ONLY Chromium resolution + headless print argv for the E2E fidelity suites: the
- * product drives no browser, but these suites still print through a real Chromium — the
+ * product only hands a page to a browser, but these suites print through a real Chromium — the
  * reference engine for the paper geometry (@page boxes, page count, vertical-flow metrics)
  * the artifact promises to any browser's print dialog. Candidate paths mirror
  * chrome-launcher / puppeteer's install-location lists; Chrome, Edge, Chromium and Brave
