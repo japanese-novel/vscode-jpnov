@@ -50,7 +50,7 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
     case 'jpbook.metaUnterminated':
       return 'unterminated metadata block (missing a closing ---)';
     case 'jpbook.headerMissing':
-      return `the first line must be the header "${a(0)}"`;
+      return `the first line must be "${a(0)}"`;
     case 'jpbook.versionUnsupported':
       return `unsupported .jpbook version "${a(0)}" (this extension reads ${a(1)})`;
     case 'jpbook.metaEmptyValue':
@@ -111,7 +111,7 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
     case 'hover.pageBreak':
       return 'Page break';
     case 'hover.value':
-      return `Shows the value of "${a(0)}" (the book file sets it)`;
+      return `Shows the value of "${a(0)}" (the build fills in the book's value)`;
     case 'hover.gaiji':
       return `External character: ${a(0)}`;
     case 'hover.comment':
