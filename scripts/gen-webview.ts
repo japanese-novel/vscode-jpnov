@@ -49,7 +49,7 @@ const MODULES: readonly WebviewModule[] = [
     entry: join(ROOT, 'src/client/webview/preview/main.ts'),
     jsExport: 'PREVIEW_JS',
     css: [
-      { file: join(ROOT, 'src/client/webview/preview/loading.css'), cssExport: 'LOADING_CSS' },
+      { file: join(ROOT, 'src/client/webview/preview/shell.css'), cssExport: 'SHELL_CSS' },
       { file: join(ROOT, 'src/client/webview/preview/widget.css'), cssExport: 'WIDGET_CSS' },
     ],
     out: join(ROOT, 'src/client/preview/webviewBundle.generated.ts'),

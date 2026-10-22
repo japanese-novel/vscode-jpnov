@@ -64,7 +64,7 @@ body {
   margin-inline: auto;
   padding-inline: clamp(1.25rem, 4vw, 3rem);
 }
-section, .jp-hero, .jp-site-footer {
+section, .jp-hero {
   padding-block: clamp(4rem, 10vw, 9rem);
 }
 .jp-eyebrow {
@@ -130,6 +130,8 @@ pre.jp-source {
 }
 .jp-cta:hover { background: var(--color-vermilion); }
 .jp-cta-quiet { font-size: 0.9375rem; }
+/* An embedded product render (scripts/scope.ts): the product's own box model under the preflight's border-box. */
+.jp-scope, .jp-scope *, .jp-scope *::before, .jp-scope *::after { box-sizing: content-box; }
 .jp-paper { --jp-paper-width: 100cqw; }
 .jp-scope.jp-paper .page { margin: 0 auto; box-shadow: 0 1px 2px rgba(38, 33, 28, 0.12), 0 12px 32px -12px rgba(38, 33, 28, 0.35); }
 .jp-on-paper { --jp-bg: #fff; }
@@ -232,6 +234,6 @@ figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, va
 
 /* ---- footer ---------------------------------------------------------------------------- */
 .jp-site-footer { border-top: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent); padding-block: 3rem 4rem; font-size: 0.875rem; }
-.jp-footer-grid { display: grid; gap: 1.5rem; }
-.jp-footer-links { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
+.jp-site-footer-grid { display: grid; gap: 1.5rem; }
+.jp-site-footer-links { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
 .jp-credits { color: color-mix(in srgb, var(--color-ink) 72%, transparent); line-height: 1.8; }

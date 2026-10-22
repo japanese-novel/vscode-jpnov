@@ -1,6 +1,11 @@
-/* The "Loading preview…" spinner. The strict CSP rules out loadable assets (no codicon font) and
+/* The hardened placeholder documents (preview.ts shell): the empty state, a failure, and the
+   "Loading preview…" spinner. The strict CSP rules out loadable assets (no codicon font) and
    inline style attributes, so this rides the host's nonce'd inline stylesheet, coloured by the
    --vscode-* theme variables VS Code injects into every webview. */
+body {
+  font-family: sans-serif;
+  padding: 1rem;
+}
 .loading {
   display: flex;
   align-items: center;

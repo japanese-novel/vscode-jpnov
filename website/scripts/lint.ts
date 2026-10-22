@@ -18,6 +18,7 @@ import { lintWireValue } from '../../src/shared/lint/wire.ts';
 import { renderEnglish } from '../../src/shared/messages.ts';
 import type { LocalizableMessage, RawLintConfigWire } from '../../src/shared/protocol.ts';
 import type { DiagnosticOut, Range } from './contract.ts';
+import { ja } from './l10n.ts';
 import { readRootText } from './root.ts';
 
 const URI = 'file:///sample.jpnov';
@@ -54,20 +55,14 @@ async function defaultLintConfig(): Promise<RawLintConfigWire> {
 
 /** The rule selection for untouched settings; plain data, so one serves every sample. */
 const RULES = selectRules(await defaultLintConfig());
-const BUNDLE = JSON.parse(await readRootText('l10n/bundle.l10n.ja.json')) as Readonly<Record<string, string>>;
 const PLACEHOLDERS = ['{0}', '{1}', '{2}'];
 
 /** The English template is the bundle key; the args fill the same `{n}` slots afterwards. */
 export function localize(message: LocalizableMessage): { en: string; ja: string } {
   const args = message.args ?? [];
-  const key = renderEnglish(message.code, PLACEHOLDERS);
-  const template = BUNDLE[key];
-  if (template === undefined) {
-    throw new Error(`lint: no Japanese text for "${key}"`);
-  }
   return {
     en: renderEnglish(message.code, args),
-    ja: template.replace(/\{(\d)\}/g, (_m, i: string) => String(args[Number(i)] ?? '')),
+    ja: ja(renderEnglish(message.code, PLACEHOLDERS), ...args.map(String)),
   };
 }
 
@@ -102,12 +97,8 @@ export function lintSource(src: string): LintResult {
     return { diagnostics: out, fixAll: null };
   }
   const edits = action.edit?.changes?.[URI] ?? [];
-  const ja = BUNDLE[action.title];
-  if (ja === undefined) {
-    throw new Error(`lint: no Japanese text for "${action.title}"`);
-  }
   return {
     diagnostics: out,
-    fixAll: { title: { en: action.title, ja }, src: TextDocument.applyEdits(doc, [...edits]) },
+    fixAll: { title: { en: action.title, ja: ja(action.title) }, src: TextDocument.applyEdits(doc, [...edits]) },
   };
 }

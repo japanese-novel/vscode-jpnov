@@ -144,6 +144,9 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
   cam.to(of(q(root, 'toc')), t + 1.0, 0.3);
   tl.set(row2, { display: 'flex' }, t + 1.15);
   tl.fromTo(row2, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.25 }, t + 1.15);
+  // …and the status row counts it from then on.
+  tl.set(q(root, 'counts-1'), { display: 'none' }, t + 1.15);
+  tl.set(q(root, 'counts-2'), { display: 'flex' }, t + 1.15);
   tl.to(row2, { yPercent: -100, duration: 0.35, ease: 'power2.inOut' }, t + 1.7);
   tl.to(row3, { yPercent: 100, duration: 0.35, ease: 'power2.inOut' }, t + 1.7);
   cam.back(t + 2.15);

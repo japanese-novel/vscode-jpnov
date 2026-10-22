@@ -3,10 +3,9 @@
 import { sampleOf } from '../../renders.ts';
 
 const book = sampleOf('stageBook', 'book');
+// The em as a share of the paper's width and height; stage.css sizes the sheet from them.
 const { widthMm, heightMm, fontMm } = book.paper;
-// The em fits the container unless a stylesheet sets --jp-page-em (the narrow crop); --fw scales it from the width.
-const em = `var(--jp-page-em, min(calc(100cqh * ${String(fontMm)} / ${String(heightMm)}), calc(100cqw * ${String(fontMm)} / ${String(widthMm)})))`;
 ---
 
 <style is:inline set:html={book.fragment.css}></style>
-<div class={`jp-page jp-scope ${book.fragment.scope.slice(1)}`} data-t="page" style={`--fw:${String(fontMm / widthMm)};--jp-em:${em};--paper-w:calc(var(--jp-em) * ${String(widthMm / fontMm)});--paper-h:calc(var(--jp-em) * ${String(heightMm / fontMm)})`} set:html={book.fragment.body}></div>
+<div class={`jp-page jp-scope ${book.fragment.scope.slice(1)}`} data-t="page" style={`--fw:${String(fontMm / widthMm)};--fh:${String(fontMm / heightMm)}`} set:html={book.fragment.body}></div>

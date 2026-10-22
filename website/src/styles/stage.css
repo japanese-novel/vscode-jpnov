@@ -1,5 +1,7 @@
 /* The stage section: pinned motion instance (wide + motion) or the static sequence. */
 .jp-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+/* The codicon <symbol> sheet: out of flow, so its zero box costs the stage no line. */
+.jp-cd-sprite { position: absolute; }
 .jp-stage { background: var(--color-ink); color: var(--color-paper); padding-block: 0; }
 .jp-stage .jp-wrap { max-width: 108rem; }
 
@@ -38,14 +40,18 @@
   .jp-caps { align-self: center; }
   .jp-motion-view { height: 100%; aspect-ratio: auto; }
 }
-.jp-win-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); }
-.jp-page-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); height: min(100cqh, calc(100cqw / 1.6), 50rem); container-type: size; }
+/* The window and the page take the same 16:10 box; the window keeps its own aspect ratio from the width alone. */
+.jp-win-wrap, .jp-page-wrap { width: min(100cqw, calc(100cqh * 1.6), 80rem); }
+.jp-win-wrap { container-type: inline-size; }
+.jp-page-wrap { height: min(100cqh, calc(100cqw / 1.6), 50rem); container-type: size; }
 .jp-page-wrap .jp-page { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 
-/* the built page: a standalone document, black ink */
-.jp-page { width: var(--paper-w); margin: 0 auto; position: relative; color: #000; }
-.jp-page .book { display: block; }
-.jp-page .page { margin: 0 !important; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 40px 80px -40px rgba(0, 0, 0, 0.6) !important; }
+/* The built page: a standalone document, black ink. The em fits the container (--fw / --fh: the em
+   over the paper's width and height, set by PageLayer) unless a rule sets --jp-page-em (the narrow
+   crop); the sheet is the paper's width at that em. */
+.jp-page { --jp-em: var(--jp-page-em, min(calc(100cqh * var(--fh)), calc(100cqw * var(--fw)))); width: calc(var(--jp-em) / var(--fw)); margin: 0 auto; position: relative; color: #000; }
+/* One level above the fragment's own `.scope .page` rule, which comes later in the document (as the crop rule in global.css). */
+.jp-page.jp-scope .page { margin: 0; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 40px 80px -40px rgba(0, 0, 0, 0.6); }
 .jp-page .print { display: inline-block; text-decoration: none; }
 .jp-stage-view:not(.jp-motion-view) { container-type: size; }
 .jp-sbeat .jp-stage-view { aspect-ratio: 16 / 10; display: grid; align-items: center; justify-items: center; }
@@ -62,7 +68,7 @@
      (screen UI at pixel size) would cover the text here. */
   .jp-sbeat[data-beat="book"] .jp-stage-view { container-type: inline-size; aspect-ratio: 5 / 4; overflow: hidden; position: relative; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
   .jp-sbeat[data-beat="book"] .jp-page { position: absolute; top: 0; right: 0; --jp-page-em: calc(100cqw * 1.8 * var(--fw)); }
-  .jp-sbeat[data-beat="book"] .jp-page .page { box-shadow: none !important; }
+  .jp-sbeat[data-beat="book"] .jp-page .page { box-shadow: none; }
   .jp-sbeat .jp-page .print { display: none; }
   .jp-sbeat .jp-win { --u: 1px; aspect-ratio: auto; height: 26rem; }
   .jp-sbeat .jp-win-body > .jp-activity { display: none; }

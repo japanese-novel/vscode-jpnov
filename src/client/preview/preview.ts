@@ -41,7 +41,7 @@ import { bootScript, cspMeta, makeNonce } from '../nonce.ts';
 import { saveSettings } from './settingsTarget.ts';
 import { lastPathSegment } from '../paths.ts';
 import { buildPreviewSettings } from '../renderConfig.ts';
-import { LOADING_CSS, PREVIEW_JS, WIDGET_CSS } from './webviewBundle.generated.ts';
+import { PREVIEW_JS, SHELL_CSS, WIDGET_CSS } from './webviewBundle.generated.ts';
 
 /**
  * Trailing-edge debounce for edit-driven re-renders. Every keystroke otherwise renders the whole
@@ -602,14 +602,14 @@ export class Preview {
       `${html.slice(style + '<style>'.length, headEnd)}<style nonce="${nonce}">${WIDGET_CSS}</style>${body}${script}${html.slice(bodyEnd)}`;
   }
 
-  /** Minimal hardened standalone document for fallback / placeholder content. */
-  private shell(bodyHtml: string, webview: vscode.Webview, extraCss = ''): string {
+  /** Minimal hardened standalone document for fallback / placeholder content, styled by shell.css. */
+  private shell(bodyHtml: string, webview: vscode.Webview): string {
     const nonce = makeNonce();
     return [
       '<!DOCTYPE html>',
       '<html><head><meta charset="utf-8">',
       cspMeta(nonce, webview),
-      `<style nonce="${nonce}">body{font-family:sans-serif;padding:1rem;}${extraCss}</style>`,
+      `<style nonce="${nonce}">${SHELL_CSS}</style>`,
       `</head><body>${bodyHtml}</body></html>`,
     ].join('');
   }
@@ -622,12 +622,11 @@ export class Preview {
     );
   }
 
-  /** Hardened "Loading preview…" placeholder; the CSS-only spinner + its rationale live in loading.css. */
+  /** Hardened "Loading preview…" placeholder; the CSS-only spinner + its rationale live in shell.css. */
   private loadingShell(webview: vscode.Webview): string {
     return this.shell(
       `<p class="loading"><span class="spinner"></span>${escapeHtml(vscode.l10n.t('Loading preview…'))}</p>`,
       webview,
-      LOADING_CSS,
     );
   }
 

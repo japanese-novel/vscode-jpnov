@@ -58,9 +58,10 @@ h1, h2 { margin: 0; font-size: inherit; font-weight: inherit; }
   flex: 1 1 auto; display: flex; align-items: center; gap: 6px; min-width: 0;
   text-align: left; background: none; border: none; color: inherit; padding: 4px 0; cursor: pointer;
 }
-/* Meta/action rows are the row itself (a button), so give them full width + row padding, not content width. */
-.action { width: 100%; padding: 4px 6px 4px 8px; }
-.meta { width: 100%; }
+/* Meta/action rows are the row itself (a button), so give them full width, not content width. The
+   action row also takes the row padding, muted against real entries: the permanent "new file" tail of each list. */
+.meta, .action { width: 100%; }
+.action { padding: 4px 6px 4px 8px; color: var(--vscode-descriptionForeground); }
 .maincol { flex: 1 1 auto; min-width: 0; }
 .title, .mlabeltext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The entry's folder prefix, inline before the file name at a step down. */
@@ -117,8 +118,6 @@ h1, h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 .pen { flex: 0 0 auto; color: var(--vscode-descriptionForeground); opacity: 0; }
 .meta:hover .pen, .meta:focus-visible .pen, .emain:hover .pen, .emain:focus-visible .pen { opacity: 1; }
 .empty { padding: 4px 8px; color: var(--vscode-descriptionForeground); font-size: 12px; }
-/* The permanent "new file" action row at each list's tail: muted against real entries. */
-.action { color: var(--vscode-descriptionForeground); }
 
 .footer {
   flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding: 8px;

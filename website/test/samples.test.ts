@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { COVER_TEMPLATE } from '../../src/shared/book/create.ts';
 import { checkJpbook, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { DEFAULT_FONT_STACK } from '../../src/shared/compiler/css.ts';
+import { COUNT_KEYS } from '../scripts/counts.ts';
 import { readRootText, readSiteText, rootPath, sitePath } from '../scripts/root.ts';
 import { SUBMISSION_JPBOOK } from '../src/copy/book.ts';
 
@@ -40,6 +41,13 @@ test('no browser script bundles the renders', async () => {
     for (const name of await readdir(sitePath(dir))) {
       assert.ok(!(await readSiteText(`${dir}/${name}`)).includes('generated/renders'), `${dir}/${name} imports renders.json`);
     }
+  }
+});
+
+test('the status row’s bundle keys are the ones the Books view formats with', async () => {
+  const view = await readRootText('src/client/book/view.ts');
+  for (const item of Object.values(COUNT_KEYS)) {
+    assert.ok(view.includes(`'${item.text}'`) && view.includes(`'${item.title}'`), `${item.text} / ${item.title} not found in view.ts`);
   }
 });
 
