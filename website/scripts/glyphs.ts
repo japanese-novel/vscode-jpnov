@@ -54,7 +54,7 @@ export async function collectGlyphs(): Promise<string> {
   const copy = await Promise.all((await readdir(sitePath('src/copy'))).map((name): Promise<unknown> => import(pathToFileURL(sitePath(`src/copy/${name}`)).href)));
   addAll(jsonStrings(copy));
   const renders: unknown = JSON.parse(await readFile(sitePath('src/generated/renders.json'), 'utf8'));
-  addAll([...jsonStrings(renders)].map((text) => text.replace(/<[^>]*>/g, '')));
+  addAll([...jsonStrings(renders)].flatMap((text) => text.split(/<[^>]*>/)));
   return [...set]
     .filter((ch) => !/[\p{Cc}\s]/u.test(ch) || ch === '　')
     .sort((a, b) => (a.codePointAt(0) ?? 0) - (b.codePointAt(0) ?? 0))
