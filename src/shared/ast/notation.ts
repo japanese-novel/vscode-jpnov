@@ -26,6 +26,9 @@ export const TCY = '縦中横';
 export const LEFT_RUBY = 'のルビ';
 export const VALUE_HERE = 'ここに';
 export const VALUE_SHOW = 'の値を表示';
+/** The function form ［＃ここに「名前」の値を〇〇で表示］: the two scaffolds around the function word. */
+export const VALUE_OF = 'の値を';
+export const VALUE_SHOW_AS = 'で表示';
 
 /** The left-side prefixes, fixed by form: a postfix says の左に, a span says 左に
  *  (https://www.aozora.gr.jp/annotation/emphasis.html). */
@@ -165,6 +168,8 @@ export const VALUE_NAMES = {
   totalPages: '総ページ数',
   sheets: '原稿用紙換算枚数',
   page: 'ページ番号',
+  /** The chapter's number in the book's 目次, from 1. */
+  heading: '見出し番号',
 } as const;
 
 /** The default of each name of {@link VALUE_NAMES}: a text value reads as its name, a count as 0. */
@@ -174,6 +179,7 @@ export const VALUE_DEFAULTS = {
   totalPages: '0',
   sheets: '0',
   page: '0',
+  heading: '0',
 } as const satisfies Record<keyof typeof VALUE_NAMES, string>;
 
 // A Map, not an object: the name comes from the document, where `toString` would hit
@@ -182,12 +188,88 @@ const DEFAULT_BY_NAME: ReadonlyMap<string, string> = new Map(
   (Object.keys(VALUE_NAMES) as (keyof typeof VALUE_NAMES)[]).map((key) => [VALUE_NAMES[key], VALUE_DEFAULTS[key]]),
 );
 
+/** The functions of ［＃ここに「…」の値を〇〇で表示］: the two kanji numeral systems. */
+export const VALUE_FORMATS = {
+  /** 位取り: digit by digit, 一〇八. */
+  positional: '位取り',
+  /** 命数: with the powers of ten, 百八. */
+  named: '命数',
+} as const;
+
+const KANJI_DIGITS = '〇一二三四五六七八九';
+/** The powers of ten inside a group of four digits, from the ones up. */
+const SMALL_POWERS = ['', '十', '百', '千'] as const;
+/** The powers of ten of each group of four digits, from the lowest up: 命数 reads up to 京. */
+const LARGE_POWERS = ['', '万', '億', '兆', '京'] as const;
+
+const kanjiDigit = (d: string): string => KANJI_DIGITS[Number(d)] ?? d;
+
+/** `digits` in 位取り: 〇一二三四五六七八九 in place of each digit. */
+function positionalKanji(digits: string): string {
+  return digits.replace(/[0-9]/g, kanjiDigit);
+}
+
+/**
+ * `digits` in 命数: groups of four digits with 万・億・兆・京, 千・百・十 inside each with their 一
+ * omitted (一千 stays before 万 and above: 一千万, 千二百), a group of zeros silent; a run of
+ * zeros is 〇. Beyond 京 the digits come back as they are: the function cannot format them.
+ */
+function namedKanji(digits: string): string {
+  const significant = digits.replace(/^0+/, '');
+  if (significant === '') {
+    return kanjiDigit('0');
+  }
+  if (significant.length > LARGE_POWERS.length * 4) {
+    return digits;
+  }
+  let out = '';
+  for (let group = 0; group * 4 < significant.length; group++) {
+    const end = significant.length - group * 4;
+    const chunk = significant.slice(Math.max(0, end - 4), end);
+    let words = '';
+    for (let i = 0; i < chunk.length; i++) {
+      const d = chunk[chunk.length - 1 - i] ?? '0';
+      if (d === '0') {
+        continue;
+      }
+      const power = SMALL_POWERS[i] ?? '';
+      const oneSilent = d === '1' && power !== '' && (group === 0 || i < SMALL_POWERS.length - 1);
+      words = `${oneSilent ? '' : kanjiDigit(d)}${power}${words}`;
+    }
+    if (words !== '') {
+      out = `${words}${LARGE_POWERS[group] ?? ''}${out}`;
+    }
+  }
+  return out;
+}
+
+// A Map, not an object: the function word comes from the document.
+const FORMATTER_BY_NAME: ReadonlyMap<string, (digits: string) => string> = new Map([
+  [VALUE_FORMATS.positional, positionalKanji],
+  [VALUE_FORMATS.named, namedKanji],
+]);
+
+/** True iff `format` is a function the notation defines: 位取り or 命数. */
+export function isValueFormat(format: string): boolean {
+  return FORMATTER_BY_NAME.has(format);
+}
+
+/**
+ * `value` as the function `format` shows it: a value of half-width digits in kanji under 位取り
+ * or 命数; any other value, and any value under a function the notation does not define, as it is.
+ */
+export function formatValue(format: string | undefined, value: string): string {
+  const formatter = format === undefined ? undefined : FORMATTER_BY_NAME.get(format);
+  return formatter !== undefined && /^[0-9]+$/.test(value) ? formatter(value) : value;
+}
+
 /**
  * The text ［＃ここに「name」の値を表示］ shows: the value `values` holds for `name`, else the
- * name's default, else — a name outside {@link VALUE_NAMES} — the name itself.
+ * name's default, else — a name outside {@link VALUE_NAMES} — the name itself; under a function
+ * (［＃ここに「name」の値をformatで表示］), as {@link formatValue} shows it.
  */
-export function valueOf(name: string, values: ValueLookup | undefined): string {
-  return values?.get(name) ?? DEFAULT_BY_NAME.get(name) ?? name;
+export function valueOf(name: string, values: ValueLookup | undefined, format?: string): string {
+  return formatValue(format, values?.get(name) ?? DEFAULT_BY_NAME.get(name) ?? name);
 }
 
 /** `inner` wrapped as a ［＃…］ annotation. */
@@ -205,9 +287,10 @@ export function endAnnotation(mark: string, block: boolean): string {
   return annotation(`${block ? BLOCK_TO : ''}${mark}${SPAN_END}`);
 }
 
-/** The value display annotation for `name`. */
-export function valueAnnotation(name: string): string {
-  return annotation(`${VALUE_HERE}${CORNER_OPEN}${name}${CORNER_CLOSE}${VALUE_SHOW}`);
+/** The value display annotation for `name`, under the function `format` when given. */
+export function valueAnnotation(name: string, format?: string): string {
+  const tail = format === undefined ? VALUE_SHOW : `${VALUE_OF}${format}${VALUE_SHOW_AS}`;
+  return annotation(`${VALUE_HERE}${CORNER_OPEN}${name}${CORNER_CLOSE}${tail}`);
 }
 
 /** The 縦中横 annotation naming `target`, written after it

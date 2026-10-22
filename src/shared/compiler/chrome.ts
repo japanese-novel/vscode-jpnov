@@ -47,8 +47,9 @@ export interface BuildChrome {
   readonly headerAlign: FurnitureAlign;
   /**
    * Footer line: `.jpnov` notation whose ［＃ここに「…」の値を表示］ fields fill from the book and
-   * the page (VALUE_NAMES in ast/notation.ts); everything else prints as typed. Blank after trim
-   * = none (band stays reserved).
+   * the page (VALUE_NAMES in ast/notation.ts), in kanji under ［＃ここに「…」の値を命数で表示］
+   * (VALUE_FORMATS); everything else prints as typed. Blank after trim = none (band stays
+   * reserved).
    */
   readonly footer: string;
   /** Where the footer sits on each page. */

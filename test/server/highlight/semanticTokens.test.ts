@@ -155,6 +155,26 @@ test('［＃ここに「…」の値を表示］: the name is a directive, known
   assert.ok(!empty.some((t) => t.type === tokenTypeIndex('directive')));
 });
 
+test('［＃ここに「…」の値を〇〇で表示］: the name and the function word are directives; 」の値を and で表示 demote', () => {
+  for (const format of ['位取り', '命数', '漢数字']) {
+    const src = valueAnnotation('総ページ数', format);
+    const toks = decode(buildSemanticTokens(doc(src), rec).data);
+    const name = '［＃ここに「'.length;
+    const mid = name + '総ページ数'.length;
+    const word = mid + '」の値を'.length;
+    const tail = word + format.length;
+    assert.deepEqual(at(toks, 0, 0), { line: 0, char: 0, len: '［＃'.length, type: MARKER }, format);
+    assert.deepEqual(at(toks, 0, '［＃'.length), { line: 0, char: '［＃'.length, len: 'ここに「'.length, type: MARKER }, format);
+    assert.deepEqual(at(toks, 0, name), { line: 0, char: name, len: '総ページ数'.length, type: tokenTypeIndex('directive') }, format);
+    assert.deepEqual(at(toks, 0, mid), { line: 0, char: mid, len: '」の値を'.length, type: MARKER }, format);
+    assert.deepEqual(at(toks, 0, word), { line: 0, char: word, len: format.length, type: tokenTypeIndex('directive') }, format);
+    assert.deepEqual(at(toks, 0, tail), { line: 0, char: tail, len: 'で表示'.length, type: MARKER }, format);
+    assert.deepEqual(at(toks, 0, src.length - 1), { line: 0, char: src.length - 1, len: 1, type: MARKER }, format);
+  }
+  const empty = decode(buildSemanticTokens(doc('［＃ここに「13」の値をで表示］'), rec).data);
+  assert.ok(!empty.some((t) => t.type === tokenTypeIndex('directive')));
+});
+
 test('a 外字注記: ※ and the brackets are markers, what it holds a directive; any other ※ is body text', () => {
   const toks = decode(buildSemanticTokens(doc('※［＃感嘆符疑問符、1-8-78］'), rec).data);
   assert.deepEqual(toks, [

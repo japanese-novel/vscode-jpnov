@@ -136,26 +136,38 @@ test('no member carries a character XML cannot, wherever the book held one', () 
   assert.ok(opf.includes('<dc:creator>ペンネーム</dc:creator>'));
   const nav = content('OEBPS/nav.xhtml');
   assert.ok(nav.includes('<li><a href="text/ch001.xhtml">聖剣</a></li>'));
-  assert.ok(nav.includes('<li><a href="text/ch002.xhtml">王都</a></li>'));
+  // The second chapter has no 見出し: its number labels it, not its hostile file name.
+  assert.ok(nav.includes('<li><a href="text/ch002.xhtml">二</a></li>'));
   const first = content('OEBPS/text/ch001.xhtml');
   assert.ok(first.includes('<title>聖剣</title>'));
   assert.ok(first.includes('<p>王都へ行く。</p><p><br/></p>'));
   assert.ok(first.includes('<!--- - -->'));
-  assert.ok(content('OEBPS/text/ch002.xhtml').includes('<title>王都</title><'));
+  assert.ok(content('OEBPS/text/ch002.xhtml').includes('<title>二</title><'));
 });
 
-test('a blank file name is labeled by its spine id; a blank title takes the first nav label', () => {
+test('a chapter with no 見出し is labeled by its 見出し番号 in 命数, whatever its file name; a blank title takes the first nav label', () => {
   const content = (book: BookInput, name: string): string => contentOf(members(book), name);
   const titleOf = (book: BookInput): string | undefined =>
     /<dc:title>([^<]*)<\/dc:title>/.exec(content(book, 'OEBPS/package.opf'))?.[1];
   const labelsOf = (book: BookInput): string[] =>
     [...content(book, 'OEBPS/nav.xhtml').matchAll(/<a href="text\/([^.]+)\.xhtml">([^<]*)<\/a>/g)].map((m) => `${m[1] ?? ''}=${m[2] ?? ''}`);
 
-  for (const name of ['.jpnov', 'vol1/.jpnov', 'vol1/　.jpnov', 'vol1/\u0007.jpnov']) {
+  // The file name is not consulted: a hostile one and a plain stem label alike.
+  for (const name of ['vol1/\u0007.jpnov', 'vol1/第一章.JPNOV']) {
     const book: BookInput = { files: [{ name: 'vol1/a.jpnov', src: '本文。' }, { name, src: '本文。' }] };
-    assert.deepEqual(labelsOf(book), ['ch001=a', 'ch002=ch002'], JSON.stringify(name));
-    assert.ok(content(book, 'OEBPS/text/ch002.xhtml').includes('<title>ch002</title>'), JSON.stringify(name));
+    assert.deepEqual(labelsOf(book), ['ch001=一', 'ch002=二'], JSON.stringify(name));
+    assert.ok(content(book, 'OEBPS/text/ch002.xhtml').includes('<title>二</title>'), JSON.stringify(name));
   }
+  // The number is the file's place in the book: an empty chapter file keeps its number for the next.
+  const gap: BookInput = { files: [{ name: 'a.jpnov', src: '' }, { name: 'b.jpnov', src: '本文。' }] };
+  assert.deepEqual(labelsOf(gap), ['ch002=二']);
+  // The same number the chapter's own ［＃ここに「見出し番号」の値を表示］ shows; the book's title and author reach it too.
+  const inBody: BookInput = {
+    files: [{ name: 'a.jpnov', src: '［＃ここに「タイトル」の値を表示］' }, { name: 'b.jpnov', src: '第［＃ここに「見出し番号」の値を命数で表示］章（［＃ここに「見出し番号」の値を表示］）' }],
+    title: '作品名',
+  };
+  assert.ok(content(inBody, 'OEBPS/text/ch001.xhtml').includes('<p>作品名</p>'));
+  assert.ok(content(inBody, 'OEBPS/text/ch002.xhtml').includes('<p>第二章（2）</p>'));
 
   for (const title of ['', ...BLANKS]) {
     assert.equal(titleOf({ ...TWO_CHAPTERS, title }), '一章', JSON.stringify(title));
@@ -169,23 +181,17 @@ test('a blank file name is labeled by its spine id; a blank title takes the firs
   // A blank 見出し does not label the chapter either.
   assert.deepEqual(
     labelsOf({ files: [{ name: 'vol1/a.jpnov', src: '［＃大見出し］　［＃大見出し終わり］\n本文。' }] }),
-    ['ch001=a'],
+    ['ch001=一'],
   );
 });
 
-test('nav lists one entry per CHAPTER (not per split), labeled by first 見出し or file stem', () => {
+test('nav lists one entry per CHAPTER (not per split), labeled by first 見出し or 見出し番号', () => {
   const nav = members(TWO_CHAPTERS).find((m) => m.name === 'OEBPS/nav.xhtml')?.content ?? '';
   assert.ok(nav.includes('<nav epub:type="toc">'));
   assert.ok(nav.includes('<li><a href="text/ch001.xhtml">一章</a></li>'));
-  assert.ok(nav.includes('<li><a href="text/ch002.xhtml">b</a></li>'));
+  assert.ok(nav.includes('<li><a href="text/ch002.xhtml">二</a></li>'));
   assert.ok(!nav.includes('ch001-2.xhtml'), 'mid-chapter splits stay out of the nav');
   assertWellFormedXml(nav);
-
-  // The stem drops the directories and the extension in any letter case; a name without one is itself.
-  const stems = members({ files: [{ name: 'vol1/第一章.JPNOV', src: '本文。' }, { name: 'readme', src: '本文。' }] });
-  const labels = contentOf(stems, 'OEBPS/nav.xhtml');
-  assert.ok(labels.includes('<li><a href="text/ch001.xhtml">第一章</a></li>'));
-  assert.ok(labels.includes('<li><a href="text/ch002.xhtml">readme</a></li>'));
 });
 
 test('chapter documents are well-formed XHTML linking the one shared stylesheet', () => {

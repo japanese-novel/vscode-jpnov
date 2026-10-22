@@ -32,7 +32,7 @@ export function nonBlank(text: string): string | null {
 }
 
 /** One spine-level piece of a chapter: its body markup and its first 見出し that is not blank
- *  (nav label). */
+ *  (nav label), without the spaces at its ends. */
 export interface ReflowSegment {
   readonly body: string;
   readonly heading: string | null;
@@ -155,7 +155,9 @@ export function reflowSegments(
     }
     const inner = emitUnits(bindInsepRuns(row.units.map(reflowUnit)), used);
     if (row.heading !== undefined && heading === null) {
-      const raw = row.units.map((u) => u.text).join('');
+      // The label is a nav entry, where the spaces of a ［＃○字下げ］ or a typed indent have no
+      // place: the row's text trimmed. The <hN> keeps them, as the paginated page shows them.
+      const raw = row.units.map((u) => u.text).join('').trim();
       const text = want === undefined ? raw : raw.replaceAll(want, DASH_GLYPH);
       heading = nonBlank(text);
     }

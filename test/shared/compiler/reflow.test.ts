@@ -54,6 +54,16 @@ test('見出し rows become real hN (大=1→h1), one per row, and feed the segm
   assert.equal(first.heading, '序章');
 });
 
+test('a 見出し nav label drops the spaces at its ends: a ［＃○字下げ］ or a typed indent; the <hN> keeps them', () => {
+  const indented = segs('［＃７字下げ］［＃中見出し］題名［＃中見出し終わり］\n本文')[0];
+  assert.ok(indented);
+  assert.equal(indented.heading, '題名');
+  assert.equal(indented.body, `<h2>${'　'.repeat(7)}題名</h2><p>本文</p>`);
+  assert.equal(segs('　 題名　［＃「題名」は大見出し］\n本文')[0]?.heading, '題名');
+  // Spaces inside stay.
+  assert.equal(segs('第一章　序［＃「第一章　序」は大見出し］')[0]?.heading, '第一章　序');
+});
+
 test('a blank line inside a 見出し block keeps its column as <hN><br/></hN> (#86)', () => {
   assert.equal(
     body('［＃ここから大見出し］\n序章\n\n副題\n［＃ここで大見出し終わり］\n本文'),

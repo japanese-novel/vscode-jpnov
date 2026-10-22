@@ -13,11 +13,11 @@
  */
 import { createHash } from 'node:crypto';
 
-import { parse } from '../ast/parse.ts';
+import { VALUE_FORMATS, VALUE_NAMES, valueOf } from '../ast/notation.ts';
 import { displayText } from '../chars.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
 import { reflowStylesheet } from './css.ts';
-import type { TitledBook } from './document.ts';
+import { chapterAsts, type TitledBook } from './document.ts';
 import { escapeHtml } from '../utils/escape.ts';
 import { buildRows } from './layout.ts';
 import { nonBlank, reflowDocument, reflowSegments } from './reflow.ts';
@@ -41,13 +41,6 @@ function bookIdentifier(outRel: string): string {
   const hex = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
   const parts = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)];
   return `urn:uuid:${parts.join('-')}`;
-}
-
-/** The chapter file's own name (no directories, no `.jpnov`) — the nav label when the chapter
- *  has no 見出し; a blank one gives way to the spine id. */
-function chapterStem(fileName: string): string {
-  const base = fileName.split('/').pop() ?? fileName;
-  return base.replace(/\.jpnov$/i, '');
 }
 
 /** `s` as the package shows it, or null when nothing of it would show. Metadata never passes
@@ -91,15 +84,16 @@ export function epubMembers(opts: {
   const used = new Set<string>();
   // One entry per non-empty chapter: its spine docs plus its one nav row (an empty chapter
   // source contributes neither). reflowSegments feeds the shared `used` class sink, so
-  // chapters must be processed in file order.
-  const chapters = opts.book.files.flatMap((file, index) => {
-    const rows = buildRows(parse(file.src), { dash: opts.dash });
+  // chapters must be processed in file order. A chapter with no 見出し is labelled by its
+  // 見出し番号 in 命数 (一, 二, …), the number its ［＃ここに「見出し番号」の値を表示］ shows.
+  const chapters = chapterAsts(opts.book).flatMap(({ ast, values }, index) => {
+    const rows = buildRows(ast, { dash: opts.dash });
     const segments = reflowSegments(rows, opts.charsPerLine, used, opts.dash);
     if (segments.length === 0) {
       return [];
     }
     const stem = spineStem(index);
-    const label = segments.find((s) => s.heading !== null)?.heading ?? shown(chapterStem(file.name)) ?? stem;
+    const label = segments.find((s) => s.heading !== null)?.heading ?? valueOf(VALUE_NAMES.heading, values, VALUE_FORMATS.named);
     const chapterDocs = segments.map((seg, si): SpineDoc => {
       const id = si === 0 ? stem : `${stem}-${String(si + 1)}`;
       return { id, href: `text/${id}.xhtml`, title: seg.heading ?? label, body: seg.body };

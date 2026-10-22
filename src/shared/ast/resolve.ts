@@ -46,7 +46,7 @@ import type {
   ValueFieldNode,
   ValueLookup,
 } from './nodes.ts';
-import { endAnnotation, innerOf, spanChannel, spanMark, valueOf } from './notation.ts';
+import { endAnnotation, innerOf, isValueFormat, spanChannel, spanMark, valueOf } from './notation.ts';
 import { bySource } from './span.ts';
 
 /**
@@ -283,9 +283,13 @@ class LineResolver {
     }
   }
 
+  /** What the field shows; a function word the notation does not define is reported, and the value shows as it is. */
   private value(node: ValueFieldNode): string {
     this.valueSeen = true;
-    return valueOf(node.name.text, this.values);
+    if (node.format !== undefined && !isValueFormat(node.format.text)) {
+      this.ledger.issues.push({ kind: 'valueFormatUnknown', span: node.format.span, format: node.format.text });
+    }
+    return valueOf(node.name.text, this.values, node.format?.text);
   }
 
   private implicitRuby(node: RubyReadingNode, at: number): void {

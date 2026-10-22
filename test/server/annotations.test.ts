@@ -90,6 +90,8 @@ test('the hover of the other annotations, and of a ruby', () => {
   assert.deepEqual(hover('本文［＃２字下げ］', '［＃'), { lines: ['hover.indent(２)'], over: '［＃２字下げ］', link: 'layout_2.html#ichigyo' });
   assert.deepEqual(hover('［＃改ページ］', '改'), { lines: ['hover.pageBreak()'], over: '［＃改ページ］', link: 'layout_1.html#kaipage' });
   assert.deepEqual(hover('［＃ここに「タイトル」の値を表示］', 'タイトル'), { lines: ['hover.value(タイトル)'], over: '［＃ここに「タイトル」の値を表示］' });
+  assert.deepEqual(hover('［＃ここに「総ページ数」の値を命数で表示］', '命数'), { lines: ['hover.valueFormat(総ページ数, 命数)'], over: '［＃ここに「総ページ数」の値を命数で表示］' });
+  assert.deepEqual(hover('［＃ここに「総ページ数」の値を漢数字で表示］', '漢数字')?.lines, ['hover.value(総ページ数)']);
   assert.deepEqual(hover(`なに${gaijiOf('⁉')}`, '※'), { lines: ['hover.gaiji(⁉)'], over: gaijiOf('⁉'), link: 'external_character.html' });
   assert.deepEqual(hover('あ［＃メモ］い', 'メモ'), { lines: ['hover.comment()'], over: '［＃メモ］', link: 'index.html' });
   assert.deepEqual(hover('あ［＃メモ', 'メモ'), { lines: ['hover.broken()'], over: '［＃メモ' });

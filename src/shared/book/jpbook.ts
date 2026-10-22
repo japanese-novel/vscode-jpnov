@@ -683,7 +683,12 @@ export function checkJpbook(parsed: ParsedJpbook): JpbookVerdict {
     return { ok: false, error: metaError.error };
   }
   // Complete: a key still absent is unwritten (a line in Error or an unwritten title is reported above).
-  return { ok: true, meta: { ...META_DEFAULTS, ...parsed.meta } as JpbookMeta };
+  return { ok: true, meta: completeMeta(parsed) };
+}
+
+/** The metadata of `parsed` with every unwritten key at {@link META_DEFAULTS}; a missing title reads as the default's. */
+export function completeMeta(parsed: ParsedJpbook): JpbookMeta {
+  return { ...META_DEFAULTS, ...parsed.meta } as JpbookMeta;
 }
 
 /**

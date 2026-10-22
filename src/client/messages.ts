@@ -99,6 +99,8 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('ruby reading {0} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)', s(0));
     case 'syntax.indentTooLarge':
       return vscode.l10n.t('字下げ is too large (keep it to {0} or less for it to take effect)', s(0));
+    case 'syntax.valueFormatUnknown':
+      return vscode.l10n.t('Unknown function "{0}" (the value prints as it is)', s(0));
     case 'hover.postfix':
       return vscode.l10n.t('{0} (forward reference)', s(0));
     case 'hover.rubyLeft':
@@ -117,6 +119,8 @@ export function renderMessage(msg: LocalizableMessage): string {
       return vscode.l10n.t('Page break');
     case 'hover.value':
       return vscode.l10n.t("Shows the value of \"{0}\" (the build fills in the book's value)", s(0));
+    case 'hover.valueFormat':
+      return vscode.l10n.t("Shows the value of \"{0}\" as {1} (the build fills in the book's value)", s(0), s(1));
     case 'hover.gaiji':
       return vscode.l10n.t('External character: {0}', s(0));
     case 'hover.comment':

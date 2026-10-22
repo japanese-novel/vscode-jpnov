@@ -90,7 +90,8 @@ export function partHighlight(role: PartRole): (typeof HIGHLIGHTS)[number] | nul
 
 /**
  * Runs of adjacent parts that are ONE token: a quoted reading with its corners, a reading with
- * its opening 《, and the value display's ここに「 … 」の値を表示 scaffolding.
+ * its opening 《, and the value display's ここに「 … 」の値を表示 scaffolding (」の値を before a
+ * function word).
  */
 const JOINED: Partial<Record<SyntaxNode['kind'], readonly (readonly PartRole[])[]>> = {
   rubyReading: [['bracket', 'reading']],

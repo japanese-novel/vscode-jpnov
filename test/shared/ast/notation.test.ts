@@ -12,14 +12,17 @@ import {
   HEADING_LITERALS,
   INDENT_MAX,
   VALUE_DEFAULTS,
+  VALUE_FORMATS,
   VALUE_NAMES,
   closingAnnotations,
+  formatValue,
   gaijiAnnotation,
   gaijiChar,
   headingLevelOf,
   headingLiteralOf,
   indentAmount,
   indentAnnotation,
+  isValueFormat,
   tcyAnnotation,
   valueAnnotation,
   valueOf,
@@ -66,6 +69,7 @@ test('the default of a value: a text value reads as its name, a count as 0, any 
     totalPages: '0',
     sheets: '0',
     page: '0',
+    heading: '0',
   });
   for (const key of Object.keys(VALUE_NAMES) as (keyof typeof VALUE_NAMES)[]) {
     assert.equal(valueOf(VALUE_NAMES[key], undefined), VALUE_DEFAULTS[key]);
@@ -88,6 +92,75 @@ test('valueOf: the supplied value, else the default; an empty value is a value',
 test('valueAnnotation reads back as the value field of its name', () => {
   assert.equal(valueAnnotation('タイトル'), '［＃ここに「タイトル」の値を表示］');
   assert.equal(nodeOf(valueAnnotation('発行日'), 'valueField').name.text, '発行日');
+  assert.equal(valueAnnotation('総ページ数', '命数'), '［＃ここに「総ページ数」の値を命数で表示］');
+  const field = nodeOf(valueAnnotation('発行日', '位取り'), 'valueField');
+  assert.equal(field.name.text, '発行日');
+  assert.equal(field.format?.text, '位取り');
+});
+
+test('formatValue: 位取り and 命数 on a value of half-width digits; anything else, or any other function, as it is', () => {
+  assert.deepEqual(VALUE_FORMATS, { positional: '位取り', named: '命数' });
+  const cases: readonly [string, string, string][] = [
+    ['0', '〇', '〇'],
+    ['7', '七', '七'],
+    ['10', '一〇', '十'],
+    ['11', '一一', '十一'],
+    ['12', '一二', '十二'],
+    ['20', '二〇', '二十'],
+    ['100', '一〇〇', '百'],
+    ['108', '一〇八', '百八'],
+    ['110', '一一〇', '百十'],
+    ['128', '一二八', '百二十八'],
+    ['215', '二一五', '二百十五'],
+    ['1000', '一〇〇〇', '千'],
+    ['1001', '一〇〇一', '千一'],
+    ['1100', '一一〇〇', '千百'],
+    ['10000', '一〇〇〇〇', '一万'],
+    ['10001', '一〇〇〇一', '一万一'],
+    ['12345', '一二三四五', '一万二千三百四十五'],
+    ['10000000', '一〇〇〇〇〇〇〇', '一千万'],
+    ['11001000', '一一〇〇一〇〇〇', '一千百万千'],
+    ['100000000000', '一〇〇〇〇〇〇〇〇〇〇〇', '一千億'],
+    ['100000000', '一〇〇〇〇〇〇〇〇', '一億'],
+    ['100010000', '一〇〇〇一〇〇〇〇', '一億一万'],
+    ['1000000000000', '一〇〇〇〇〇〇〇〇〇〇〇〇', '一兆'],
+    ['10000000000000000', '一〇〇〇〇〇〇〇〇〇〇〇〇〇〇〇〇', '一京'],
+    ['007', '〇〇七', '七'],
+    ['00', '〇〇', '〇'],
+  ];
+  for (const [value, positional, named] of cases) {
+    assert.equal(formatValue(VALUE_FORMATS.positional, value), positional, value);
+    assert.equal(formatValue(VALUE_FORMATS.named, value), named, value);
+  }
+  // Beyond 京 the 命数 cannot say it; the 位取り can.
+  const beyond = '1'.padEnd(21, '0');
+  assert.equal(formatValue(VALUE_FORMATS.named, beyond), beyond);
+  assert.equal(formatValue(VALUE_FORMATS.positional, beyond), `一${'〇'.repeat(20)}`);
+  // Not a run of half-width digits: untouched by either function.
+  for (const value of ['１２８', '12８', '12a', 'abc', '作品名', '', '-1', '1.5', ' 12']) {
+    assert.equal(formatValue(VALUE_FORMATS.positional, value), value, value);
+    assert.equal(formatValue(VALUE_FORMATS.named, value), value, value);
+  }
+  // A function the notation does not define, or none: the value as it is.
+  assert.equal(formatValue(undefined, '128'), '128');
+  for (const format of ['漢数字', '', 'toString', '__proto__']) {
+    assert.equal(formatValue(format, '128'), '128', format);
+    assert.equal(isValueFormat(format), false, format);
+  }
+  for (const format of Object.values(VALUE_FORMATS)) {
+    assert.equal(isValueFormat(format), true, format);
+  }
+});
+
+test('valueOf under a function formats the supplied value and the default alike', () => {
+  const values = new Map([[VALUE_NAMES.totalPages, '215'], [VALUE_NAMES.title, '作品名']]);
+  assert.equal(valueOf(VALUE_NAMES.totalPages, values, '命数'), '二百十五');
+  assert.equal(valueOf(VALUE_NAMES.totalPages, values, '位取り'), '二一五');
+  assert.equal(valueOf(VALUE_NAMES.totalPages, values), '215');
+  assert.equal(valueOf(VALUE_NAMES.page, undefined, '命数'), '〇');
+  assert.equal(valueOf(VALUE_NAMES.title, values, '命数'), '作品名');
+  assert.equal(valueOf('13', undefined, '命数'), '十三');
+  assert.equal(valueOf('13', undefined, '漢数字'), '13');
 });
 
 test('tcyAnnotation reads back as the 縦中横 of its target', () => {

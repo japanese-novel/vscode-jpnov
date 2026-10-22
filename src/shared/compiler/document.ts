@@ -23,9 +23,10 @@ export interface BookInput {
    */
   readonly divider?: string | undefined;
   /**
-   * タイトル／ペンネーム for ［＃ここに「…」の値を表示］ on cover pages and in the page furniture,
-   * decided by the caller (the build passes the book's `title:`, never empty); absent = ''.
-   * The counts (総ページ数, 原稿用紙換算枚数, ページ番号) derive from the render itself.
+   * タイトル／ペンネーム for ［＃ここに「…」の値を表示］ in the chapters, on cover pages and in the
+   * page furniture, decided by the caller (the build passes the book's `title:`, never empty);
+   * absent = ''. The counts (総ページ数, 原稿用紙換算枚数, ページ番号) derive from the render itself,
+   * so they reach only the cover pages and the furniture; a chapter prints their defaults.
    */
   readonly title?: string | undefined;
   readonly author?: string | undefined;
@@ -191,17 +192,38 @@ function glueRows(glue: string, dash: DashMode): Row[] {
   );
 }
 
+/** The pairs the book itself supplies to ［＃ここに「…」の値を表示］: タイトル／ペンネーム, absent = ''. */
+function bookPairs(book: BookInput): [string, string][] {
+  return [[VALUE_NAMES.title, book.title ?? ''], [VALUE_NAMES.author, book.author ?? '']];
+}
+
+/** One chapter as every output takes it: its AST, resolved with the values a chapter gets. */
+export interface Chapter {
+  readonly ast: Ast;
+  /**
+   * The chapter's ［＃ここに「…」の値を表示］ substitutions: {@link bookPairs} and its 見出し番号, its
+   * number in the 目次 from 1. The counts are not here: they come from laying the chapters out,
+   * so a chapter prints their defaults.
+   */
+  readonly values: ValueLookup;
+}
+
+/** The chapters of `book`, each parsed with its own values: the one place a chapter is parsed. */
+export function chapterAsts(book: BookInput): Chapter[] {
+  return book.files.map((file, index) => {
+    const values: ValueLookup = new Map([...bookPairs(book), [VALUE_NAMES.heading, String(index + 1)]]);
+    return { ast: parse(file.src, values), values };
+  });
+}
+
 /**
- * One book's body flow: each chapter parsed and laid into rows ONCE, joined by
- * {@link chapterGlue}. The returned function gives the rows for one line width; a flow differs
- * only in the glue, whose divider centres on the flow's own line width (`null` = the divider
- * stays at the line head, as 原稿用紙換算枚数 counts it).
+ * One book's body flow: each chapter laid into rows ONCE, joined by {@link chapterGlue}. The
+ * returned function gives the rows for one line width; a flow differs only in the glue, whose
+ * divider centres on the flow's own line width (`null` = the divider stays at the line head, as
+ * 原稿用紙換算枚数 counts it).
  */
 function bodyFlow(book: BookInput, dash: DashMode): (charsPerLine: number | null) => Row[] {
-  const chapters = book.files.map((file) => {
-    const ast = parse(file.src);
-    return { ast, rows: buildRows(ast, { dash }) };
-  });
+  const chapters = chapterAsts(book).map(({ ast }) => ({ ast, rows: buildRows(ast, { dash }) }));
   return (charsPerLine) => {
     const divider = book.divider ?? '';
     return chapters.flatMap(({ ast, rows }, ci, all): Row[] => {
@@ -291,14 +313,11 @@ export function renderBook(opts: {
     return sheets;
   };
 
-  // One book's ［＃ここに「…」の値を表示］ substitutions, four of the five VALUE_NAMES: a cover's
-  // values, and the base of the furniture's (which adds the page's own numbers).
+  // One book's ［＃ここに「…」の値を表示］ substitutions outside the chapters: a cover's values,
+  // and the base of the furniture's (which adds the page's own numbers). 見出し番号 is a
+  // chapter's own (chapterAsts); here it prints its default.
   const valuesOf = (book: BookInput): ValueLookup => {
-    const fixed = new Map<string, string>([
-      [VALUE_NAMES.title, book.title ?? ''],
-      [VALUE_NAMES.author, book.author ?? ''],
-      [VALUE_NAMES.totalPages, String(totalBody)],
-    ]);
+    const fixed = new Map<string, string>([...bookPairs(book), [VALUE_NAMES.totalPages, String(totalBody)]]);
     return { get: (name) => (name === VALUE_NAMES.sheets ? String(totalSheets()) : fixed.get(name)) };
   };
 
@@ -371,10 +390,9 @@ function chapterText(ast: Ast): string {
  * into the next chapter. Pure + vscode-free.
  */
 export function concatBookText(book: BookInput, charsPerLine: number): string {
-  const chapters = book.files.map((file) => {
-    const ast = parse(file.src);
-    return { ast, text: chapterText(ast) };
-  });
+  // The same AST as the HTML build's: the seam reads the chapter edges from it, and a value may
+  // be what shows there. The text printed is the nodes, so no value reaches it.
+  const chapters = chapterAsts(book).map(({ ast }) => ({ ast, text: chapterText(ast) }));
   const eol = chapters.some(({ ast }) => ast.lines.some((line) => line.eol === '\r\n')) ? '\r\n' : '\n';
   const divider = dropUnshown(book.divider ?? '');
   const joined = chapters.reduce((acc, { ast, text }, i) => {

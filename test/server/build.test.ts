@@ -1234,6 +1234,33 @@ test('build: the header and footer take the value annotations, filled per page',
   assert.match(html.content, /<div class="hd c">作品名<\/div><div class="ft r">ペンネーム　1<\/div>/);
 });
 
+test('build: a chapter takes the book\'s title and its 見出し番号 in every layout, and the counts lay out the same text', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, 'vol1.jpbook', meta({ author: 'ペンネーム' }) + 'a.jpnov\nb.jpnov');
+  await writeUnder(ws.dir, 'a.jpnov', '［＃ここに「タイトル」の値を表示］（［＃ここに「ペンネーム」の値を表示］）');
+  await writeUnder(ws.dir, 'b.jpnov', '第［＃ここに「見出し番号」の値を命数で表示］章');
+
+  const html = (await handleBuild(ctx, { format: 'html', settings: SETTINGS, projectDirs: projectsFor(ws.uri) })).artifacts[0];
+  assert.ok(html?.kind === 'html');
+  assert.match(html.content, /<div class="line" data-line="0">作品名（ペンネーム）<\/div>/);
+  assert.match(html.content, /<div class="line" data-line="0">第二章<\/div>/);
+
+  const epub = (await handleBuild(ctx, { format: 'epub', settings: SETTINGS, projectDirs: projectsFor(ws.uri) })).artifacts[0];
+  assert.ok(epub?.kind === 'epub');
+  const nav = epub.members.find((m) => m.name === 'OEBPS/nav.xhtml')?.content ?? '';
+  assert.ok(nav.includes('<li><a href="text/ch001.xhtml">一</a></li><li><a href="text/ch002.xhtml">二</a></li>'), nav);
+
+  // The .txt keeps the annotations as typed.
+  const txt = (await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) })).artifacts[0];
+  assert.ok(txt?.kind === 'txt');
+  assert.ok(txt.content.includes('［＃ここに「見出し番号」の値を命数で表示］'));
+
+  // The Books view counts the substituted text: 作品名（ペンネーム） (10) and 第二章 (3).
+  const counts = await handleBookCounts(ctx, { uri: `${ws.uri}/vol1.jpbook`, settings: SETTINGS });
+  assert.deepEqual(counts, { counts: { pages: 1, sheets: 1, chars: 13 } });
+});
+
 test('build: the title is used verbatim; an author left empty, or showing nothing, is unset in every format', async () => {
   for (const author of ['', '\u0007']) {
     await using ws = await makeTmpWorkspace();

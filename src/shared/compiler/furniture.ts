@@ -26,13 +26,20 @@ function furnitureSide(align: FurnitureAlign, pi: number): 'r' | 'l' | 'c' {
   }
 }
 
-/** A header or footer line cut into what it prints: a value to look up by name, or text as shown. */
-type FurnitureSlot = string | { readonly name: string };
+/** A value to look up by name per page, under its function when it has one. */
+interface ValueSlot {
+  readonly name: string;
+  readonly format: string | undefined;
+}
 
-/** The name a value run shows: that of the ［＃ここに「…」の値を表示］ written where the run is. */
-function fieldOf(line: Line, run: Chars): string {
+/** A header or footer line cut into what it prints: a value slot, or text as shown. */
+type FurnitureSlot = string | ValueSlot;
+
+/** The name a value run shows, with its function: those of the ［＃ここに「…」の値を表示］
+ *  written where the run is. */
+function fieldOf(line: Line, run: Chars): ValueSlot {
   const field = line.syntax.find((node): node is ValueFieldNode => node.kind === 'valueField' && node.span.start === run.span.start);
-  return field?.name.text ?? '';
+  return { name: field?.name.text ?? '', format: field?.format?.text };
 }
 
 /**
@@ -42,13 +49,13 @@ function fieldOf(line: Line, run: Chars): string {
  */
 function furnitureSlots(text: string): readonly FurnitureSlot[] {
   return parse(text).lines.flatMap((line): FurnitureSlot[] => [
-    ...runsIn(line.content).map((run): FurnitureSlot => (run.origin === 'value' ? { name: fieldOf(line, run) } : run.text)),
+    ...runsIn(line.content).map((run): FurnitureSlot => (run.origin === 'value' ? fieldOf(line, run) : run.text)),
     line.eol,
   ]);
 }
 
 function furnitureHtml(slots: readonly FurnitureSlot[], values: ValueLookup): string {
-  return slots.map((slot) => escapeHtml(typeof slot === 'string' ? slot : valueOf(slot.name, values))).join('');
+  return slots.map((slot) => escapeHtml(typeof slot === 'string' ? slot : valueOf(slot.name, values, slot.format))).join('');
 }
 
 /** The header and footer of one render, cut once for all its pages. */

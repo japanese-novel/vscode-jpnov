@@ -23,7 +23,9 @@ import {
   SPAN_END,
   TCY,
   VALUE_HERE,
+  VALUE_OF,
   VALUE_SHOW,
+  VALUE_SHOW_AS,
   hasBlockForm,
   headingLevelOf,
   indentAmount,
@@ -100,16 +102,35 @@ export function classifyAnnotation(src: string, start: number, end: number, issu
     return { kind: 'pageBreak', span, text, parts: close() };
   }
 
-  // Value display ［＃ここに「名前」の値を表示］ — any non-empty name up to the closing scaffold.
+  // Value display ［＃ここに「名前」の値を表示］, or under a function ［＃ここに「名前」の値を〇〇で表示］:
+  // a non-empty name, in the function form up to the last 」の値を, then a non-empty word to で表示.
   const valueOpen = VALUE_HERE + CORNER_OPEN;
-  const valueClose = CORNER_CLOSE + VALUE_SHOW;
-  if (inner.startsWith(valueOpen) && inner.endsWith(valueClose) && inner.length > valueOpen.length + valueClose.length) {
-    cut.take('scaffold', VALUE_HERE.length);
-    cut.take('corner', CORNER_OPEN.length);
-    const name = cut.take('name', inner.length - valueOpen.length - valueClose.length);
-    cut.take('corner', CORNER_CLOSE.length);
-    cut.take('scaffold', VALUE_SHOW.length);
-    return { kind: 'valueField', span, text, parts: close(), name };
+  if (inner.startsWith(valueOpen)) {
+    /** Cuts ここに「名前」, the name ending at `nameEnd` of `inner`, and returns the name. */
+    const head = (nameEnd: number): Part => {
+      cut.take('scaffold', VALUE_HERE.length);
+      cut.take('corner', CORNER_OPEN.length);
+      const name = cut.take('name', nameEnd - valueOpen.length);
+      cut.take('corner', CORNER_CLOSE.length);
+      return name;
+    };
+    const valueClose = CORNER_CLOSE + VALUE_SHOW;
+    if (inner.endsWith(valueClose) && inner.length > valueOpen.length + valueClose.length) {
+      const name = head(inner.length - valueClose.length);
+      cut.take('scaffold', VALUE_SHOW.length);
+      return { kind: 'valueField', span, text, parts: close(), name };
+    }
+    const formatClose = CORNER_CLOSE + VALUE_OF;
+    const formatEnd = inner.length - VALUE_SHOW_AS.length;
+    const nameEnd = inner.endsWith(VALUE_SHOW_AS) ? inner.lastIndexOf(formatClose, formatEnd - formatClose.length) : -1;
+    const formatStart = nameEnd + formatClose.length;
+    if (nameEnd > valueOpen.length && formatStart < formatEnd) {
+      const name = head(nameEnd);
+      cut.take('scaffold', VALUE_OF.length);
+      const format = cut.take('keyword', formatEnd - formatStart);
+      cut.take('scaffold', VALUE_SHOW_AS.length);
+      return { kind: 'valueField', span, text, parts: close(), name, format };
+    }
   }
 
   // Corner-target postfix ［＃「対象」…］; the target is never empty.
