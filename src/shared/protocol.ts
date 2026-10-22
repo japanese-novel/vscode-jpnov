@@ -12,23 +12,23 @@
  * Every request flows client -> server except `jpnov/readText`, the server's way to obtain
  * manuscript text (it never decodes bytes itself).
  */
-import type { EdgeLineStyle, PreviewChrome } from './compiler/chrome.ts';
+import type { PreviewChrome } from './compiler/chrome.ts';
 import type { BookCounts } from './compiler/document.ts';
 import type { EpubMember } from './compiler/epub.ts';
 import type { PaperOrientation, PaperSize } from './compiler/geometry.ts';
 import type { LayoutSettings } from './config/types.ts';
 import type { LintCode } from './lint/catalog.ts';
-import type { Position, Range } from './utils/position.ts';
+import type { Position, Range, TextReplace } from './utils/position.ts';
 
 // initialize (C->S)
 
 /**
  * A flat snapshot of the user's `jpnov.lint.*` settings, keyed by full setting key
- * (`jpnov.lint.<scope>.<id>`) -> primitive. Plain primitives only, so it survives IPC; the server
- * resolves it to enabled rules via `selectRules()` (`src/shared/lint/select.ts`). Absent keys (and
- * `null`) mean "off", so the client may ship a sparse object.
+ * (`jpnov.lint.<scope>.<id>`) -> the value as configured. The server resolves it to enabled rules
+ * via `selectRules()` (`src/shared/lint/select.ts`), which checks each value against its rule's
+ * kind; an absent key, `null`, `false` and `'off'` all mean "off".
  */
-export type RawLintConfigWire = Readonly<Record<string, boolean | number | string | null>>;
+export type RawLintConfigWire = Readonly<Record<string, unknown>>;
 
 /**
  * Carried on the standard LSP `initialize` request as `initializationOptions`.
@@ -200,11 +200,7 @@ export interface PreviewSettings extends LayoutSettings, PreviewChrome {}
  * part of this snapshot. Page furniture (ヘッダー/ページ番号) is ABSENT: it is book identity,
  * carried by each `.jpbook`'s own metadata (`composeBookChrome`).
  */
-export interface HtmlSettings extends LayoutSettings {
-  /** Line-head numbers on built pages (proofing chrome — workspace preference, not book identity). */
-  readonly lineNumbers: boolean;
-  /** Inter-column rules + page frame (proofing chrome — workspace preference, not book identity). */
-  readonly edgeLine: EdgeLineStyle;
+export interface HtmlSettings extends LayoutSettings, PreviewChrome {
   /** Physical output paper (device concern — workspace preference, not book identity). */
   readonly paperSize: PaperSize;
   /** Physical paper orientation; `auto` follows the page grid. Unrelated to 縦書き. */
@@ -421,7 +417,7 @@ export interface FixAllParams extends ProblemsParams {
 
 /** The edits of the editor's "fix all" over `text`, and the number of fixes they carry (a 「…」 rewrite rides a fix, it is not counted). */
 export interface FixAllResult {
-  readonly edits: readonly { readonly range: Range; readonly newText: string }[];
+  readonly edits: readonly TextReplace[];
   readonly fixed: number;
 }
 

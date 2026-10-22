@@ -10,6 +10,12 @@ export interface Range {
   readonly end: Position;
 }
 
+/** One replacement of a text: `range` out (`end` exclusive; an insertion is zero-width), `newText` in. */
+export interface TextReplace {
+  readonly range: Range;
+  readonly newText: string;
+}
+
 /** Negative when `a` comes before `b`, zero when equal, positive after: line first, then character. */
 export function comparePositions(a: Position, b: Position): number {
   return a.line - b.line || a.character - b.character;

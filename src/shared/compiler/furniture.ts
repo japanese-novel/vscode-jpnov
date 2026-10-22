@@ -70,21 +70,16 @@ export function cutFurniture(chrome: BuildChrome): Furniture {
 
 /**
  * One page's absolutely-positioned furniture (header + footer), emitted after its lines. The
- * page's own numbers join the book's `values` under {@link VALUE_NAMES}. An empty header or footer
- * emits no element (renderBook folds a blank one to '').
+ * page's number joins the book's `values` (総ページ数 included) under {@link VALUE_NAMES}. An empty
+ * header or footer emits no element (renderBook folds a blank one to '').
  */
 export function pageFurniture(
   chrome: BuildChrome,
   furniture: Furniture,
   values: ValueLookup | undefined,
   pi: number,
-  totalPage: number,
 ): string {
-  const own = new Map<string, string>([
-    [VALUE_NAMES.page, String(pi + 1)],
-    [VALUE_NAMES.totalPages, String(totalPage)],
-  ]);
-  const all: ValueLookup = { get: (name) => own.get(name) ?? values?.get(name) };
+  const all: ValueLookup = { get: (name) => (name === VALUE_NAMES.page ? String(pi + 1) : values?.get(name)) };
   const band = (cls: 'hd' | 'ft', key: 'header' | 'footer', align: FurnitureAlign): string =>
     chrome[key] === '' ? '' : `<div class="${cls} ${furnitureSide(align, pi)}">${furnitureHtml(furniture[key], all)}</div>`;
   return band('hd', 'header', chrome.headerAlign) + band('ft', 'footer', chrome.footerAlign);

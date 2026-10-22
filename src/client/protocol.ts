@@ -1,7 +1,7 @@
 /**
  * The host ↔ webview wire contract for the client's two webviews (the Books panel and the live
- * preview). PURE types + no imports (a type-only mirror of a shared literal union is fine, an
- * import is not): this module is compiled into BOTH the Node host bundle
+ * preview). PURE types; its only imports are types from `shared/utils/` (a type-only mirror of a
+ * shared literal union is fine): this module is compiled into BOTH the Node host bundle
  * (view.ts / preview.ts, which post and receive these) and the browser webview bundles
  * (webview/book/main.ts, webview/preview/*, which are the other end). It must therefore
  * stay vscode-free, node-free and DOM-free — only shapes crossing `postMessage`'s structured
@@ -10,6 +10,7 @@
  * Mirrors the host↔server split's `protocol.ts`: single repo, both ends move together, so a
  * shape change is safe as long as both sides change in one commit.
  */
+import type { Position, Range } from '../shared/utils/position.ts';
 
 // Books panel — view models (host → webview `state` / `detail` payloads)
 
@@ -70,15 +71,9 @@ export interface CountsVM {
   readonly chars: CountItem;
 }
 
-/** A span of a chapter as the editor counts it (mirrors the LSP `Range`; this module imports nothing). */
-export interface TextRange {
-  readonly start: Cursor;
-  readonly end: Cursor;
-}
-
 /** One problem of a chapter in the `problems` screen: `message` and `where` are localized by the host. */
 export interface ProblemVM {
-  readonly range: TextRange;
+  readonly range: Range;
   /** The diagnostic code; with `range`, the problem's identity the fix verb echoes. */
   readonly code: string;
   readonly severity: 'error' | 'warning';
@@ -189,15 +184,6 @@ export type BooksOutbound =
     readonly version: number;
   }
   | {
-    readonly type: 'moveEntry';
-    readonly uri: string;
-    readonly list: EntryList;
-    readonly line: number;
-    readonly path: string;
-    readonly version: number;
-    readonly dir: -1 | 1;
-  }
-  | {
     readonly type: 'moveEntryTo';
     readonly uri: string;
     readonly list: EntryList;
@@ -212,12 +198,12 @@ export type BooksOutbound =
   // The problems screen's verbs: fix the problems checked (each named by its chapter, place and
   // code; the host fixes those its text still has), and open a chapter at a problem.
   | { readonly type: 'fixProblems'; readonly uri: string; readonly problems: readonly ProblemRefVM[] }
-  | { readonly type: 'openProblem'; readonly uri: string; readonly range: TextRange };
+  | { readonly type: 'openProblem'; readonly uri: string; readonly range: Range };
 
 /** A problem the fix verb names: its chapter, place and code. */
 export interface ProblemRefVM {
   readonly chapter: string;
-  readonly range: TextRange;
+  readonly range: Range;
   readonly code: string;
 }
 
@@ -276,17 +262,11 @@ export interface BooksInit {
 
 // Live preview — messages + bootstrap
 
-/** A cursor as the editor counts it: a 0-based line and the UTF-16 offset in it. */
-export interface Cursor {
-  readonly line: number;
-  readonly character: number;
-}
-
 /**
  * Host → preview webview: glide the column holding the cursor to the reveal position. `uri` names
  * the document the cursor is in; the webview acts only while it shows that document.
  */
-export interface RevealMessage extends Cursor {
+export interface RevealMessage extends Position {
   readonly type: 'reveal';
   readonly uri: string;
 }
@@ -339,7 +319,7 @@ export interface PreviewLayoutInit {
  * webview state API for the window-reload serializer), the cursor to park on the first paint, and
  * the layout widget's state.
  */
-export interface PreviewInit extends Cursor {
+export interface PreviewInit extends Position {
   readonly uri: string;
   readonly layout: PreviewLayoutInit;
 }

@@ -15,6 +15,7 @@ import { EDGE_LINE_STYLES } from '../compiler/chrome.ts';
 import type { PaperOrientation, PaperSize } from '../compiler/geometry.ts';
 import { PAPER_ORIENTATIONS, PAPER_SIZES } from '../compiler/geometry.ts';
 import type { HtmlSettings, PreviewSettings } from '../protocol.ts';
+import { clampInt } from '../utils/numbers.ts';
 import type { LayoutSettings } from './types.ts';
 import { CHARS_MAX, CHARS_MIN, DASH_MODES, KINSOKU_MODES, LAYOUT_DEFAULT, LINE_PITCHES } from './types.ts';
 
@@ -44,11 +45,7 @@ export const BUILD_CHROME_DEFAULT = {
 
 /** A safe integer clamped to [{@link CHARS_MIN}..{@link CHARS_MAX}]; anything else → `fallback`. */
 function clampChars(value: unknown, fallback: number): number {
-  if (!Number.isSafeInteger(value)) {
-    return fallback;
-  }
-  const n = value as number;
-  return n < CHARS_MIN ? CHARS_MIN : n > CHARS_MAX ? CHARS_MAX : n;
+  return Number.isSafeInteger(value) ? clampInt(value as number, CHARS_MIN, CHARS_MAX) : fallback;
 }
 
 function boolOr(value: unknown, fallback: boolean): boolean {

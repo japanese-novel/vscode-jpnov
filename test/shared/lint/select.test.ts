@@ -2,11 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isSelectionEmpty, selectRules } from '../../../src/shared/lint/select.ts';
+import { selectRules } from '../../../src/shared/lint/select.ts';
 
 test('an empty snapshot (nothing enabled) selects nothing', () => {
   const sel = selectRules({});
-  assert.ok(isSelectionEmpty(sel));
   assert.deepEqual(sel, []);
 });
 
@@ -26,12 +25,12 @@ test('a threshold rule enables at 0 when its floor is 0; null stays off', () => 
   assert.deepEqual(selectRules({ 'jpnov.lint.common.blankRun': 0 }), [
     { id: 'blankRun', options: { max: 0 }, code: 'lint.common.blankRun', setting: 'jpnov.lint.common.blankRun' },
   ]);
-  assert.ok(isSelectionEmpty(selectRules({ 'jpnov.lint.common.blankRun': null })));
+  assert.deepEqual(selectRules({ 'jpnov.lint.common.blankRun': null }), []);
 });
 
 test('a boolean rule enables only on exactly true', () => {
-  assert.ok(isSelectionEmpty(selectRules({ 'jpnov.lint.common.noUnmatchedPair': false })));
-  assert.ok(isSelectionEmpty(selectRules({ 'jpnov.lint.common.noUnmatchedPair': 1 })));
+  assert.deepEqual(selectRules({ 'jpnov.lint.common.noUnmatchedPair': false }), []);
+  assert.deepEqual(selectRules({ 'jpnov.lint.common.noUnmatchedPair': 1 }), []);
 });
 
 test('scoped rules resolve like any other (the scope lives in the code)', () => {
@@ -55,8 +54,8 @@ test('the ruby enum resolves a mode; off / unknown values stay off', () => {
   assert.deepEqual(selectRules({ 'jpnov.lint.ruby.kana': 'hiragana' }), [
     { id: 'kana', options: { mode: 'hiragana' }, code: 'lint.ruby.kana', setting: 'jpnov.lint.ruby.kana' },
   ]);
-  assert.ok(isSelectionEmpty(selectRules({ 'jpnov.lint.ruby.kana': 'off' })));
-  assert.ok(isSelectionEmpty(selectRules({ 'jpnov.lint.ruby.kana': 'romaji' })));
+  assert.deepEqual(selectRules({ 'jpnov.lint.ruby.kana': 'off' }), []);
+  assert.deepEqual(selectRules({ 'jpnov.lint.ruby.kana': 'romaji' }), []);
 });
 
 test('the dash enum has no off member, yet the retired "off" spelling still disables', () => {
@@ -65,6 +64,6 @@ test('the dash enum has no off member, yet the retired "off" spelling still disa
   ]);
   // A settings.json written before the member was retired: the literal 'off' guard runs ahead
   // of the membership check, so the rule stays off instead of erroring or defaulting on.
-  assert.ok(isSelectionEmpty(selectRules({ 'jpnov.lint.common.dash': 'off' })));
-  assert.ok(isSelectionEmpty(selectRules({ 'jpnov.lint.common.dash': 'enDash' })));
+  assert.deepEqual(selectRules({ 'jpnov.lint.common.dash': 'off' }), []);
+  assert.deepEqual(selectRules({ 'jpnov.lint.common.dash': 'enDash' }), []);
 });

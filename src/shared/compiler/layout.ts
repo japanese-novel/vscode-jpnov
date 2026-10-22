@@ -22,7 +22,7 @@ import type { Ast, HeadingLevel, Inline, Line, Mark, Marks, ValueLookup } from '
 import { paintsNothing } from '../ast/resolve.ts';
 import { clusterStarts } from '../ast/span.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
-import { graphemeCount, graphemes, headChar } from '../chars.ts';
+import { graphemeCount, graphemes } from '../chars.ts';
 import { DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../dash.ts';
 import type { BuildChrome } from './chrome.ts';
 import { markClass } from './emphasis.ts';
@@ -343,6 +343,8 @@ const KINSOKU_OPEN = new Set('「『（〔［｛〈《【〘〖｟〝');
 /** 区切り約物 (cl-04): full-width, half-width, single-codepoint. */
 const DIVIDING = '！？!?‼⁇⁈⁉';
 const KINSOKU_DIVIDING = new Set(DIVIDING);
+/** 句読点: the 行頭禁則 characters that may also hang (ぶら下げ). */
+const HANGABLE_CHARS = '、。，．';
 /**
  * Chars forbidden at line START (pull the preceding char down) — 行頭禁則, the relaxed tier:
  * 終わり括弧・句読点・区切り約物・中点類・繰り返し記号 (cl-02/04/05/06/07/09,
@@ -350,7 +352,7 @@ const KINSOKU_DIVIDING = new Set(DIVIDING);
  */
 const KINSOKU_CLOSE = new Set(
   '」』）〕］｝〉》】〙〗｠〟' + // 終わり括弧
-    '、。，．' + // 句読点
+    HANGABLE_CHARS + // 句読点
     DIVIDING + // 区切り約物
     '・：；' + // 中点類
     '々〻ゝゞヽヾ', // 繰り返し記号
@@ -362,6 +364,11 @@ const KINSOKU_CLOSE_STRICT = new Set(
     'ァィゥェォッャュョヮヵヶ' + // 小書き片仮名
     [...KINSOKU_CLOSE].join(''),
 );
+
+/** The first code point of `text` as a string: the character a cluster is classed by. */
+export function headChar(text: string): string {
+  return text.slice(0, (text.codePointAt(0) ?? 0) > 0xffff ? 2 : 1); // slice, not fromCodePoint: this sits under every unit of the wrap
+}
 
 /** The 行頭禁則 set for a tier. */
 function closeFor(mode: KinsokuMode): Set<string> {
@@ -394,7 +401,7 @@ function isCharUnit(u: Unit | undefined): u is Unit {
  * ぶら下げ対象は句読点のみ (JIS X 4051 の慣例; 閉じ括弧・約物は対象外). The hung glyph's ink
  * stays inside the EDGE_INSET reserve past the last cell, clear of the 枠.
  */
-const HANGABLE = new Set('、。，．');
+const HANGABLE = new Set(HANGABLE_CHARS);
 
 /** Where the column that opens at `units[from]` starts: see {@link DisplayLine.at}. */
 function columnAt(units: readonly Unit[], from: number): number {
@@ -498,8 +505,25 @@ export function insepClass(u: Unit | undefined, { bang = true }: { bang?: boolea
   return bang && INSEP_BANG.has(head) ? INSEP_BANG : undefined;
 }
 
+/**
+ * The end (exclusive) of the 分離禁止 run that `head` = `units[i]` opens under `cls`: the units after
+ * it with the same class and the same channel key. `bang` as for {@link insepClass}.
+ */
+export function insepRunEnd(units: readonly Unit[], head: Unit, i: number, cls: Set<string>, bang: boolean): number {
+  const key = unitKey(head);
+  let end = i + 1;
+  while (end < units.length) {
+    const next = units[end];
+    if (next === undefined || insepClass(next, { bang }) !== cls || unitKey(next) !== key) {
+      break;
+    }
+    end += 1;
+  }
+  return end;
+}
+
 /** One atomic unit from `units[start..end)`; channels are `head`'s (the run requires them equal). */
-function mergeRun(units: readonly Unit[], head: Unit, start: number, end: number): Unit {
+export function mergeRun(units: readonly Unit[], head: Unit, start: number, end: number): Unit {
   let cells = 0;
   let text = '';
   let html = '';
@@ -534,15 +558,7 @@ function separate(units: readonly Unit[], mode: KinsokuMode): readonly Unit[] {
     if (head === undefined || cls === undefined) {
       continue;
     }
-    const key = unitKey(head);
-    let end = i + 1;
-    while (end < units.length) {
-      const next = units[end];
-      if (next === undefined || insepClass(next) !== cls || unitKey(next) !== key) {
-        break;
-      }
-      end += 1;
-    }
+    const end = insepRunEnd(units, head, i, cls, true);
     const len = end - i;
     if (len >= 2 && (cls !== INSEP_BANG || len === 2)) {
       out ??= [];
@@ -766,8 +782,8 @@ export function unitKey(u: Unit): string {
  * On-demand class sink: cssClass (tcy / rr / lr / br / rh-N, baked inside `u.html`) and
  * channel keys both land in `used` so css.ts emits exactly the rules present.
  */
-function sinkInto(used: Set<string> | undefined, classes: string | undefined): void {
-  if (used && classes !== undefined && classes !== '') {
+function sinkInto(used: Set<string>, classes: string | undefined): void {
+  if (classes !== undefined && classes !== '') {
     for (const c of classes.split(' ')) {
       used.add(c);
     }
@@ -779,7 +795,7 @@ function sinkInto(used: Set<string> | undefined, classes: string | undefined): v
  * channel-run merging the paginated build and the reflow (EPUB) output share, so their inline
  * markup can never drift.
  */
-export function emitUnits(units: readonly Unit[], used?: Set<string>): string {
+export function emitUnits(units: readonly Unit[], used: Set<string>): string {
   let html = '';
   let open = ''; // '' sentinel (a real key is never '')
   for (const u of units) {
@@ -803,7 +819,7 @@ export function emitUnits(units: readonly Unit[], used?: Set<string>): string {
   return html;
 }
 
-function emitLine(line: DisplayLine, used?: Set<string>, head = ''): string {
+function emitLine(line: DisplayLine, used: Set<string>, head = ''): string {
   let html = emitUnits(line.units, used);
   if (line.hang !== undefined) {
     // The hung 句読点 lands after the last cell; its channel span cannot join a neighbour's
@@ -819,11 +835,11 @@ function emitLine(line: DisplayLine, used?: Set<string>, head = ''): string {
   }
   const ind = line.indent ?? 0;
   const indentClass = ind > 0 ? ` indent-${String(ind)}` : '';
-  if (used && ind > 0) {
+  if (ind > 0) {
     used.add(`indent-${String(ind)}`);
   }
   const headingClass = line.heading === undefined ? '' : ' midashi';
-  if (used && line.heading !== undefined) {
+  if (line.heading !== undefined) {
     used.add('midashi');
   }
   // Right-side 傍点 anywhere on the line: Chromium pushes the whole line's baseline for the mark
@@ -831,7 +847,7 @@ function emitLine(line: DisplayLine, used?: Set<string>, head = ''): string {
   const rightEmph = (u: Unit): boolean => u.emph !== undefined && !u.emph.endsWith('-l');
   const emrClass =
     line.units.some(rightEmph) || (line.hang !== undefined && rightEmph(line.hang)) ? ' emr' : '';
-  if (used && emrClass !== '') {
+  if (emrClass !== '') {
     used.add('emr');
   }
   // The cursor-follow anchor: the source line, and where a wrapped column starts in it. A glue
@@ -860,24 +876,23 @@ export interface RenderPage {
  * Renders paginated pages into the `<div class="book">…</div>` body fragment, each page
  * carrying its chrome furniture AFTER the lines (so line-adjacency is preserved for
  * anything matching consecutive `.line`s). The lines sit in a `.grid`, the sheet's only
- * vertical-rl box (build.base.css). When a `used` sink is passed, every class emitted is
- * recorded into it so the caller can emit only those rules (on-demand CSS)
- * — the structural `cover` class stays out of the sink. `data-page` is the sequential DOM
- * ordinal over ALL pages; the furniture's page number and the parity of its sides count BODY
- * pages only, so cover sheets never shift where body page 1 lands.
+ * vertical-rl box (build.base.css). Every class emitted is recorded into the `used` sink so the
+ * caller can emit only those rules (on-demand CSS) — the structural `cover` class stays out of
+ * the sink. `data-page` is the sequential DOM ordinal over ALL pages; the furniture's page number
+ * and the parity of its sides count BODY pages only, so cover sheets never shift where body page
+ * 1 lands; the 総ページ数 is the page's own value.
  */
 export function pagesToHtml(
   pages: readonly RenderPage[],
-  used: Set<string> | undefined,
+  used: Set<string>,
   chrome: BuildChrome,
 ): string {
-  const totalPage = pages.reduce((n, page) => n + (page.cover === true ? 0 : 1), 0);
   const cut = cutFurniture(chrome);
   let bodyPi = 0;
   const body = pages
     .map((page, di) => {
       const lines = page.lines.map((line) => emitLine(line, used)).join('');
-      const furniture = page.cover === true ? '' : pageFurniture(chrome, cut, page.values, bodyPi++, totalPage);
+      const furniture = page.cover === true ? '' : pageFurniture(chrome, cut, page.values, bodyPi++);
       const cls = page.cover === true ? 'page cover' : 'page';
       return `<div class="${cls}" data-page="${String(di)}"><div class="grid">${lines}</div>${furniture}</div>`;
     })
@@ -900,14 +915,14 @@ export function pagesToHtml(
  * - Every column carries `data-line`, and a wrapped one `data-ch`: where it starts in its source
  *   line, so the cursor-follow scroller parks the column holding the cursor. The build's pages
  *   carry the same.
- * - A `used` sink records every emitted class so the caller emits only those rules.
+ * - The `used` sink records every emitted class so the caller emits only those rules.
  */
 export function flowToHtml(
   rows: readonly Row[],
   charsPerLine: number,
   linesPerPage: number,
   kinsoku: KinsokuMode,
-  used?: Set<string>,
+  used: Set<string>,
   lineNumbers = false,
 ): string {
   const parts: string[] = [];

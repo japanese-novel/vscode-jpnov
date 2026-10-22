@@ -1,136 +1,22 @@
 /**
- * Parity guard for the two message renderers. `renderEnglish` (src/shared/messages.ts, used by the
- * vscode-free server to fill the English Diagnostic.message fallback) and `renderMessage`
- * (src/client/messages.ts, `vscode.l10n.t` whose English literal is the bundle KEY) MUST share
- * byte-identical English templates, or a JA-locale user and the English fallback would diverge.
- *
- * Under the vscode mock, `l10n.t` passes the English source through (substituting {0}/{1}), so
- * `renderMessage` in "English locale" must equal `renderEnglish` for every code + args.
- *
- * Runs in CI via `npm run test:integration`; for direct runs see test/client/README.md.
+ * `renderMessage` (the client, through `vscode.l10n.t`) and `renderEnglish` (the server's fallback)
+ * fill the one shared template alike: every code, every slot, a missing argument as ''.
  */
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { INDENT_MAX, fullWidthDigits } from '../../src/shared/ast/notation.ts';
-import { HEADER, KNOWN_KEYS } from '../../src/shared/book/jpbook.ts';
-import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
-import { renderEnglish } from '../../src/shared/messages.ts';
+import { renderEnglish, TEMPLATES } from '../../src/shared/messages.ts';
 import type { MsgCode } from '../../src/shared/protocol.ts';
 import { buildVscode, createMockState } from './_vscodeMock.ts';
 
-mock.module('vscode', { exports: buildVscode(createMockState()) });
-
+const state = createMockState();
+mock.module('vscode', { exports: buildVscode(state) });
 const { renderMessage } = await import('../../src/client/messages.ts');
 
-// Representative args per code. `Record<MsgCode, ...>` forces an entry for EVERY code, so adding a
-// new MsgCode without a case here is a COMPILE error — keeping the guard exhaustive.
-const ARGS: Record<MsgCode, readonly (string | number)[]> = {
-  'book.entryFileNotFound': ['a.jpnov'],
-  'book.entryReadFailed': ['a.jpnov', 'EACCES: permission denied'],
-  'book.entryNotText': ['a.jpnov'],
-  'book.entryNoReply': ['a.jpnov'],
-  'build.outPathCollision': ['dist/index.html', 'a/index.jpbook, b/index.jpbook'],
-  'build.failed': ['boom'],
-  'jpbook.backslashSeparator': ['sub\\a.jpnov'],
-  'jpbook.notJpnov': ['note.md'],
-  'jpbook.duplicateEntry': ['a.jpnov'],
-  'jpbook.entryIsDirectory': ['adir.jpnov'],
-  'jpbook.fileNotFound': ['missing.jpnov'],
-  'jpbook.metaNotKeyValue': ['just text'],
-  'jpbook.metaUnknownKey': ['publisher', KNOWN_KEYS.join(', ')],
-  'jpbook.metaDuplicateKey': ['title'],
-  'jpbook.metaBadEnum': ['footerAlign', 'middle', FURNITURE_ALIGNS.join(', ')],
-  'jpbook.metaUnterminated': [],
-  'jpbook.headerMissing': [HEADER],
-  'jpbook.versionUnsupported': ['2', '1'],
-  'jpbook.metaEmptyValue': ['title'],
-  'jpbook.itemWithoutKey': ['- cover.jpnov'],
-  'jpbook.nameEmpty': [],
-  'jpbook.nameNotPlain': ['山田［＃太字］'],
-  'jpbook.nameConflict': ['山田太郎', 'vol2/vol2.jpbook'],
-  'syntax.unclosedAnnotation': [],
-  'syntax.unterminatedBlock': [],
-  'syntax.danglingBlockEnd': [],
-  'syntax.unterminatedSpan': [],
-  'syntax.danglingSpanEnd': [],
-  'syntax.spanAlreadyOpen': ['太字'],
-  'syntax.spanFormMismatch': ['［＃ここで太字終わり］'],
-  'syntax.postfixTargetMissing': ['対象'],
-  'syntax.unterminatedTcy': [],
-  'syntax.danglingTcyEnd': [],
-  'syntax.tcyTooLong': [],
-  'syntax.rubyBaseMissing': ['よみ'],
-  'syntax.rubyReadingEmpty': [],
-  'syntax.rubyInTcy': ['よみ'],
-  'syntax.indentTooLarge': [fullWidthDigits(INDENT_MAX)],
-  'syntax.valueFormatUnknown': ['漢数字'],
-  'hover.postfix': ['傍点'],
-  'hover.rubyLeft': ['たろう'],
-  'hover.spanStart': ['傍点'],
-  'hover.spanEnd': ['傍点'],
-  'hover.blockStart': ['太字'],
-  'hover.blockEnd': ['太字'],
-  'hover.indent': ['２'],
-  'hover.pageBreak': [],
-  'hover.value': ['タイトル'],
-  'hover.valueFormat': ['総ページ数', '命数'],
-  'hover.gaiji': ['⁉'],
-  'hover.comment': [],
-  'hover.broken': [],
-  'hover.ruby': ['たろう'],
-  'hover.rubyBase': ['太郎'],
-  'hover.target': ['王都'],
-  'hover.targetMissing': [],
-  'hover.pairEnd': ['［＃傍点終わり］', 3],
-  'hover.pairStart': ['［＃傍点］', 1],
-  'hover.endMissing': [],
-  'hover.replaced': [3],
-  'hover.startMissing': [],
-  'hover.holds': ['12'],
-  'lint.common.sentenceLength': [],
-  'lint.common.maxTen': [],
-  'lint.common.maxKanjiRun': [],
-  'lint.common.dash': ['―'],
-  'lint.common.dash.parity': [],
-  'lint.common.ellipsis': [],
-  'lint.common.ellipsis.parity': [],
-  'lint.common.exclamationSpace': [],
-  'lint.common.exclamationRun': [],
-  'lint.common.exclamationRun.long': [],
-  'lint.common.exclamationRun.single': [],
-  'lint.common.questionExclamationMarks': ['!?', '⁉'],
-  'lint.common.questionExclamationMarks.tcy': ['!?'],
-  'lint.common.questionExclamationMarks.cut': ['に!', '!?'],
-  'lint.common.arabicDigits': [],
-  'lint.common.noTrailingSpace': [],
-  'lint.common.blankRun': [],
-  'lint.common.noUnmatchedPair': [],
-  'lint.common.noHankakuKana': [],
-  'lint.common.noNfd': [],
-  'lint.common.noZeroWidth': [],
-  'lint.common.noControlChar': [],
-  'lint.common.shiftJisSafe': ['𠮷', '20BB7'],
-  'jpbook.dividerNotEncodable': ['❖'],
-  'lint.common.noHalfWidthSpace': [],
-  'lint.common.noStrayLetter': [],
-  'lint.common.minusPosition': [],
-  'lint.narration.indent': [],
-  'lint.narration.endPeriod': [],
-  'lint.dialogue.closingPunct': [],
-  'lint.dialogue.noIndent': [],
-  'lint.ruby.kana': [],
-  'codeAction.openSetting': ['shiftJisSafe'],
-  'server.unexpected': ['boom'],
-};
-
-test('renderEnglish and renderMessage share byte-identical English templates', () => {
-  for (const code of Object.keys(ARGS) as MsgCode[]) {
-    const args = ARGS[code];
-    assert.equal(
-      renderMessage({ code, args }),
-      renderEnglish(code, args),
-      `English mismatch for code ${code}`,
-    );
+test('renderMessage renders every code as renderEnglish does, under the mock l10n', () => {
+  for (const code of Object.keys(TEMPLATES) as MsgCode[]) {
+    for (const args of [[], ['A'], ['A', 'B', 'C', 'D']]) {
+      assert.equal(renderMessage({ code, args }), renderEnglish(code, args), `${code} ${JSON.stringify(args)}`);
+    }
   }
 });

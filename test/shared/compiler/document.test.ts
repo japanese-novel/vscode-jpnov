@@ -4,14 +4,18 @@ import type { BuildChrome, FurnitureAlign } from '../../../src/shared/compiler/c
 import { FURNITURE_ALIGNS } from '../../../src/shared/compiler/chrome.ts';
 import { bookCounts, chapterGlue, concatBookText, MANUSCRIPT_SHEET, renderBook, type BookInput } from '../../../src/shared/compiler/document.ts';
 import { FOOTER_BAND, HEADER_BAND, SIDE_PAD } from '../../../src/shared/compiler/geometry.ts';
-import { INDENT_MAX, VALUE_DEFAULTS, VALUE_FORMATS, VALUE_NAMES, indentAnnotation, valueAnnotation } from '../../../src/shared/ast/notation.ts';
+import { INDENT_MAX, VALUE_DEFAULTS, VALUE_FORMATS, VALUE_NAMES, indentAnnotation, valueAnnotation, type DividerValue } from '../../../src/shared/ast/notation.ts';
+import { parseDividerValue } from '../../../src/shared/book/jpbook.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { blockIndent } from '../ast/_shape.ts';
 import { D, UNSHOWN } from '../_kana.ts';
 
 /** {@link chapterGlue} between two chapter sources. */
 const glue = (prev: string, next: string, divider: string, charsPerLine: number | null): string =>
-  chapterGlue(parse(prev), parse(next), divider, charsPerLine);
+  chapterGlue(parse(prev), parse(next), div(divider), charsPerLine);
+
+/** The divider as the build hands it over: split by `parseDividerValue`. */
+const div = (divider?: string): DividerValue | undefined => (divider === undefined ? undefined : parseDividerValue(divider));
 
 // Band totals come from the tunable geometry constants — never write them out as literals.
 const HTOP_RE = new RegExp(String.raw`:root\{[^}]*--htop:` + String(HEADER_BAND) + '[;}]');
@@ -19,7 +23,7 @@ const FOOTER_PAD_RE = new RegExp(
   String.raw`\.page\{[^}]*padding:calc\(var\(--htop\)\*1em\) ` + String(SIDE_PAD) + 'em ' + String(FOOTER_BAND) + 'em ' + String(SIDE_PAD) + 'em',
 );
 
-const book = (over: Pick<BookInput, 'files' | 'divider'>): BookInput => ({ ...over });
+const book = (over: { files: BookInput['files']; divider?: string | undefined }): BookInput => ({ files: over.files, divider: div(over.divider) });
 
 /** All-off chrome: renderBook emits the bare page/line skeleton with no furniture. */
 const OFF: BuildChrome = {
@@ -735,7 +739,7 @@ test('header and footer: 見出し番号 is the chapter of the page; a page wher
   assert.deepEqual(headers([files('一', '二', '三')], 34), ['三']);
   assert.deepEqual(headers([files('一\n［＃改ページ］', '二')], 34), ['一', '二']);
   // The glue (blank line, divider, blank line) counts as the chapter it closes.
-  assert.deepEqual(headers([{ ...files('一', '二'), divider: '＊' }], 1), ['一', '一', '一', '一', '二']);
+  assert.deepEqual(headers([{ ...files('一', '二'), divider: div('＊') }], 1), ['一', '一', '一', '一', '二']);
   // Each book numbers its own chapters.
   assert.deepEqual(headers([files('一', '二'), files('三')], 34), ['二', '一']);
 });
@@ -901,7 +905,7 @@ const repeat = (n: number, text: string): string => Array.from({ length: n }, ()
 /** A book with the COUNTS_SRC cover in front of `files`. */
 const counted = (files: readonly { name: string; src: string }[], divider?: string): BookInput => ({
   files,
-  divider,
+  divider: div(divider),
   title: '題',
   author: '著',
   cover: { files: [{ name: 'c.jpnov', src: COUNTS_SRC }] },
@@ -998,9 +1002,9 @@ test('cover: the sheet count runs only when a cover or the furniture asks for it
     });
     const book: BookInput = {
       ...withCover(covers.map((src, i) => ({ name: `c${String(i)}.jpnov`, src })), [chapter('a.jpnov'), chapter('b.jpnov')]),
-      get divider(): string {
+      get divider(): DividerValue {
         flows += 1;
-        return '＊';
+        return { mark: '＊', indent: null };
       },
     };
     renderBooks([book], { chrome });
@@ -1057,6 +1061,6 @@ test('bookCounts: a chapter counts the title it shows, as the build lays it out'
 test('bookCounts: the chapter divider counts, the cover never does', () => {
   const two = [{ name: 'a.jpnov', src: 'あ' }, { name: 'b.jpnov', src: 'い' }];
   assert.equal(bookCounts({ files: two }, BODY_LAYOUT).chars, 2);
-  assert.equal(bookCounts({ files: two, divider: '＊' }, BODY_LAYOUT).chars, 3);
+  assert.equal(bookCounts({ files: two, divider: div('＊') }, BODY_LAYOUT).chars, 3);
   assert.deepEqual(bookCounts(counted(two), BODY_LAYOUT), bookCounts({ files: two }, BODY_LAYOUT));
 });

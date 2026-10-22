@@ -18,7 +18,7 @@ import type { LanguageClient } from 'vscode-languageclient/node';
 import { errorText } from '#/shared/utils/errors.ts';
 import { escapeHtml } from '#/shared/utils/escape.ts';
 import { isRecord } from '#/shared/utils/guards.ts';
-import { comparePositions } from '#/shared/utils/position.ts';
+import { comparePositions, type Position } from '#/shared/utils/position.ts';
 import { resolvePreviewSettings } from '#/shared/config/settings.ts';
 import { CHARS_MAX, CHARS_MIN } from '#/shared/config/types.ts';
 import {
@@ -29,7 +29,6 @@ import {
 } from '#/shared/protocol.ts';
 
 import type {
-  Cursor,
   PreviewInit,
   PreviewLayoutInit,
   PreviewLayoutKey,
@@ -59,7 +58,7 @@ function isLayoutKey(value: unknown): value is PreviewLayoutKey {
 }
 
 /** The document head: where a render parks with no cursor to follow. */
-const DOC_HEAD: Cursor = { line: 0, character: 0 };
+const DOC_HEAD: Position = { line: 0, character: 0 };
 
 /** A widget override: the preview-only value, and the resolved setting it was set against. */
 interface LayoutOverride {
@@ -117,7 +116,7 @@ export class Preview {
    * state): where a re-render of that document (fresh settings, a server restart) parks while no
    * editor shows it, so the scroll position survives. Panel-scoped, dropped by teardown().
    */
-  private shown: { readonly uri: string; readonly cursor: Cursor } | undefined;
+  private shown: { readonly uri: string; readonly cursor: Position } | undefined;
   /** The widget's fixed strings, localized once; `hint` is per render. */
   private readonly labels: Omit<PreviewLayoutLabels, 'hint'>;
 
@@ -319,7 +318,7 @@ export class Preview {
    * document: the webview acts only while it shows `uri`, so a cursor move during a render that
    * is still in flight for a newly switched-to document cannot scroll the previous one.
    */
-  private reveal(uri: string, at: Cursor): void {
+  private reveal(uri: string, at: Position): void {
     // Picked, not spread: a vscode.Position keeps them in getters.
     const message: RevealMessage = { type: 'reveal', uri, line: at.line, character: at.character };
     // Posts to the webview; postMessage never rejects (resolves false if the panel is gone), so void is safe.
@@ -550,12 +549,12 @@ export class Preview {
   }
 
   /** The earliest cursor of `ed` when it shows `docUri`. */
-  private editorCursor(ed: vscode.TextEditor | undefined, docUri: string): Cursor | undefined {
+  private editorCursor(ed: vscode.TextEditor | undefined, docUri: string): Position | undefined {
     return ed?.document.uri.toString() === docUri ? minCursor(ed.selections) : undefined;
   }
 
   /** The earliest cursor of the first visible editor showing `docUri`. */
-  private visibleCursor(docUri: string): Cursor | undefined {
+  private visibleCursor(docUri: string): Position | undefined {
     for (const ed of vscode.window.visibleTextEditors) {
       const at = this.editorCursor(ed, docUri);
       if (at !== undefined) {
@@ -573,7 +572,7 @@ export class Preview {
   private harden(
     html: string,
     webview: vscode.Webview,
-    active: Cursor,
+    active: Position,
     docUri: string,
     layout: PreviewLayoutInit,
   ): string {
@@ -651,8 +650,8 @@ export class Preview {
 }
 
 /** The earliest active cursor among `selections`, by line then character; the document head if none. */
-function minCursor(selections: readonly vscode.Selection[]): Cursor {
-  let min: Cursor | undefined;
+function minCursor(selections: readonly vscode.Selection[]): Position {
+  let min: Position | undefined;
   for (const { active } of selections) {
     if (min === undefined || comparePositions(active, min) < 0) {
       min = active;
@@ -669,7 +668,7 @@ function minCursor(selections: readonly vscode.Selection[]): Cursor {
  */
 function parsePanelState(state: unknown): {
   uri: string | undefined;
-  cursor: Cursor | undefined;
+  cursor: Position | undefined;
 } {
   if (!isRecord(state)) {
     return { uri: undefined, cursor: undefined };

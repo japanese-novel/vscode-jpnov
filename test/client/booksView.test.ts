@@ -34,6 +34,27 @@ mock.module('vscode', { exports: buildVscode(state) });
 const fakeSpawn = createFakeSpawn();
 mock.module('node:child_process', { exports: { spawn: fakeSpawn.spawn } });
 
+/** The panel verbs view.ts calls, replaceable per test (the real ones unless a test swaps one in). */
+const manage = await import('../../src/client/book/manage.ts');
+const VERBS = ['addEntries', 'editEntry', 'removeEntryRow', 'moveEntry', 'editMeta'] as const;
+type Verb = (typeof VERBS)[number];
+type AnyVerb = (...args: unknown[]) => Promise<void>;
+const verbs = Object.fromEntries(VERBS.map((v) => [v, manage[v] as AnyVerb])) as Record<Verb, AnyVerb>;
+mock.module('../../src/client/book/manage.ts', {
+  namedExports: { ...manage, ...Object.fromEntries(VERBS.map((v) => [v, (...args: unknown[]) => verbs[v](...args)])) },
+});
+/** Records every call of the named verbs instead of running them. */
+function recordVerbs(): { verb: Verb; args: unknown[] }[] {
+  const calls: { verb: Verb; args: unknown[] }[] = [];
+  for (const verb of VERBS) {
+    verbs[verb] = (...args) => {
+      calls.push({ verb, args });
+      return Promise.resolve();
+    };
+  }
+  return calls;
+}
+
 const { BooksViewProvider } = await import('../../src/client/book/view.ts');
 const { raceRequest } = await import('../../src/client/requests.ts');
 const { ListBooksRequest, BuildRequest, FixAllRequest, ProblemsRequest, BookCountsRequest } = await import('../../src/shared/protocol.ts');
@@ -43,6 +64,9 @@ const EXT = Uri.parse('file:///ext');
 
 beforeEach(() => {
   resetMockState(state);
+  for (const v of VERBS) {
+    verbs[v] = manage[v] as AnyVerb;
+  }
   fakeSpawn.reset();
   fakeSpawn.fallback = 'enoent';
 });
@@ -995,19 +1019,19 @@ test('the metadata rows note an empty key (not set, hidden, none) and an unwritt
   assert.deepEqual(rows.get('footerAlign'), ['Right', '']);
 });
 
-// --- edit dispatch (reuses manage.ts via executeCommand) --------------------
+// --- edit dispatch (the manage.ts verbs, called with the row the webview named) --------------------
 
-test('editMeta dispatches jpbook.editMeta with the entry, key, and current value', async () => {
+test('editMeta runs the meta verb with the entry, key, and current value', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
   state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}header: My Header\n---\nch1.jpnov\n`));
   const { view } = await setup([entry(root, 'a')]);
+  const calls = recordVerbs();
   view.webview.receive({ type: 'editMeta', uri: bookUri, metaKey: 'header' });
   await tick();
-  const call = state.executedCommands.find((c) => c.command === 'jpbook.editMeta');
+  const call = calls.find((c) => c.verb === 'editMeta');
   assert.ok(call);
-  const node = call.args[0] as { kind: string; metaKey: string; value: string; entry: { uri: string } };
-  assert.equal(node.kind, 'meta');
+  const node = call.args[0] as { metaKey: string; value: string; entry: { uri: string } };
   assert.equal(node.metaKey, 'header');
   assert.equal(node.value, 'My Header');
   assert.equal(node.entry.uri, bookUri);
@@ -1018,9 +1042,10 @@ test('an unknown metaKey is ignored (no dispatch)', async () => {
   const bookUri = `${root}/src/a.jpbook`;
   state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\n`));
   const { view } = await setup([entry(root, 'a')]);
+  const calls = recordVerbs();
   view.webview.receive({ type: 'editMeta', uri: bookUri, metaKey: 'bogus' });
   await tick();
-  assert.equal(state.executedCommands.find((c) => c.command === 'jpbook.editMeta'), undefined);
+  assert.deepEqual(calls, []);
 });
 
 /** The number of `detail` pushes so far — every row verb (remove / move / drop) is answered with one. */
@@ -1037,7 +1062,7 @@ async function afterPause(t: TestContext, event: () => void): Promise<void> {
   await tick();
 }
 
-test('entry actions dispatch the matching jpbook command naming the row, and re-push the detail', async () => {
+test('entry actions run the matching verb naming the row, and re-push the detail', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
   state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}cover:\n  - x.jpnov\n---\ny.jpnov\n`));
@@ -1045,48 +1070,35 @@ test('entry actions dispatch the matching jpbook command naming the row, and re-
   view.webview.receive({ type: 'openDetail', uri: bookUri });
   await tick();
   const before = detailCount(view);
+  const calls = recordVerbs();
   const row = { uri: bookUri, list: 'covers', line: 2, path: 'x.jpnov', version: 1 };
-  view.webview.receive({ type: 'moveEntry', ...row, dir: -1 });
-  view.webview.receive({ type: 'moveEntry', ...row, dir: 1 });
+  view.webview.receive({ type: 'moveEntryTo', ...row, before: null, beforePath: null });
+  view.webview.receive({ type: 'moveEntryTo', ...row, before: 3, beforePath: 'z.jpnov' });
   view.webview.receive({ type: 'removeEntry', ...row });
   view.webview.receive({ type: 'addEntries', uri: bookUri, list: 'covers' });
   await tick();
-  const cmds = state.executedCommands.map((c) => c.command);
-  assert.ok(cmds.includes('jpbook.moveEntryUp'));
-  assert.ok(cmds.includes('jpbook.moveEntryDown'));
-  assert.ok(cmds.includes('jpbook.removeEntry'));
-  assert.ok(cmds.includes('jpbook.addEntries'));
-  const rm = state.executedCommands.find((c) => c.command === 'jpbook.removeEntry');
-  assert.ok(rm);
-  const node = rm.args[0] as {
-    kind: string; list: string; line: number; path: string; version: number; entry: { uri: string };
-  };
-  assert.equal(node.kind, 'entry');
-  assert.equal(node.list, 'covers');
-  assert.equal(node.line, 2);
-  assert.equal(node.path, 'x.jpnov');
-  assert.equal(node.version, 1);
-  assert.equal(node.entry.uri, bookUri);
-  // The three row verbs — not the list verbs — were each answered with a detail re-push.
+  const node = { list: 'covers', line: 2, path: 'x.jpnov', version: 1, entry: entry(root, 'a') };
+  // The row verbs run in order through the chain; the list verb runs at once.
+  assert.deepEqual(calls.map((c) => c.verb), ['addEntries', 'moveEntry', 'moveEntry', 'removeEntryRow']);
+  assert.deepEqual(calls[0]?.args, [{ list: 'covers', entry: node.entry }]);
+  assert.deepEqual(calls[1]?.args, [node, null]);
+  assert.deepEqual(calls[2]?.args, [node, { line: 3, path: 'z.jpnov' }]);
+  assert.deepEqual(calls[3]?.args, [node]);
+  // The three row verbs — not the list verb — were each answered with a detail re-push.
   assert.equal(detailCount(view), before + 3);
-  const add = state.executedCommands.find((c) => c.command === 'jpbook.addEntries');
-  assert.ok(add);
-  const listArg = add.args[0] as { kind: string; list: string; entry: { uri: string } };
-  assert.equal(listArg.kind, 'list');
-  assert.equal(listArg.list, 'covers');
-  assert.equal(listArg.entry.uri, bookUri);
 });
 
 test('an unknown list or a half-named row is ignored (no dispatch)', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
   const { view } = await setup([entry(root, 'a')]);
+  const calls = recordVerbs();
   view.webview.receive({ type: 'removeEntry', uri: bookUri, list: 'bogus', line: 4, path: 'x.jpnov', version: 1 });
   view.webview.receive({ type: 'removeEntry', uri: bookUri, list: 'covers', line: 4 }); // no path / version
-  view.webview.receive({ type: 'moveEntry', uri: bookUri, list: 'covers', line: 4, path: 'x.jpnov', dir: 1 });
+  view.webview.receive({ type: 'moveEntryTo', uri: bookUri, list: 'covers', line: 4, path: 'x.jpnov', version: 1, before: 2 }); // half-named target
   view.webview.receive({ type: 'addEntries', uri: bookUri, list: 1 });
   await tick();
-  assert.deepEqual(state.executedCommands.filter((c) => c.command.startsWith('jpbook.')), []);
+  assert.deepEqual(calls, []);
 });
 
 test('moveEntryTo (drag-and-drop) plans against the named list only, for rows the text still has', async () => {
@@ -1136,12 +1148,12 @@ test('row verbs run one at a time, each answered by a detail re-push before the 
   const base = detailCount(view);
   const log: string[] = [];
   const pushesSeen: number[] = [];
-  state.registeredCommands.set('jpbook.removeEntry', async () => {
+  verbs.removeEntryRow = async () => {
     log.push('start');
     pushesSeen.push(detailCount(view) - base);
     await tick();
     log.push('end');
-  });
+  };
   // A double-click: both messages name the same row, the second while the first is still running.
   const row = { type: 'removeEntry', uri: bookUri, list: 'chapters', line: 2, path: 'x.jpnov', version: 1 };
   view.webview.receive(row);
@@ -1163,14 +1175,14 @@ test('a row verb that fails neither wedges the chain nor skips its re-push', asy
   await tick();
   const base = detailCount(view);
   const log: string[] = [];
-  state.registeredCommands.set('jpbook.removeEntry', () => {
+  verbs.removeEntryRow = () => {
     if (log.length === 0) {
       log.push('first failed');
       return Promise.reject(new Error('boom'));
     }
     log.push('second ran');
     return Promise.resolve();
-  });
+  };
   const row = { type: 'removeEntry', uri: bookUri, list: 'chapters', line: 2, path: 'x.jpnov', version: 1 };
   view.webview.receive(row);
   view.webview.receive(row);
@@ -1503,14 +1515,15 @@ test('openDetail posts the characters and keywords as rows with no file; editEnt
   assert.deepEqual(detail.keywords.map((k) => [k.line, k.path, k.fileUri]), [[6, '王都', null]]);
 
   const before = detailCount(view);
+  const calls = recordVerbs();
   view.webview.receive({ type: 'editEntry', uri: bookUri, list: 'characters', line: 3, path: '山田《やまだ》花子《はなこ》', version: 1 });
   view.webview.receive({ type: 'addEntries', uri: bookUri, list: 'keywords' });
   await tick();
-  const edit = state.executedCommands.find((c) => c.command === 'jpbook.editEntry');
+  const edit = calls.find((c) => c.verb === 'editEntry');
   assert.ok(edit);
-  const node = edit.args[0] as { kind: string; list: string; line: number; path: string; version: number };
-  assert.deepEqual([node.kind, node.list, node.line, node.path, node.version], ['entry', 'characters', 3, '山田《やまだ》花子《はなこ》', 1]);
-  const add = state.executedCommands.find((c) => c.command === 'jpbook.addEntries');
+  const node = edit.args[0] as { list: string; line: number; path: string; version: number };
+  assert.deepEqual([node.list, node.line, node.path, node.version], ['characters', 3, '山田《やまだ》花子《はなこ》', 1]);
+  const add = calls.find((c) => c.verb === 'addEntries');
   assert.equal((add?.args[0] as { list: string }).list, 'keywords');
   assert.equal(detailCount(view), before + 1, 'the row verb re-pushes the detail; the list verb does not');
 });

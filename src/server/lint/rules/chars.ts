@@ -5,13 +5,16 @@
  * annotation target or a comment is composed, and loses its control characters, in every output
  * too. Every fix replaces or deletes characters in place.
  */
-import { COMBINING_KANA_MARKS, UNSHOWN, composeKana, isCjkIdeograph } from '../../../shared/chars.ts';
+import { COMBINING_KANA_MARK, UNSHOWN, composeKana, isCjkIdeograph } from '../../../shared/chars.ts';
 
 import { rubyKanaScan } from '../prescan.ts';
 import type { PreScan } from '../prescan.ts';
 import type { LineRule, LintLine, RuleContext } from '../types.ts';
 
 import { viewScan } from './adapt.ts';
+
+/** The combining marks as a scan over a text, one match per mark reported. */
+const COMBINING_KANA_MARKS = new RegExp(COMBINING_KANA_MARK.source, 'g');
 
 /** 半角カナ (U+FF61–FF9F: half-width kana, its punctuation and ﾞﾟ): a run normalizes to the
  *  full-width form; NFKC composes ｶ+ﾞ into ガ in one go. */

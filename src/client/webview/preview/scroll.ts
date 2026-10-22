@@ -10,7 +10,8 @@
  * serializer. History scroll restoration is forced to manual so a same-URL html swap can't
  * async-replay the old offset. The uri and the cursor arrive via the host's `__INIT` bootstrap.
  */
-import type { Cursor, PreviewInit } from '../../protocol.ts';
+import type { PreviewInit } from '../../protocol.ts';
+import type { Position } from '../../../shared/utils/position.ts';
 import { isRecord } from '../../../shared/utils/guards.ts';
 import { partitionPoint } from '../../../shared/utils/lists.ts';
 import { comparePositions } from '../../../shared/utils/position.ts';
@@ -36,11 +37,11 @@ try {
   // Not supported in this webview runtime — the load-time re-assert below still corrects it.
 }
 
-let cur: Cursor = init;
+let cur: Position = init;
 
 // Persist immediately and OUTSIDE rAF: rAF is suspended in hidden webviews, so a render finishing in
 // a background panel would otherwise never reach setState.
-function persist(at: Cursor): void {
+function persist(at: Position): void {
   api.setState({ uri: init.uri, line: at.line, character: at.character });
 }
 persist(cur);
@@ -59,7 +60,7 @@ function dst(t: Element): [number, number] {
 }
 
 /** A column's anchor: its source line and, once the line wraps, where in the line it starts. */
-interface Column extends Cursor {
+interface Column extends Position {
   readonly el: Element;
 }
 
@@ -75,11 +76,11 @@ for (const el of document.querySelectorAll('[data-line]')) {
 }
 
 /** The last column at or before the cursor: the one before the first past it, in {@link columns}. */
-function columnAt(at: Cursor): Element | null {
+function columnAt(at: Position): Element | null {
   return columns[partitionPoint(columns, (c) => comparePositions(c, at) > 0) - 1]?.el ?? null;
 }
 
-function reveal(at: Cursor, glide?: boolean): void {
+function reveal(at: Position, glide?: boolean): void {
   cur = at;
   const t = columnAt(at);
   cancelAnimationFrame(anim);

@@ -18,10 +18,12 @@
  */
 import type { BuildChrome, FurnitureAlign } from '../compiler/chrome.ts';
 import { FURNITURE_ALIGNS } from '../compiler/chrome.ts';
-import { indentAnnotation, VALUE_NAMES, valueAnnotation } from '../ast/notation.ts';
+import { VALUE_NAMES, valueAnnotation, type DividerValue } from '../ast/notation.ts';
 import { scan } from '../ast/scan.ts';
 import { displayText } from '../chars.ts';
 import type { LocalizableMessage } from '../protocol.ts';
+import type { Range } from '../utils/position.ts';
+import { afterSpace } from '../utils/strings.ts';
 import { pathSegments } from '../utils/uri.ts';
 import { nameIdentity, readName, type ListedName, type NameEntry } from './names.ts';
 
@@ -29,6 +31,11 @@ import { nameIdentity, readName, type ListedName, type NameEntry } from './names
 export interface JpbookRange {
   readonly startChar: number;
   readonly endChar: number;
+}
+
+/** A column span on `line` as a {@link Range}. */
+export function charRange(line: number, span: JpbookRange): Range {
+  return { start: { line, character: span.startChar }, end: { line, character: span.endChar } };
 }
 
 /**
@@ -258,10 +265,7 @@ export function itemShape(value: string, key: string): ItemShape | null {
 /** The item portion of a trimmed line from `sep` (just past its marker or colon), skipping the
  *  whitespace there: the ONE place that slices a value past its separator. */
 function itemAfter(value: string, sep: number): ItemShape {
-  let offset = sep;
-  while (offset < value.length && isEdgeWhitespace(value.charAt(offset))) {
-    offset += 1;
-  }
+  const offset = afterSpace(value, sep);
   return { item: value.slice(offset), offset };
 }
 
@@ -331,7 +335,7 @@ export interface ParsedJpbook {
   /**
    * The values the valid key lines hold, as written: a key no line wrote is absent (its default
    * applies, {@link checkJpbook} fills it; an unwritten `title` is an error in
-   * {@link metaErrors}), as is a key whose line is in Error.
+   * {@link metaError}), as is a key whose line is in Error.
    */
   readonly meta: Partial<JpbookMeta>;
   /**
@@ -340,12 +344,11 @@ export interface ParsedJpbook {
    */
   readonly fence: number | null;
   /**
-   * The errors of the metadata as a whole, in document order: no closing fence (marked on the
-   * first non-blank line below the header, else on the header; reported alone), else a `title`
-   * no line wrote, marked on the fence. Empty below a header no parser reads: that line reports
-   * itself.
+   * The error of the metadata as a whole: no closing fence (marked on the first non-blank line
+   * below the header, else on the header), else a `title` no line wrote, marked on the fence.
+   * Null below a header no parser reads: that line reports itself.
    */
-  readonly metaErrors: readonly MetaError[];
+  readonly metaError: MetaError | null;
   /** {@link namesOf} the lines: the valid items of each name list, repeats left out. */
   readonly names: Readonly<Record<NameList, readonly NameEntry[]>>;
 }
@@ -371,11 +374,6 @@ export function metaEndOf(parsed: ParsedJpbook): number {
 /** The metadata lines: the header down to the fence, exclusive (the whole file while none closes it). */
 export function metaLinesOf(parsed: ParsedJpbook): readonly ParsedLine[] {
   return parsed.lines.slice(0, metaEndOf(parsed));
-}
-
-/** ECMAScript whitespace (incl. the full-width ideographic space U+3000) trims line edges. */
-function isEdgeWhitespace(ch: string): boolean {
-  return /\s/.test(ch);
 }
 
 /** The `key: value` separator: the first ASCII or full-width colon (IME slips are common). */
@@ -409,14 +407,8 @@ export function entryIdentity(path: string): string {
 
 /** A source line with its `\r` dropped, trimmed to its content and the content's span. */
 function lineOf(line: number, content: string): Omit<ParsedLine, 'kind'> {
-  let start = 0;
-  while (start < content.length && isEdgeWhitespace(content.charAt(start))) {
-    start += 1;
-  }
-  let end = content.length;
-  while (end > start && isEdgeWhitespace(content.charAt(end - 1))) {
-    end -= 1;
-  }
+  const start = afterSpace(content);
+  const end = Math.max(start, content.trimEnd().length);
   const value = content.slice(start, end);
   return { line, range: value === '' ? { startChar: 0, endChar: 0 } : { startChar: start, endChar: end }, raw: content, value };
 }
@@ -459,7 +451,7 @@ export function parseJpbook(text: string): ParsedJpbook {
     ],
     meta: {},
     fence: null,
-    metaErrors: [],
+    metaError: null,
     names: NO_NAMES,
   });
 
@@ -630,16 +622,11 @@ function parseBody1(header: ParsedLine, contents: readonly string[]): ParsedJpbo
     }
   }
 
-  const metaErrors: MetaError[] = [];
-  const at = (pl: ParsedLine, error: LocalizableMessage): void => {
-    metaErrors.push({ line: pl.line, range: pl.range, error });
-  };
-  if (fence === null) {
-    at(firstContent ?? header, { code: 'jpbook.metaUnterminated', args: [] });
-  } else if (!takenKeys.has('title')) {
-    at(fence, emptyValue('title'));
-  }
-  return { lines, meta, fence: fence?.line ?? null, metaErrors, names: namesOf(lines) };
+  const at = (pl: ParsedLine, error: LocalizableMessage): MetaError => ({ line: pl.line, range: pl.range, error });
+  const metaError = fence === null
+    ? at(firstContent ?? header, { code: 'jpbook.metaUnterminated', args: [] })
+    : takenKeys.has('title') ? null : at(fence, emptyValue('title'));
+  return { lines, meta, fence: fence?.line ?? null, metaError, names: namesOf(lines) };
 }
 
 /** The Error a key that refuses an empty value reports: written empty, or (`title`) not written at all. */
@@ -648,7 +635,7 @@ function emptyValue(key: MetaKey): LocalizableMessage {
 }
 
 /** The keys written in the metadata (any kind of line), `line` excluded — what key completion leaves out. */
-export function writtenKeysOf(parsed: ParsedJpbook, exceptLine = -1): Set<string> {
+export function writtenKeysOf(parsed: ParsedJpbook, exceptLine: number): Set<string> {
   const written = new Set<string>();
   for (const pl of metaLinesOf(parsed)) {
     const key = pl.line === exceptLine ? null : metaKeyOf(pl.value);
@@ -666,20 +653,20 @@ export type JpbookVerdict =
 
 /**
  * The build's gate: the first error in document order — an `{ error }` line's, or the
- * metadata's own ({@link ParsedJpbook.metaErrors}), which wins a tie — else the complete
+ * metadata's own ({@link ParsedJpbook.metaError}), which wins a tie — else the complete
  * metadata, the unwritten keys at {@link META_DEFAULTS}. Warnings and duplicates never count.
  */
 export function checkJpbook(parsed: ParsedJpbook): JpbookVerdict {
-  const metaError = parsed.metaErrors[0];
+  const { metaError } = parsed;
   for (const pl of parsed.lines) {
-    if (metaError !== undefined && metaError.line <= pl.line) {
+    if (metaError !== null && metaError.line <= pl.line) {
       return { ok: false, error: metaError.error };
     }
     if (typeof pl.kind === 'object' && 'error' in pl.kind) {
       return { ok: false, error: pl.kind.error };
     }
   }
-  if (metaError !== undefined) {
+  if (metaError !== null) {
     return { ok: false, error: metaError.error };
   }
   // Complete: a key still absent is unwritten (a line in Error or an unwritten title is reported above).
@@ -714,12 +701,6 @@ export function composeBookChrome(
 /** Suggested divider marks — the GUI QuickPick and the value completion share this list. */
 export const DIVIDER_PRESETS = ['＊', '＊　＊　＊', '◇'] as const;
 
-/** A `divider` VALUE split into its mark and position (`indent: null` = 天地中央揃え). */
-export interface DividerValue {
-  readonly mark: string;
-  readonly indent: number | null;
-}
-
 /**
  * Splits a `divider` value into mark + position: a leading ［＃○字下げ］ (the
  * scanner's own classification, so the GUI and the render can never disagree) yields its
@@ -734,14 +715,6 @@ export function parseDividerValue(value: string): DividerValue {
     return { mark: value.slice(first.span.end), indent: first.amount };
   }
   return { mark: value, indent: null };
-}
-
-/**
- * The inverse of {@link parseDividerValue} for an `indent` up to INDENT_MAX; the 字下げ spelling
- * comes from the notation.
- */
-export function composeDividerValue(mark: string, indent: number | null): string {
-  return indent === null ? mark : indentAnnotation(indent) + mark;
 }
 
 /** A directory entry handed to {@link completeEntryLine} (the caller does the `readdir`). */
@@ -774,10 +747,7 @@ export function completeEntryLine(
   entries: readonly CompletionEntry[],
   cap = 500,
 ): JpbookCompletion[] {
-  let pathStart = 0;
-  while (pathStart < linePrefix.length && isEdgeWhitespace(linePrefix.charAt(pathStart))) {
-    pathStart += 1;
-  }
+  const pathStart = afterSpace(linePrefix);
   const lastSlash = linePrefix.lastIndexOf('/');
   const segStart = lastSlash >= pathStart ? lastSlash + 1 : pathStart;
   const seg = linePrefix.slice(segStart).toLowerCase();
@@ -806,11 +776,8 @@ export function completeEntryLine(
  * `headerAlign` and `footerAlign`, the preset marks for `divider`. Both filter by
  * case-insensitive prefix. Pure and fs-free.
  */
-export function completeMetaLine(linePrefix: string, written: ReadonlySet<string> = new Set()): JpbookCompletion[] {
-  let keyStart = 0;
-  while (keyStart < linePrefix.length && isEdgeWhitespace(linePrefix.charAt(keyStart))) {
-    keyStart += 1;
-  }
+export function completeMetaLine(linePrefix: string, written: ReadonlySet<string>): JpbookCompletion[] {
+  const keyStart = afterSpace(linePrefix);
   const sep = colonIndex(linePrefix);
 
   if (sep < 0) {

@@ -100,11 +100,11 @@ test('assertXmlChars follows the XML Char production', () => {
 
 test('a block 字下げ becomes the indent-N class and sinks into used; a ［＃○字下げ］ is its spaces', () => {
   const used = new Set<string>();
-  const out = reflowSegments(rows(`${blockIndent(2)}\n文だ。`), CPL, used);
+  const out = reflowSegments(rows(`${blockIndent(2)}\n文だ。`), CPL, used, 'horizontalBar');
   assert.equal(out[0]?.body, '<p class="indent-2">文だ。</p>');
   assert.ok(used.has('indent-2'));
   const own = new Set<string>();
-  assert.equal(reflowSegments(rows('［＃２字下げ］文だ。'), CPL, own)[0]?.body, '<p>　　文だ。</p>');
+  assert.equal(reflowSegments(rows('［＃２字下げ］文だ。'), CPL, own, 'horizontalBar')[0]?.body, '<p>　　文だ。</p>');
   assert.deepEqual([...own], []);
 });
 
@@ -120,14 +120,14 @@ test('a block 字下げ caps at charsPerLine - 1, like the paginated build', () 
   ];
   for (const [name, src, want] of cases) {
     const used = new Set<string>();
-    assert.equal(reflowSegments(rows(src), CHARS_MIN, used)[0]?.body, want, name);
+    assert.equal(reflowSegments(rows(src), CHARS_MIN, used, 'horizontalBar')[0]?.body, want, name);
     assert.deepEqual([...used], [`indent-${String(cap)}`], name);
   }
 });
 
 test('charsPerLine 1 leaves no indent class', () => {
   const used = new Set<string>();
-  assert.equal(reflowSegments(rows(`${blockIndent(2)}\n文`), 1, used)[0]?.body, '<p>文</p>');
+  assert.equal(reflowSegments(rows(`${blockIndent(2)}\n文`), 1, used, 'horizontalBar')[0]?.body, '<p>文</p>');
   assert.deepEqual([...used], []);
 });
 
@@ -138,7 +138,7 @@ test('改ページ splits segments; leading/trailing/consecutive breaks collapse
 
 test('right-only ruby is native <ruby> — no lane spans, no rr class sunk', () => {
   const used = new Set<string>();
-  const out = reflowSegments(rows('青空《あおぞら》文庫'), CPL, used);
+  const out = reflowSegments(rows('青空《あおぞら》文庫'), CPL, used, 'horizontalBar');
   assert.equal(out[0]?.body, '<p><ruby>青空<rt>あおぞら</rt></ruby>文庫</p>');
   assert.ok(!used.has('rr'));
 });
@@ -149,6 +149,7 @@ test('left/both-side ruby are NATIVE nested ruby under .ru, class sunk', () => {
     rows('英雄《えいゆう》［＃「英雄」の左に「ひーろー」のルビ］'),
     CPL,
     used,
+    'horizontalBar',
   );
   // The both-side form nests: inner ruby carries the right reading, the outer <rt> is the left.
   assert.equal(
@@ -190,7 +191,7 @@ test('an emphasis boundary splits an insep run (equal channels required)', () =>
 
 test('縦中横 and emphasis channel runs ride through emitUnits unchanged', () => {
   const used = new Set<string>();
-  const out = reflowSegments(rows('12［＃「12」は縦中横］だ、そうだ［＃「そうだ」に傍点］'), CPL, used);
+  const out = reflowSegments(rows('12［＃「12」は縦中横］だ、そうだ［＃「そうだ」に傍点］'), CPL, used, 'horizontalBar');
   const b = out[0]?.body ?? '';
   assert.match(b, /<span class="tcy">12<\/span>/);
   assert.match(b, /<span class="emph-fs">そうだ<\/span>/);
@@ -227,7 +228,7 @@ test('the kitchen sink emits well-formed XML end to end', () => {
     'すえ。',
   ].join('\n');
   const used = new Set<string>();
-  const out = reflowSegments(rows(src), CPL, used);
+  const out = reflowSegments(rows(src), CPL, used, 'horizontalBar');
   assert.equal(out.length, 2);
   for (const seg of out) {
     const doc = reflowDocument(seg.heading ?? '無題', seg.body, '../styles.css');

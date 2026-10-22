@@ -13,21 +13,18 @@ import {
   mergeSpans,
   wordLeft,
   wordRight,
-  type Span,
   type WordCommand,
 } from './word.ts';
-import type { Position } from '#/shared/utils/position.ts';
+import type { Range } from '#/shared/utils/position.ts';
+
+import { toVsPosition, toVsRange } from '../ranges.ts';
 
 const LANG_ID = 'jpnov';
-
-function toPosition(p: Position): vscode.Position {
-  return new vscode.Position(p.line, p.character);
-}
 
 async function move(editor: vscode.TextEditor, c: WordCommand): Promise<void> {
   const step = c.toward === 'left' ? wordLeft : wordRight;
   const next = editor.selections.map((sel) => {
-    const to = toPosition(step(editor.document, sel.active));
+    const to = toVsPosition(step(editor.document, sel.active));
     return new vscode.Selection(c.action === 'select' ? sel.anchor : to, to);
   });
   const [only] = next;
@@ -51,7 +48,7 @@ async function move(editor: vscode.TextEditor, c: WordCommand): Promise<void> {
 
 async function remove(editor: vscode.TextEditor, c: WordCommand): Promise<void> {
   const reach = c.toward === 'left' ? deleteLeft : deleteRight;
-  const spans = mergeSpans(editor.selections.flatMap((sel): Span[] => {
+  const spans = mergeSpans(editor.selections.flatMap((sel): Range[] => {
     if (!sel.isEmpty) {
       return [{ start: sel.start, end: sel.end }];
     }
@@ -65,7 +62,7 @@ async function remove(editor: vscode.TextEditor, c: WordCommand): Promise<void> 
   // A stale document version refuses the edit (`false`), and the press is dropped.
   const applied = await editor.edit((b) => {
     for (const span of spans) {
-      b.delete(new vscode.Range(toPosition(span.start), toPosition(span.end)));
+      b.delete(toVsRange(span));
     }
   });
   if (applied) {

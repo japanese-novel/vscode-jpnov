@@ -13,7 +13,10 @@
  */
 import * as vscode from 'vscode';
 
-import { normalizeFsPath, planBookEdits, type BookEdit, type FileRename } from './rename.ts';
+import type { TextReplace } from '#/shared/utils/position.ts';
+
+import { toVsRange } from '../ranges.ts';
+import { normalizeFsPath, planBookEdits, type FileRename } from './rename.ts';
 import { FIND_FILES_EXCLUDE } from '../paths.ts';
 import { isOpenBook } from '../projectConfig.ts';
 
@@ -33,10 +36,10 @@ function persistMode(value: Mode): Thenable<void> {
 /** Books the event touches (those under the workspace folders, and the open ones outside them), each with its edits (none = dropped). */
 async function planAffectedBooks(
   renames: readonly FileRename[],
-): Promise<{ uri: vscode.Uri; edits: readonly BookEdit[] }[]> {
+): Promise<{ uri: vscode.Uri; edits: readonly TextReplace[] }[]> {
   const found = await vscode.workspace.findFiles('**/*.jpbook', FIND_FILES_EXCLUDE);
   const books = [...found, ...vscode.workspace.textDocuments.filter(isOpenBook).map((d) => d.uri)];
-  const affected: { uri: vscode.Uri; edits: readonly BookEdit[] }[] = [];
+  const affected: { uri: vscode.Uri; edits: readonly TextReplace[] }[] = [];
   for (const uri of books) {
     let doc: vscode.TextDocument;
     try {
@@ -96,7 +99,7 @@ async function handleRenames(e: vscode.FileRenameEvent): Promise<void> {
   const edit = new vscode.WorkspaceEdit();
   for (const { uri, edits } of affected) {
     for (const ed of edits) {
-      edit.replace(uri, new vscode.Range(ed.line, ed.startChar, ed.line, ed.endChar), ed.newText);
+      edit.replace(uri, toVsRange(ed.range), ed.newText);
     }
   }
   await vscode.workspace.applyEdit(edit);

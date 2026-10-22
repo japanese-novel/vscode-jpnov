@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken } from 'vscode-languageserver/node';
 
-import { checkJpbook, completeMeta, composeBookChrome, entryPathOf, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
+import { checkJpbook, completeMeta, composeBookChrome, entryPathOf, jpbookStem, parseDividerValue, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
 import { bookCounts, concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { TitledBook } from '#/shared/compiler/document.ts';
@@ -291,18 +291,7 @@ function emitArtifact(
       return {
         kind: 'html',
         path: childUri(outDirUri, `${stem}.html`),
-        content: renderBook({
-          books: [input],
-          charsPerLine: selection.settings.charsPerLine,
-          linesPerPage: selection.settings.linesPerPage,
-          linePitch: selection.settings.linePitch,
-          kinsoku: selection.settings.kinsoku,
-          dash: selection.settings.dash,
-          paperSize: selection.settings.paperSize,
-          paperOrientation: selection.settings.paperOrientation,
-          fontFamily: selection.settings.fontFamily,
-          chrome: composeBookChrome(selection.settings, meta),
-        }),
+        content: renderBook({ books: [input], ...selection.settings, chrome: composeBookChrome(selection.settings, meta) }),
       };
     case 'epub':
       return {
@@ -311,9 +300,7 @@ function emitArtifact(
         members: epubMembers({
           book: input,
           outRel: stem,
-          kinsoku: selection.settings.kinsoku,
-          dash: selection.settings.dash,
-          charsPerLine: selection.settings.charsPerLine,
+          ...selection.settings,
           // dcterms:modified wants CCYY-MM-DDThh:mm:ssZ — second precision, no milliseconds.
           modified: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
         }),
@@ -367,7 +354,7 @@ async function buildBook(
     const coverFiles = selection.format === 'html' ? await readEntries(ctx, dirUri, parsed.lines, 'coverEntry', token) : [];
     const input: TitledBook = {
       files,
-      divider: meta.divider,
+      divider: parseDividerValue(meta.divider),
       title: meta.title,
       author: meta.author,
       ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
@@ -434,7 +421,7 @@ export async function handleBookCounts(ctx: ServerContext, params: BookCountsPar
     // The chapters take the book's タイトル／ペンネーム completed as a build completes them, so the
     // figures count the same text the cover's 総ページ数 reports.
     const { title, author, divider } = completeMeta(parsed);
-    return { counts: bookCounts({ files, divider, title, author }, resolveHtmlSettings(params.settings)) };
+    return { counts: bookCounts({ files, divider: parseDividerValue(divider), title, author }, resolveHtmlSettings(params.settings)) };
   } catch {
     return { counts: null };
   }

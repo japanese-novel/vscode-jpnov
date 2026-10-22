@@ -5,6 +5,7 @@
  * create.test.ts.
  */
 import { templateValues } from '../../../src/shared/book/create.ts';
+import type { Position, TextReplace } from '../../../src/shared/utils/position.ts';
 import { FENCE, HEADER, META_KEYS, metaLine, namesOf, type MetaKey, type ParsedJpbook } from '../../../src/shared/book/jpbook.ts';
 
 /** The header line with its newline: what a hand-written book text opens with. */
@@ -38,6 +39,12 @@ export function metaWith(
   return `${HEAD}${metaBody(overrides, omit)}${lines}\n${FENCE}\n`;
 }
 
+/** A replace moved up `n` lines: the planners run on `HEAD + text`, the fixtures count from below the header. */
+export function shiftReplace(r: TextReplace, n = 1): TextReplace {
+  const up = (p: Position): Position => ({ line: p.line - n, character: p.character });
+  return { range: { start: up(r.range.start), end: up(r.range.end) }, newText: r.newText };
+}
+
 /** A parse with its first `n` lines dropped and the rest numbered from 0 — so a fixture written below
  *  the header (or below an empty metadata block) keeps its own line numbers in the assertions. */
 export function below(parsed: ParsedJpbook, n: number): ParsedJpbook {
@@ -46,7 +53,7 @@ export function below(parsed: ParsedJpbook, n: number): ParsedJpbook {
     ...parsed,
     lines,
     fence: parsed.fence === null ? null : parsed.fence - n,
-    metaErrors: parsed.metaErrors.map((e) => ({ ...e, line: e.line - n })),
+    metaError: parsed.metaError === null ? null : { ...parsed.metaError, line: parsed.metaError.line - n },
     names: namesOf(lines),
   };
 }

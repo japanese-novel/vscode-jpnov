@@ -34,7 +34,7 @@ import {
   type ServerErrorParams,
 } from '#/shared/protocol.ts';
 
-import { createFile, registerBookCommands } from './book/manage.ts';
+import { createFile } from './book/manage.ts';
 import { BooksViewProvider } from './book/view.ts';
 import { command } from './commands.ts';
 import { registerAutoIndent } from './editor/autoIndent.ts';
@@ -361,8 +361,6 @@ export function activate(context: vscode.ExtensionContext): void {
         `${context.extension.id}#jpnov.gettingStarted`,
       );
     }),
-    // The Books panel's form editing (plain: dispatched by view.ts, never from the palette).
-    ...registerBookCommands(),
   );
 
   // Editor behavior (自動字下げ and the word commands): server-free, so it registers in Phase 1.

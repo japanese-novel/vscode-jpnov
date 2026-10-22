@@ -9,6 +9,7 @@ import type { LanguageClient } from 'vscode-languageclient/node';
 import { HoverRequest, type HoverParams, type HoverResult } from '#/shared/protocol.ts';
 
 import { renderMessage } from './messages.ts';
+import { toVsRange } from './ranges.ts';
 
 /** The hover as the editor shows it. */
 export function renderHover(result: HoverResult): vscode.Hover {
@@ -23,8 +24,7 @@ export function renderHover(result: HoverResult): vscode.Hover {
   if (result.link !== undefined) {
     md.appendMarkdown(`\n\n[${vscode.l10n.t('Aozora Bunko annotation guide')}](${result.link})`);
   }
-  const { start, end } = result.range;
-  return new vscode.Hover(md, new vscode.Range(start.line, start.character, end.line, end.character));
+  return new vscode.Hover(md, toVsRange(result.range));
 }
 
 export function registerAnnotationHover(client: LanguageClient): vscode.Disposable {

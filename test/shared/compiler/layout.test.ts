@@ -8,6 +8,7 @@ import { parse } from '../../../src/shared/ast/parse.ts';
 import {
   buildRows,
   flowToHtml,
+  headChar,
   paginate,
   pagesToHtml,
   type DisplayLine,
@@ -29,6 +30,11 @@ const missedTargets = (src: string): string[] =>
 
 /** Paginated lines as BODY pages (the cover-less shape every plain-book test wants). */
 const sheets = (ps: readonly DisplayLine[][]): RenderPage[] => ps.map((lines) => ({ lines }));
+/** Pages as renderBook hands them over: every page's values carry the 総ページ数, the body pages counted. */
+const numbered = (ps: readonly RenderPage[]): RenderPage[] => {
+  const total = String(ps.filter((p) => p.cover !== true).length);
+  return ps.map((p) => ({ ...p, values: { get: (name) => (name === VALUE_NAMES.totalPages ? total : p.values?.get(name)) } }));
+};
 
 /** All-off chrome: pagesToHtml emits the bare page/line skeleton with no furniture. */
 const OFF: BuildChrome = {
@@ -43,7 +49,7 @@ const OFF: BuildChrome = {
 // The continuous preview flow (segments where the build would turn the page); mirrors what
 // renderPreview emits as <body>.
 const flow = (src: string, charsPerLine = 40, kinsoku: KinsokuMode = 'none', linesPerPage = 34): string =>
-  flowToHtml(rowsOf(src), charsPerLine, linesPerPage, kinsoku);
+  flowToHtml(rowsOf(src), charsPerLine, linesPerPage, kinsoku, new Set());
 
 const pages = (src: string, charsPerLine = 40, linesPerPage = 34) =>
   paginate(rowsOf(src), charsPerLine, linesPerPage, 'none');
@@ -58,7 +64,7 @@ const klines = (src: string, charsPerLine: number, kinsoku: KinsokuMode = 'stric
         (line.hang === undefined ? '' : `⟪${line.hang.text}⟫`),
     );
 const html = (src: string, charsPerLine = 40, linesPerPage = 34) =>
-  pagesToHtml(sheets(pages(src, charsPerLine, linesPerPage)), undefined, OFF);
+  pagesToHtml(sheets(pages(src, charsPerLine, linesPerPage)), new Set(), OFF);
 
 test('one display line per source line; trailing newline dropped, middle blank kept', () => {
   assert.equal(
@@ -356,7 +362,7 @@ test('ぶら下げ: trailing zero-width units ride the hung column (no orphan em
 test('ぶら下げ: a decorated hung 句読点 keeps its channel span around the .hang span', () => {
   const out = pagesToHtml(
     sheets(paginate(rowsOf('文だ。［＃「文だ。」に傍点］'), 2, 34, 'strict')),
-    undefined,
+    new Set(),
     OFF,
   );
   assert.match(out, /<span class="emph-fs"><span class="hang">。<\/span><\/span>/);
@@ -486,9 +492,9 @@ test('flowToHtml: a break followed by a blank line opens the next segment on the
 
 // ダッシュ tests drive the translation explicitly — the plain helpers above stay glyph-agnostic.
 const dashFlow = (src: string, dash: DashMode = 'horizontalBar'): string =>
-  flowToHtml(rowsOf(src, { dash }), 40, 34, 'none');
+  flowToHtml(rowsOf(src, { dash }), 40, 34, 'none', new Set());
 const dashHtml = (src: string): string =>
-  pagesToHtml(sheets(paginate(rowsOf(src, { dash: 'horizontalBar' }), 40, 34, 'none')), undefined, OFF);
+  pagesToHtml(sheets(paginate(rowsOf(src, { dash: 'horizontalBar' }), 40, 34, 'none')), new Set(), OFF);
 
 test('ダッシュ: the configured spelling is emitted as the em dash — bare glyph, no markup', () => {
   assert.equal(
@@ -545,7 +551,7 @@ test('flowToHtml: lineNumbers emits JS-numbered .ln heads that run through every
   // A wrapped continuation column counts as its own line; neither a ［＃改ページ］ nor a page
   // turn restarts the count (the build's pages do — the preview numbers the whole file).
   assert.equal(
-    flowToHtml(rowsOf('一二三\n［＃改ページ］\n［＃改ページ］\n四\n五'), 2, 1, 'none', undefined, true),
+    flowToHtml(rowsOf('一二三\n［＃改ページ］\n［＃改ページ］\n四\n五'), 2, 1, 'none', new Set(), true),
     '<div class="book"><div class="segment">' +
       '<div class="line" data-line="0"><span class="ln">1</span>一二</div></div>' +
       '<div class="pagebreak auto"></div>' +
@@ -1199,13 +1205,13 @@ const sheetsOf = (out: string): string[] => out.split(/(?=<div class="page)/).sl
 
 test('cover pages: the cover class, no furniture, and a footer that counts BODY pages only', () => {
   const out = pagesToHtml(
-    [
+    numbered([
       { lines: page1('表紙'), cover: true },
       { lines: page1('扉'), cover: true },
       { lines: page1('本文一') },
       { lines: page1('本文二') },
-    ],
-    undefined,
+    ]),
+    new Set(),
     FURNISHED,
   );
   const parts = sheetsOf(out);
@@ -1227,7 +1233,7 @@ test('cover pages: a cover-less document emits plain body sheets', () => {
   // Pinned literally: comparing two liftings of the same pages would hold for any impl.
   const plain = paginate(rowsOf('前\n［＃改ページ］\n後'), 40, 34, 'none');
   assert.equal(
-    pagesToHtml(sheets(plain), undefined, FURNISHED),
+    pagesToHtml(numbered(sheets(plain)), new Set(), FURNISHED),
     '<div class="book">' +
       '<div class="page" data-page="0"><div class="grid"><div class="line" data-line="0">前</div>' +
       '</div><div class="hd c">柱</div><div class="ft r">1 / 2</div></div>' +
@@ -1247,7 +1253,7 @@ test('furniture: header and footer fill ［＃ここに「…」の値を表示�
     header: `${valueAnnotation(VALUE_NAMES.title)}　${valueAnnotation(VALUE_NAMES.page)}`,
     footer: `${valueAnnotation(VALUE_NAMES.author)}　${valueAnnotation(VALUE_NAMES.page)}／${valueAnnotation(VALUE_NAMES.totalPages)}`,
   };
-  const out = pagesToHtml([{ lines: page1('一'), values }, { lines: page1('二'), values }], undefined, chrome);
+  const out = pagesToHtml(numbered([{ lines: page1('一'), values }, { lines: page1('二'), values }]), new Set(), chrome);
   const parts = sheetsOf(out);
   assert.match(parts[0] ?? '', /<div class="hd c">作品名　1<\/div><div class="ft r">ペンネーム　1／2<\/div>/);
   assert.match(parts[1] ?? '', /<div class="hd c">作品名　2<\/div><div class="ft r">ペンネーム　2／2<\/div>/);
@@ -1262,7 +1268,7 @@ test('furniture: a value under 位取り or 命数 prints in kanji, the page num
     footer: `${valueAnnotation(VALUE_NAMES.page, VALUE_FORMATS.positional)}／${valueAnnotation(VALUE_NAMES.totalPages, VALUE_FORMATS.positional)}　${valueAnnotation('13', '漢数字')}`,
   };
   const pages = Array.from({ length: 11 }, (): RenderPage => ({ lines: page1('一'), values }));
-  const parts = sheetsOf(pagesToHtml(pages, undefined, chrome));
+  const parts = sheetsOf(pagesToHtml(numbered(pages), new Set(), chrome));
   assert.match(parts[0] ?? '', /<div class="hd c">作品名　一<\/div><div class="ft r">一／一一　13<\/div>/);
   assert.match(parts[10] ?? '', /<div class="hd c">作品名　十一<\/div><div class="ft r">一一／一一　13<\/div>/);
 });
@@ -1274,7 +1280,7 @@ test('furniture: a name the page lacks prints as itself; a page without values p
     header: valueAnnotation('発行日'),
     footer: valueAnnotation(VALUE_NAMES.title),
   };
-  const out = pagesToHtml([{ lines: page1('一') }], undefined, chrome);
+  const out = pagesToHtml([{ lines: page1('一') }], new Set(), chrome);
   assert.match(out, /<div class="hd c">発行日<\/div><div class="ft r">タイトル<\/div>/);
 });
 
@@ -1286,7 +1292,7 @@ test('furniture: plain text — a ruby prints its base, a 縦中横 its text, a 
     footer: '<b>［＃縦中横］１２［＃縦中横終わり］</b>　全［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］頁',
   };
   const used = new Set<string>();
-  const out = pagesToHtml([{ lines: page1('一') }], used, chrome);
+  const out = pagesToHtml(numbered([{ lines: page1('一') }]), used, chrome);
   assert.match(out, /<div class="hd c">作品名‼<\/div>/);
   assert.match(out, /<div class="ft r">&lt;b&gt;１２&lt;\/b&gt;　全1頁<\/div>/); // a value inside a 縦中横 is still looked up per page
   assert.doesNotMatch(out, /<ruby|class="tcy"|emph-/);
@@ -1296,7 +1302,7 @@ test('furniture: plain text — a ruby prints its base, a 縦中横 its text, a 
 test('furniture: a substituted value is escaped, never read as notation', () => {
   const values = new Map([[VALUE_NAMES.title, '<i>《x》']]);
   const chrome: BuildChrome = { ...FURNISHED, footer: '', header: valueAnnotation(VALUE_NAMES.title) };
-  const out = pagesToHtml([{ lines: page1('一'), values }], undefined, chrome);
+  const out = pagesToHtml([{ lines: page1('一'), values }], new Set(), chrome);
   assert.match(out, /<div class="hd c">&lt;i&gt;《x》<\/div>/);
 });
 
@@ -1571,7 +1577,7 @@ test('a column starts at the head of its line, else where its first real unit wa
 test('a column of no source line (a glue row) carries no anchor, wrapped or not', () => {
   const glue = pages('一二三', 2).flat().map((line) => ({ ...line, srcLine: -1 }));
   assert.equal(glue.length, 2);
-  assert.doesNotMatch(pagesToHtml(sheets([glue]), undefined, OFF), /data-(line|ch)/);
+  assert.doesNotMatch(pagesToHtml(sheets([glue]), new Set(), OFF), /data-(line|ch)/);
 });
 
 test('a character no output can carry takes no cell; the columns after it keep their source offset', () => {
@@ -1589,4 +1595,10 @@ test('a character no output can carry takes no cell; the columns after it keep t
 
 test('a comment loses the character before it is escaped, so no -- can form around it', () => {
   assert.match(html('［＃-\u0007-］本'), /<div class="line" data-line="0"><!--- - -->本<\/div>/);
+});
+
+test('headChar: the first code point, astral or not', () => {
+  assert.equal(headChar(CLUSTERS[0]), '辻');
+  assert.equal(headChar('\u{20BB7}\u{E0100}'), '\u{20BB7}');
+  assert.equal(headChar('a'), 'a');
 });

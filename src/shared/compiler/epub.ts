@@ -51,6 +51,8 @@ function shown(s: string): string | null {
 
 /** The manifest id and file stem of the chapter at `index`: `ch001` onward. */
 const spineStem = (index: number): string => `ch${String(index + 1).padStart(3, '0')}`;
+/** A content document's href inside OEBPS/. */
+const textHref = (stem: string): string => `text/${stem}.xhtml`;
 
 const CONTAINER_XML =
   '<?xml version="1.0" encoding="utf-8"?>\n' +
@@ -96,13 +98,13 @@ export function epubMembers(opts: {
     const label = segments.find((s) => s.heading !== null)?.heading ?? valueOf(VALUE_NAMES.heading, values, VALUE_FORMATS.named);
     const chapterDocs = segments.map((seg, si): SpineDoc => {
       const id = si === 0 ? stem : `${stem}-${String(si + 1)}`;
-      return { id, href: `text/${id}.xhtml`, title: seg.heading ?? label, body: seg.body };
+      return { id, href: textHref(id), title: seg.heading ?? label, body: seg.body };
     });
-    return [{ docs: chapterDocs, nav: { href: `text/${stem}.xhtml`, label } }];
+    return [{ docs: chapterDocs, nav: { href: textHref(stem), label } }];
   });
   const first = spineStem(0);
   const title = shown(opts.book.title) ?? chapters[0]?.nav.label ?? first;
-  const href = `text/${first}.xhtml`;
+  const href = textHref(first);
   // A book whose chapters are all empty still needs a non-empty spine to be an EPUB at all.
   const effective = chapters.length > 0
     ? chapters

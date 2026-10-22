@@ -268,20 +268,9 @@ function restore(cap: Capture): void {
   }
   focusKeys(cap.keys);
 }
-function counts(): { selected: number; total: number } {
-  let sel = 0;
-  let total = 0;
-  if (state) {
-    for (const group of state.groups) {
-      for (const b of group.books) {
-        total += 1;
-        if (b.checked) {
-          sel += 1;
-        }
-      }
-    }
-  }
-  return { selected: sel, total };
+/** True when the list has no book at all (the state's groups may all be empty). */
+function noBooks(): boolean {
+  return (state?.groups ?? []).every((group) => group.books.length === 0);
 }
 // Drive every `data-sel` control from the checkboxes painted on the screen (the books on the list,
 // the problems with a fix on the problems screen; a tile without one is disabled): Select-all off
@@ -482,7 +471,7 @@ function renderList(): void {
     app.replaceChildren(scrollPane(h('div', { class: 'empty' }, L.loading), h('div', { class: 'empty' }, L.loadingHint)));
     return;
   }
-  if (counts().total === 0) {
+  if (noBooks()) {
     app.replaceChildren(scrollPane(
       welcome(L.noBooksTitle, state?.noFolder ? [L.noBooksBody, L.noFolderHint] : [L.noBooksBody], [['createBook', L.createBook], ['openGuide', L.openGuide]])));
     return;
@@ -533,9 +522,8 @@ function bookRow(bk: BookVM, next: BookVM | undefined, prev: BookVM | undefined)
   cb.addEventListener('click', () => {
     const checked = !bk.checked;
     paintChecked(cb, checked);
-    // Optimistic: write the cached VM so applyControls()'s counts() sees the new value now, and a
-    // later re-render off this state (e.g. Back from detail) reflects it. The host records the
-    // selection authoritatively without echoing.
+    // Optimistic: write the cached VM so a later re-render off this state (e.g. Back from detail)
+    // reflects it. The host records the selection authoritatively without echoing.
     (bk as { checked: boolean }).checked = checked;
     applyControls();
     post({ type: 'toggle', uri: bk.uri, checked });
@@ -775,14 +763,19 @@ function sectionDnD(section: HTMLElement, d: DetailMessage, list: EntryList, row
     if (slot !== null) {
       // The dragged row stays dimmed until the host's re-push lands it in its new place.
       markPending(dragged.row);
-      post({
-        type: 'moveEntryTo', uri: d.uri, list, line: dragged.line, path: dragged.path, version: d.version,
-        before: slot.before === null ? null : slot.before.line, beforePath: slot.before === null ? null : slot.before.path,
-      });
+      post(moveMessage(d, list, dragged, slot.before));
     }
   };
   section.addEventListener('dragover', onDrag);
   section.addEventListener('drop', onDrag);
+}
+
+/** The move verb: `row` goes before `before` (null = after the list's last entry). */
+function moveMessage(d: DetailMessage, list: EntryList, row: Pick<EntryVM, 'line' | 'path'>, before: Pick<EntryVM, 'line' | 'path'> | null): BooksOutbound {
+  return {
+    type: 'moveEntryTo', uri: d.uri, list, line: row.line, path: row.path, version: d.version,
+    before: before === null ? null : before.line, beforePath: before === null ? null : before.path,
+  };
 }
 
 function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, entries: readonly EntryVM[]): HTMLElement {
@@ -801,8 +794,7 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
   };
   // The name as written (folder and file), in full, as the accessible name and the tooltip; a
   // missing file says so in both. A name row's primary action edits it, so its name says so.
-  const full = e.folder === '' ? e.name : e.folder + '/' + e.name;
-  const name = e.missing ? L.missing + ': ' + full : e.fileUri === null ? L.editEntry + ': ' + full : full;
+  const name = e.missing ? L.missing + ': ' + e.path : e.fileUri === null ? L.editEntry + ': ' + e.path : e.path;
   const fileUri = e.fileUri;
   row.append(
     cell(h('button', {
@@ -822,11 +814,12 @@ function entryRow(d: DetailMessage, list: EntryList, e: EntryVM, idx: number, en
     // Focus keys use the entry's path (stable across a move) so keyboard focus follows the row.
     // An arrow disabled at the list's edge hands focus to the other arrow, then the row — never to Remove.
     h('div', { class: 'acts', role: 'presentation' },
-      cell(iconBtn('up', L.moveUp, verb({ type: 'moveEntry', uri: d.uri, list, ...ref, dir: -1 }), {
+      // Up: before the previous row. Down: before the one past the next, or last. The edge button is disabled.
+      cell(iconBtn('up', L.moveUp, verb(moveMessage(d, list, e, entries[idx - 1] ?? null)), {
         'data-fk': key('up'), fallback: [key('down'), key('open'), ...vanished], disabled: idx === 0,
         'aria-keyshortcuts': 'Alt+ArrowUp',
       })),
-      cell(iconBtn('down', L.moveDown, verb({ type: 'moveEntry', uri: d.uri, list, ...ref, dir: 1 }), {
+      cell(iconBtn('down', L.moveDown, verb(moveMessage(d, list, e, entries[idx + 2] ?? null)), {
         'data-fk': key('down'), fallback: [key('up'), key('open'), ...vanished], disabled: idx === entries.length - 1,
         'aria-keyshortcuts': 'Alt+ArrowDown',
       })),

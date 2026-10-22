@@ -37,9 +37,7 @@ export function isKatakana(cp: number): boolean {
 export const CORNERS = '「『」』';
 
 /** Combining 濁点 (U+3099) and 半濁点 (U+309A): what a decomposed (NFD) kana carries after its base. */
-const COMBINING_KANA_MARK = /[\u3099\u309A]/;
-/** The same class as a scan over a text, for the lint rule that reports each mark. */
-export const COMBINING_KANA_MARKS = new RegExp(COMBINING_KANA_MARK.source, 'g');
+export const COMBINING_KANA_MARK = /[\u3099\u309A]/;
 
 /** Whether `cp` is a combining 濁点/半濁点 (the second code point of an NFD kana). */
 export function isCombiningKanaMark(cp: number): boolean {
@@ -134,11 +132,6 @@ export function isClusterBoundary(text: string, at: number): boolean {
     return false;
   }
   return SINGLETONS.test(text.slice(at - 1, at + 1)) || clustersOf(text).containing(at)?.index === at;
-}
-
-/** The first code point of `text` as a string: the character a cluster is classed by. */
-export function headChar(text: string): string {
-  return text.slice(0, (text.codePointAt(0) ?? 0) > 0xffff ? 2 : 1); // slice, not fromCodePoint: this sits under every unit of the wrap
 }
 
 /**

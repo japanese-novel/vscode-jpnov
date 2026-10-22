@@ -25,7 +25,6 @@ import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Ast, Span } from '../../shared/ast/nodes.ts';
-import { isSelectionEmpty } from '../../shared/lint/select.ts';
 import type { ActiveRule, RuleSelection } from '../../shared/lint/select.ts';
 import type { LocalizableMessage } from '../../shared/protocol.ts';
 import { partitionPoint } from '../../shared/utils/lists.ts';
@@ -120,7 +119,7 @@ function materializeFix(spec: FixSpec, doc: TextDocument, ast: Ast, targets: Tar
  * default costs nothing (no walk, no scans). `ast` is the editor's parse of its text.
  */
 export function computeLintFindings(doc: TextDocument, ast: Ast, selection: RuleSelection): Finding[] {
-  if (isSelectionEmpty(selection)) {
+  if (selection.length === 0) {
     return [];
   }
   const text = doc.getText();

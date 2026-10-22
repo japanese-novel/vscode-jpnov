@@ -5,7 +5,6 @@ import {
   checkJpbook,
   completeMetaLine,
   composeBookChrome,
-  composeDividerValue,
   ITEM_MARKS,
   entryIdentity,
   inlineKeyOf,
@@ -24,7 +23,7 @@ import {
   type ParsedJpbook,
   type ParsedLine,
 } from '../../../src/shared/book/jpbook.ts';
-import { INDENT_MAX } from '../../../src/shared/ast/notation.ts';
+import { composeDividerValue, INDENT_MAX } from '../../../src/shared/ast/notation.ts';
 import { FURNITURE_ALIGNS } from '../../../src/shared/compiler/chrome.ts';
 import { below, HEAD, meta, metaBody, metaWith } from './_fixture.ts';
 
@@ -235,7 +234,7 @@ test('parseJpbook: a first line that is no header is the one Error; nothing belo
     assert.deepEqual(got.lines.slice(1).map((l) => l.kind), ['unread', 'blank', 'unread', 'unread', 'unread', 'blank'], first);
     assert.equal(got.fence, null, first);
     assert.deepEqual(got.meta, {}, first);
-    assert.deepEqual(got.metaErrors, [], first);
+    assert.equal(got.metaError, null, first);
     assert.deepEqual(checkJpbook(got), { ok: false, error: { code: 'jpbook.headerMissing', args: [HEADER] } }, first);
   }
   // The lines keep their content and spans, so edits can still find their way around them.
@@ -253,7 +252,7 @@ test('parseJpbook: a header naming a version this extension has no parser for is
       version,
     );
     assert.deepEqual(got.lines.slice(1).map((l) => l.kind), ['unread', 'unread', 'unread', 'blank'], version);
-    assert.deepEqual(got.metaErrors, [], version);
+    assert.equal(got.metaError, null, version);
     assert.deepEqual(
       checkJpbook(got),
       { ok: false, error: { code: 'jpbook.versionUnsupported', args: [version, JPBOOK_VERSION] } },
@@ -277,7 +276,7 @@ test('parseJpbook: an empty first title line still takes its key', () => {
   assert.deepEqual(got.meta, {});
   assert.deepEqual(got.lines[1]?.kind, { warning: { code: 'jpbook.metaDuplicateKey', args: ['title'] } });
   // Taken by its line in Error: not reported again on the fence.
-  assert.deepEqual(got.metaErrors, []);
+  assert.equal(got.metaError, null);
 });
 
 test('parseJpbook: blank lines among the metadata are skipped', () => {
@@ -307,12 +306,12 @@ test('divider is a free-string key; parse/composeDividerValue split mark and 字
   assert.deepEqual(parseDividerValue('［＃２字下げ］◇'), { mark: '◇', indent: 2 });
   // The 字下げ must LEAD the value: the box edits a position, not spaces inside the mark.
   assert.deepEqual(parseDividerValue('＊［＃２字下げ］'), { mark: '＊［＃２字下げ］', indent: null });
-  assert.equal(composeDividerValue('＊', null), '＊');
-  assert.equal(composeDividerValue('＊', 15), '［＃１５字下げ］＊');
-  assert.deepEqual(parseDividerValue(composeDividerValue('†', 3)), { mark: '†', indent: 3 });
+  assert.equal(composeDividerValue({ mark: '＊', indent: null }), '＊');
+  assert.equal(composeDividerValue({ mark: '＊', indent: 15 }), '［＃１５字下げ］＊');
+  assert.deepEqual(parseDividerValue(composeDividerValue({ mark: '†', indent: 3 })), { mark: '†', indent: 3 });
   // The scanner's limit: the largest 字下げ splits off, a larger one stays in the mark.
-  assert.deepEqual(parseDividerValue(composeDividerValue('◇', INDENT_MAX)), { mark: '◇', indent: INDENT_MAX });
-  const over = composeDividerValue('◇', INDENT_MAX + 1);
+  assert.deepEqual(parseDividerValue(composeDividerValue({ mark: '◇', indent: INDENT_MAX })), { mark: '◇', indent: INDENT_MAX });
+  const over = composeDividerValue({ mark: '◇', indent: INDENT_MAX + 1 });
   assert.deepEqual(parseDividerValue(over), { mark: over, indent: null });
 });
 
@@ -330,7 +329,7 @@ test('parseJpbook: headerAlign and footerAlign take the five alignments and reje
       }, `${key}: ${bad}`);
       assert.deepEqual(got.lines[1]?.kind, { warning: { code: 'jpbook.metaDuplicateKey', args: [key] } });
       assert.deepEqual(got.meta, {}, `${key}: ${bad}`);
-      assert.ok(!parse(`${key}: ${bad}\n---\n`).metaErrors.some((e) => e.error.args?.[0] === key), `${key}: ${bad}`);
+      assert.notEqual(parse(`${key}: ${bad}\n---\n`).metaError?.error.args?.[0], key, `${key}: ${bad}`);
     }
   }
 });
@@ -592,9 +591,9 @@ test('characters/keywords: an empty list is as legal as an absent key, and never
 test('writtenKeysOf: the keys of every metadata line (in Error or not), chapters excluded, a line opted out', () => {
   const parsed = parse('title:\nTitle: x\nfooterAlign: bad\ncover: c0.jpnov\n- c.jpnov\ntitle: y\n---\na.jpnov\nheader: h\n');
   // Every key as written; completion only ever asks about the known ones.
-  assert.deepEqual([...writtenKeysOf(parsed)], ['title', 'Title', 'footerAlign', 'cover']);
+  assert.deepEqual([...writtenKeysOf(parsed, -1)], ['title', 'Title', 'footerAlign', 'cover']);
   assert.deepEqual([...writtenKeysOf(parsed, 0)], ['Title', 'footerAlign', 'cover', 'title']);
-  assert.deepEqual([...writtenKeysOf(parse(''))], []);
+  assert.deepEqual([...writtenKeysOf(parse(''), -1)], []);
 });
 
 // --- checkJpbook -------------------------------------------------------------
@@ -671,17 +670,15 @@ test('checkJpbook: no closing fence is the root cause, before the chapter lines 
   });
 });
 
-test('metaErrors: unclosed on the first non-blank line below the header (else the header); the unwritten title on the fence', () => {
+test('metaError: unclosed on the first non-blank line below the header (else the header); the unwritten title on the fence', () => {
   const unterminated = { code: 'jpbook.metaUnterminated', args: [] };
-  assert.deepEqual(parse('\n  title: t\na.jpnov').metaErrors, [
-    { line: 1, range: { startChar: 2, endChar: 10 }, error: unterminated },
-  ]);
-  assert.deepEqual(parseJpbook(`${HEAD}\n`).metaErrors, [{ line: 0, range: { startChar: 0, endChar: 8 }, error: unterminated }]);
+  assert.deepEqual(parse('\n  title: t\na.jpnov').metaError, { line: 1, range: { startChar: 2, endChar: 10 }, error: unterminated });
+  assert.deepEqual(parseJpbook(`${HEAD}\n`).metaError, { line: 0, range: { startChar: 0, endChar: 8 }, error: unterminated });
   const empty = (key: string): unknown => ({ code: 'jpbook.metaEmptyValue', args: [key] });
-  assert.deepEqual(parse('title: t\n ---\n').metaErrors, []);
-  assert.deepEqual(parse('headerAlign: right\n ---\n').metaErrors, [{ line: 1, range: { startChar: 1, endChar: 4 }, error: empty('title') }]);
-  assert.deepEqual(parse(' ---\n').metaErrors.map((e) => [e.line, e.error]), [[0, empty('title')]]);
-  assert.deepEqual(parseJpbook(meta()).metaErrors, []);
+  assert.equal(parse('title: t\n ---\n').metaError, null);
+  assert.deepEqual(parse('headerAlign: right\n ---\n').metaError, { line: 1, range: { startChar: 1, endChar: 4 }, error: empty('title') });
+  assert.deepEqual([parse(' ---\n').metaError?.line, parse(' ---\n').metaError?.error], [0, empty('title')]);
+  assert.equal(parseJpbook(meta()).metaError, null);
 });
 
 // --- composeBookChrome --------------------------------------------------------
@@ -757,8 +754,11 @@ test('completeEntryLine respects the cap', () => {
 
 // --- completeMetaLine --------------------------------------------------------
 
+/** Completion on a metadata line with no key written yet. */
+const complete = (prefix: string) => completeMetaLine(prefix, new Set());
+
 test('completeMetaLine offers every key on an empty line, inserted as "key: "', () => {
-  const got = completeMetaLine('');
+  const got = complete('');
   assert.deepEqual(got.map((c) => c.label), [...KNOWN_KEYS]);
   const first = got[0];
   assert.ok(first);
@@ -775,16 +775,16 @@ test('completeMetaLine leaves out the keys already written', () => {
 });
 
 test('completeMetaLine filters keys by case-insensitive prefix, replacing the typed span', () => {
-  const got = completeMetaLine('  FOOT');
+  const got = complete('  FOOT');
   assert.deepEqual(got.map((c) => c.label), ['footer', 'footerAlign']);
   assert.deepEqual(got[0]?.replace, { startChar: 2, endChar: 6 });
-  assert.deepEqual(completeMetaLine('head').map((c) => c.label), ['header', 'headerAlign']);
+  assert.deepEqual(complete('head').map((c) => c.label), ['header', 'headerAlign']);
 });
 
 test('completeMetaLine offers the alignments after "headerAlign:" and "footerAlign:"', () => {
   for (const key of ['headerAlign', 'footerAlign']) {
-    assert.deepEqual(completeMetaLine(`${key}: `).map((c) => c.label), [...FURNITURE_ALIGNS], key);
-    const got = completeMetaLine(`${key}: le`);
+    assert.deepEqual(complete(`${key}: `).map((c) => c.label), [...FURNITURE_ALIGNS], key);
+    const got = complete(`${key}: le`);
     assert.deepEqual(got.map((c) => c.label), ['left', 'leftRight'], key);
     const first = got[0];
     assert.ok(first);
@@ -794,13 +794,13 @@ test('completeMetaLine offers the alignments after "headerAlign:" and "footerAli
 });
 
 test('completeMetaLine offers nothing after the colon of a free-text key', () => {
-  assert.deepEqual(completeMetaLine('title: 夜'), []);
-  assert.deepEqual(completeMetaLine('header: '), []);
+  assert.deepEqual(complete('title: 夜'), []);
+  assert.deepEqual(complete('header: '), []);
 });
 
 test('completeMetaLine offers the preset marks after "divider:"', () => {
-  assert.deepEqual(completeMetaLine('divider: ').map((c) => c.label), ['＊', '＊　＊　＊', '◇']);
-  const first = completeMetaLine('divider: ')[0];
+  assert.deepEqual(complete('divider: ').map((c) => c.label), ['＊', '＊　＊　＊', '◇']);
+  const first = complete('divider: ')[0];
   assert.ok(first);
   assert.equal(first.kind, 'value');
 });

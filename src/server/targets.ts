@@ -14,6 +14,7 @@ import type { Range, TextEdit } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Ast, PostfixNode, Span, SyntaxNode } from '../shared/ast/nodes.ts';
+import { MARKUP } from '../shared/ast/notation.ts';
 import { partitionPoint } from '../shared/utils/lists.ts';
 import { comparePositions, rangeKey } from '../shared/utils/position.ts';
 
@@ -41,9 +42,6 @@ export interface SyncedEdit {
   readonly newText: string;
   readonly within: readonly SyncedTarget[];
 }
-
-/** The markers of the notation: text holding one writes markup, which a 「…」 cannot hold. */
-export const MARKUP = /[［］「」《》｜]/;
 
 export function isPostfix(node: SyntaxNode): node is PostfixNode {
   return node.kind === 'emphasisPostfix' || node.kind === 'tcyPostfix' || node.kind === 'headingPostfix' || node.kind === 'rubyLeftPostfix';

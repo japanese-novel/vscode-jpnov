@@ -14,8 +14,7 @@ import type { Ast } from '../../src/shared/ast/nodes.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
 import { allSettingKeys } from '../../src/shared/lint/catalog.ts';
 import { selectRules } from '../../src/shared/lint/select.ts';
-import { lintWireValue } from '../../src/shared/lint/wire.ts';
-import { renderEnglish } from '../../src/shared/messages.ts';
+import { renderEnglish, TEMPLATES } from '../../src/shared/messages.ts';
 import type { LocalizableMessage, RawLintConfigWire } from '../../src/shared/protocol.ts';
 import type { DiagnosticOut, Range } from './contract.ts';
 import { ja } from './l10n.ts';
@@ -43,27 +42,15 @@ async function defaultLintConfig(): Promise<RawLintConfigWire> {
       defaults.set(key, prop.default);
     }
   }
-  const config: Record<string, boolean | number | string> = {};
-  for (const key of allSettingKeys()) {
-    const value = lintWireValue(defaults.get(key));
-    if (value !== undefined) {
-      config[key] = value;
-    }
-  }
-  return config;
+  return Object.fromEntries(allSettingKeys().map((key) => [key, defaults.get(key)]));
 }
 
 /** The rule selection for untouched settings; plain data, so one serves every sample. */
 const RULES = selectRules(await defaultLintConfig());
-const PLACEHOLDERS = ['{0}', '{1}', '{2}'];
-
 /** The English template is the bundle key; the args fill the same `{n}` slots afterwards. */
 export function localize(message: LocalizableMessage): { en: string; ja: string } {
   const args = message.args ?? [];
-  return {
-    en: renderEnglish(message.code, args),
-    ja: ja(renderEnglish(message.code, PLACEHOLDERS), ...args.map(String)),
-  };
+  return { en: renderEnglish(message.code, args), ja: ja(TEMPLATES[message.code], ...args.map(String)) };
 }
 
 function toRange(range: Diagnostic['range']): Range {
