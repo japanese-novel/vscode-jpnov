@@ -144,7 +144,7 @@ export function computeLintFindings(doc: TextDocument, ast: Ast, selection: Rule
           const range = rangeOf(doc, span);
           const message = extra?.message ?? { code: rule.code };
           const fix = extra?.fix === undefined ? undefined : materializeFix(extra.fix, doc, ast, targets);
-          prose.push(finding(diagnostic(range, message, WARNING, rule.setting), fix));
+          prose.push(finding(diagnostic(range, message, WARNING), fix, rule.setting));
           taken.add(`${rule.id}\n${rangeKey(range)}`);
         },
       }),
@@ -170,7 +170,7 @@ export function computeLintFindings(doc: TextDocument, ast: Ast, selection: Rule
       if (impl.yieldsTo.some((id) => taken.has(`${id}\n${key}`))) {
         continue;
       }
-      raw.push(finding(diagnostic(range, span.message ?? { code: rule.code }, WARNING, rule.setting), undefined));
+      raw.push(finding(diagnostic(range, span.message ?? { code: rule.code }, WARNING), undefined, rule.setting));
     }
   }
   return [...raw, ...prose];

@@ -120,6 +120,7 @@ const ARGS: Record<MsgCode, readonly (string | number)[]> = {
   'lint.dialogue.closingPunct': [],
   'lint.dialogue.noIndent': [],
   'lint.ruby.kana': [],
+  'codeAction.openSetting': ['shiftJisSafe'],
   'server.unexpected': ['boom'],
 };
 

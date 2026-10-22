@@ -27,9 +27,12 @@ const FILE_START_RANGE = {
 /** A diagnostic of this server: its `data` is always the message it was built from. */
 export type JpnovDiagnostic = Omit<Diagnostic, 'data'> & { readonly data: LocalizableMessage };
 
+/** The VS Code command that opens the settings editor filtered to the setting key it is given. */
+export const OPEN_SETTINGS_COMMAND = 'workbench.action.openSettings';
+
 /** The link behind a lint diagnostic's code in the Problems panel: the settings editor, filtered to the rule's setting. */
 function settingLink(settingKey: string): string {
-  return `command:workbench.action.openSettings?${encodeURIComponent(JSON.stringify(settingKey))}`;
+  return `command:${OPEN_SETTINGS_COMMAND}?${encodeURIComponent(JSON.stringify(settingKey))}`;
 }
 
 /**
@@ -37,15 +40,9 @@ function settingLink(settingKey: string): string {
  * render goes in `.message` (the fallback VS Code shows directly), and the `{code, args}` ride
  * in `.data` so the client's `handleDiagnostics` middleware can replace `.message` with the
  * localized text. Callers never hand-write English — it is single-sourced in `renderEnglish`.
- * A lint diagnostic links its code to the rule's `setting`; a syntax or `.jpbook` one has none.
  */
-export function diagnostic(
-  range: Range,
-  message: LocalizableMessage,
-  severity: DiagnosticSeverity,
-  setting?: string,
-): JpnovDiagnostic {
-  const diag: JpnovDiagnostic = {
+export function diagnostic(range: Range, message: LocalizableMessage, severity: DiagnosticSeverity): JpnovDiagnostic {
+  return {
     range,
     severity,
     source: DIAGNOSTIC_SOURCE,
@@ -54,21 +51,32 @@ export function diagnostic(
     message: renderEnglish(message.code, message.args),
     data: message,
   };
-  return setting === undefined ? diag : { ...diag, codeDescription: { href: settingLink(setting) } };
 }
 
 /** A single auto-fix edit in SOURCE coordinates: a {@link SyncedEdit}, applied with the 「…」 edits it carries. */
 export type Fix = SyncedEdit;
 
-/** One finding to publish: its diagnostic, plus its fix when there is one to offer. */
+/**
+ * One finding to publish: its diagnostic, plus its fix when there is one to offer, and for a lint
+ * finding the setting key of its rule (the code action "open the setting of this rule").
+ */
 export interface Finding {
   readonly diagnostic: JpnovDiagnostic;
   readonly fix?: Fix;
+  readonly setting?: string;
 }
 
-/** Pairs a diagnostic with an optional fix, omitting `fix` entirely when absent (exactOptional…). */
-export function finding(diag: JpnovDiagnostic, fix: Fix | undefined): Finding {
-  return fix !== undefined ? { diagnostic: diag, fix } : { diagnostic: diag };
+/**
+ * Pairs a diagnostic with an optional fix and setting, omitting each when absent (exactOptional…).
+ * The setting is where it enters: a lint finding's diagnostic links its code to the rule's setting
+ * (the Problems panel opens command links); a syntax or `.jpbook` one has none.
+ */
+export function finding(diag: JpnovDiagnostic, fix: Fix | undefined, setting?: string): Finding {
+  return {
+    diagnostic: setting === undefined ? diag : { ...diag, codeDescription: { href: settingLink(setting) } },
+    ...(fix !== undefined ? { fix } : {}),
+    ...(setting !== undefined ? { setting } : {}),
+  };
 }
 
 /** A finding as the Books view lists it: the diagnostic's place, severity and message, and whether a fix is on offer. */

@@ -62,7 +62,7 @@
   "jpnov.lint.common.noNfd.description": "Flag kana whose 濁点 / 半濁点 is a separate combining character (U+3099 / U+309A); prefer the composed form. Covers annotations and ruby as well as body text. Auto-fixable where the pair composes.",
   "jpnov.lint.common.noZeroWidth.description": "Flag zero-width spaces (U+200B). Auto-fixable.",
   "jpnov.lint.common.noControlChar.description": "Flag invalid control characters. Covers annotations and ruby as well as body text. Auto-fixable.",
-  "jpnov.lint.common.shiftJisSafe.description": "Flag characters Shift JIS lacks. The check runs no matter which encoding you build with, so a manuscript stays ready for a Shift JIS submission. Covers annotations and ruby as well as body text.",
+  "jpnov.lint.common.shiftJisSafe.description": "Flag characters Shift JIS lacks. The check runs no matter which encoding you build with, so a manuscript stays ready for a Shift JIS submission. Covers annotations and ruby as well as body text. If you only build PDF or EPUB, you can turn this off.",
   "jpnov.lint.common.noHalfWidthSpace.description": "Flag a half-width space between two full-width characters, or after two or more half-width ! / ? (!?, !!). Auto-fixable.",
   "jpnov.lint.common.noStrayLetter.description": "Flag a lone letter, half- or full-width, caught between Japanese characters (見るr — a letter the IME left unconverted). Vowels, n, and capital letters are left alone.",
   "jpnov.lint.common.minusPosition.description": "Flag a minus sign that is not directly before a number. A Western hyphen between letters (Wi-Fi) is left alone.",

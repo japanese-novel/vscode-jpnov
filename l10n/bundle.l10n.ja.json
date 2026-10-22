@@ -192,6 +192,7 @@
   "a minus sign is allowed only before a number": "マイナス記号は数字の前にのみ使えます",
   "ruby reading should be all hiragana or all katakana": "ルビの読みは、すべて平仮名かすべて片仮名にしてください",
   "Fix all auto-fixable problems (Japanese Novel)": "自動修正できる問題をすべて修正（小説）",
+  "Open the \"{0}\" setting": "「{0}」の設定を開く",
   "Japanese Novel: fixing {0} chapter(s)…": "小説: {0} 章を自動修正中…",
   "Japanese Novel: fixed {0} problem(s) in {1} chapter(s).": "小説: {1} 章で {0} 件を修正しました。",
   "Japanese Novel: checking {0} chapter(s)…": "小説: {0} 章を調べています…",

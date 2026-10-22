@@ -1,11 +1,11 @@
-/** Pure-builder tests for buildCodeActions (quick-fix overlap, only-filter, fix-all bundling). */
+/** Pure-builder tests for buildCodeActions (quick-fix overlap, open-setting action, only-filter, fix-all bundling). */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CodeActionKind } from 'vscode-languageserver/node';
 import type { CodeAction, Range, TextEdit } from 'vscode-languageserver/node';
 
-import { problemOf, type Finding } from '../../../src/server/diagnostics.ts';
+import { OPEN_SETTINGS_COMMAND, problemOf, type Finding } from '../../../src/server/diagnostics.ts';
 import { buildCodeActions, fixAllEdits } from '../../../src/server/lint/codeActions.ts';
 import type { SyncedTarget } from '../../../src/server/targets.ts';
 import { inLinearTime } from '../../shared/_timing.ts';
@@ -42,6 +42,35 @@ test('a fixable finding yields a quick-fix (with edit + diagnostic) and a fix-al
 test('non-fixable findings produce no actions at all', () => {
   const f = finding(range(0, 0, 0, 1), 'lint.narration.maxTen'); // no fix
   assert.deepEqual(buildCodeActions(URI, [f], range(0, 0, 0, 1), undefined), []);
+});
+
+test('a lint finding without a fix yields "open the setting of this rule" alone: a command to the settings editor, no fix-all', () => {
+  const f: Finding = { ...finding(range(0, 0, 0, 1), 'lint.common.shiftJisSafe'), setting: 'jpnov.lint.common.shiftJisSafe' };
+  const actions = buildCodeActions(URI, [f], range(0, 0, 0, 0), undefined);
+  assert.equal(actions.length, 1);
+  const [open] = actions;
+  assert.ok(open);
+  assert.equal(open.kind, CodeActionKind.QuickFix);
+  // The rule named as the settings editor and the code show it; the client localizes from `data`.
+  assert.equal(open.title, 'Open the "shiftJisSafe" setting');
+  assert.deepEqual(open.data, { code: 'codeAction.openSetting', args: ['shiftJisSafe'] });
+  assert.deepEqual(open.diagnostics, [f.diagnostic]);
+  assert.equal(open.edit, undefined);
+  assert.equal(open.isPreferred, undefined);
+  assert.deepEqual(open.command, { title: open.title, command: OPEN_SETTINGS_COMMAND, arguments: ['jpnov.lint.common.shiftJisSafe'] });
+  // Only at the finding, and not under a fix-all-only request.
+  assert.deepEqual(buildCodeActions(URI, [f], range(3, 0, 3, 0), undefined), []);
+  assert.deepEqual(buildCodeActions(URI, [f], range(0, 0, 0, 0), [CodeActionKind.SourceFixAll]), []);
+});
+
+test('a fixable lint finding lists its quick-fix first, the setting action below it, then the fix-all', () => {
+  const f: Finding = { ...finding(range(0, 1, 0, 2), 'lint.narration.noHankakuKana', 'ア'), setting: 'jpnov.lint.narration.noHankakuKana' };
+  const actions = buildCodeActions(URI, [f], range(0, 1, 0, 1), undefined);
+  assert.deepEqual(kinds(actions), [CodeActionKind.QuickFix, CodeActionKind.QuickFix, CodeActionKind.SourceFixAll]);
+  assert.deepEqual(actions.map((a) => a.command?.command), [undefined, OPEN_SETTINGS_COMMAND, undefined]);
+  const [fix] = actions;
+  assert.ok(fix);
+  assert.deepEqual(editsOf(fix), [{ range: range(0, 1, 0, 2), newText: 'ア' }]);
 });
 
 test('quick-fix is only offered for findings overlapping the requested range', () => {

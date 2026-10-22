@@ -154,8 +154,9 @@ function ensureStarted(): void {
         next(uri, diagnostics);
       },
       // Lint code actions come from the vscode-free server with English titles. Localize them:
-      // the fix-all bundle is recognized by its source.fixAll kind; a quick-fix reuses the localized
-      // message of its diagnostic (the same data the diagnostic middleware above renders).
+      // the fix-all bundle is recognized by its source.fixAll kind; an action with its own
+      // localizable message in `data` renders that; a quick-fix reuses the localized message of
+      // its diagnostic (the same data the diagnostic middleware above renders).
       async provideCodeActions(document, range, context, token, next) {
         const actions = await next(document, range, context, token);
         if (!actions) {
@@ -167,6 +168,11 @@ function ensureStarted(): void {
           }
           if (action.kind !== undefined && vscode.CodeActionKind.SourceFixAll.contains(action.kind)) {
             action.title = vscode.l10n.t('Fix all auto-fixable problems (Japanese Novel)');
+            continue;
+          }
+          const data = (action as vscode.CodeAction & { data?: unknown }).data;
+          if (isLocalizableMessage(data)) {
+            action.title = renderMessage(data);
             continue;
           }
           const diag = action.diagnostics?.[0] as (vscode.Diagnostic & { data?: unknown }) | undefined;
