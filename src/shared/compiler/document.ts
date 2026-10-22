@@ -185,11 +185,14 @@ const PRINT_BUTTON = '<button class="print" type="button" onclick="window.print(
 const PRINT_AUTORUN =
   '<script>if(new URLSearchParams(location.search).get(\'p\')===\'1\')addEventListener(\'load\',()=>{window.print();});</script>';
 
-/** One junction's glue as rows; srcLine −1 = synthetic (emitLine emits no anchor). */
-function glueRows(glue: string, dash: DashMode): Row[] {
-  return buildRows(parse(glue), { dash }).map((row) =>
-    row.kind === 'line' ? { ...row, srcLine: -1 } : row,
-  );
+/** `rows` with `patch` on every line row (a page break takes none). */
+function stampLines(rows: readonly Row[], patch: Partial<Pick<Extract<Row, { kind: 'line' }>, 'srcLine' | 'chapter'>>): Row[] {
+  return rows.map((row) => (row.kind === 'line' ? { ...row, ...patch } : row));
+}
+
+/** One junction's glue as rows: srcLine −1 = synthetic (emitLine emits no anchor), `chapter` = the one it closes. */
+function glueRows(glue: string, dash: DashMode, chapter: number): Row[] {
+  return stampLines(buildRows(parse(glue), { dash }), { srcLine: -1, chapter });
 }
 
 /** The pairs the book itself supplies to ［＃ここに「…」の値を表示］: タイトル／ペンネーム, absent = ''. */
@@ -223,14 +226,14 @@ export function chapterAsts(book: BookInput): Chapter[] {
  * 原稿用紙換算枚数 counts it).
  */
 function bodyFlow(book: BookInput, dash: DashMode): (charsPerLine: number | null) => Row[] {
-  const chapters = chapterAsts(book).map(({ ast }) => ({ ast, rows: buildRows(ast, { dash }) }));
+  const chapters = chapterAsts(book).map(({ ast }, ci) => ({ ast, rows: stampLines(buildRows(ast, { dash }), { chapter: ci }) }));
   return (charsPerLine) => {
     const divider = book.divider ?? '';
     return chapters.flatMap(({ ast, rows }, ci, all): Row[] => {
       const prev = all[ci - 1];
       const glue = prev === undefined
         ? []
-        : glueRows(chapterGlue(prev.ast, ast, divider, charsPerLine), dash);
+        : glueRows(chapterGlue(prev.ast, ast, divider, charsPerLine), dash, ci - 1);
       return [...glue, ...rows];
     });
   };
@@ -280,7 +283,9 @@ export function bookCounts(
  * 総ページ数 reports and {@link bookCounts} gives the Books view — and
  * ［＃ここに「原稿用紙換算枚数」の値を表示］ the same bodies re-flowed on {@link MANUSCRIPT_SHEET},
  * computed only when a cover or the page furniture asks for it.
- * The header and footer fill from the same values plus the page's own ページ番号. All options
+ * The header and footer fill from the same values plus the page's own ページ番号 and the 見出し番号
+ * of its chapter, the last one begun on or before it (a running head takes the last subhead on
+ * its page). All options
  * are required and pre-resolved (the settings resolver is the only default layer). Pure +
  * vscode-free.
  */
@@ -315,11 +320,16 @@ export function renderBook(opts: {
 
   // One book's ［＃ここに「…」の値を表示］ substitutions outside the chapters: a cover's values,
   // and the base of the furniture's (which adds the page's own numbers). 見出し番号 is a
-  // chapter's own (chapterAsts); here it prints its default.
-  const valuesOf = (book: BookInput): ValueLookup => {
+  // chapter's own (chapterAsts): a cover prints its default, a body page its chapter's.
+  const valuesOf = (book: BookInput, chapter?: number): ValueLookup => {
     const fixed = new Map<string, string>([...bookPairs(book), [VALUE_NAMES.totalPages, String(totalBody)]]);
+    if (chapter !== undefined) {
+      fixed.set(VALUE_NAMES.heading, String(chapter + 1));
+    }
     return { get: (name) => (name === VALUE_NAMES.sheets ? String(totalSheets()) : fixed.get(name)) };
   };
+  // Body lines all carry a chapter (bodyFlow); no page is empty (paginate).
+  const chapterOf = (lines: readonly DisplayLine[]): number => Math.max(...lines.map((line) => line.chapter ?? 0));
 
   const coverPagesOf = (book: BookInput, values: ValueLookup): DisplayLine[][] => {
     const rows = (book.cover?.files ?? []).flatMap((file, i): Row[] => {
@@ -330,13 +340,10 @@ export function renderBook(opts: {
     return paginate(rows, opts.charsPerLine, opts.linesPerPage, opts.kinsoku);
   };
 
-  const pages = bodies.flatMap(({ book, pages: bodyPages }): RenderPage[] => {
-    const values = valuesOf(book);
-    return [
-      ...coverPagesOf(book, values).map((lines): RenderPage => ({ lines, cover: true })),
-      ...bodyPages.map((lines): RenderPage => ({ lines, values })),
-    ];
-  });
+  const pages = bodies.flatMap(({ book, pages: bodyPages }): RenderPage[] => [
+    ...coverPagesOf(book, valuesOf(book)).map((lines): RenderPage => ({ lines, cover: true })),
+    ...bodyPages.map((lines): RenderPage => ({ lines, values: valuesOf(book, chapterOf(lines)) })),
+  ]);
 
   // Blank-furniture normalization (single source): a header or footer blank after trim folds to
   // '', the one test both the `.hd`/`.ft` element and its CSS fragment key off, so the two always

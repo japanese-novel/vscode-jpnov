@@ -75,11 +75,15 @@ export interface Unit {
   style?: string | undefined;
 }
 
-/** A source row: a line of units (+ optional 字下げ / 見出し), or a forced page break. */
+/**
+ * A source row: a line of units (+ optional 字下げ / 見出し), or a forced page break. `chapter` is
+ * the line's chapter, its index in the book's `files`: the body flow stamps it, one file alone has none.
+ */
 export type Row =
   | {
     readonly kind: 'line';
     readonly srcLine: number;
+    readonly chapter?: number;
     readonly units: Unit[];
     readonly indent?: number;
     readonly heading?: HeadingLevel;
@@ -89,6 +93,8 @@ export type Row =
 /** A laid-out display line — one column on the page. `indent` = block 字下げ cells (already clamped). */
 export interface DisplayLine {
   readonly srcLine: number;
+  /** The row's chapter (see {@link Row}), on every wrapped continuation. */
+  readonly chapter?: number;
   /**
    * Where the column starts in its source line: 0 for the line's first column, so the annotations
    * at the line head belong to it; else its first real unit's `at`, so an annotation between two
@@ -607,10 +613,12 @@ function wrapRow(
   const units = mode === 'none' ? row.units : separate(row.units, mode);
   const indent = effectiveIndent(row.indent, charsPerLine);
   const budget = charsPerLine - indent;
-  // 見出し propagates to every display line (wrapped continuations stay gothic, like indent);
-  // conditional for the same absent-key contract the row snapshots rely on.
-  const hs: { heading?: HeadingLevel } =
-    row.heading === undefined ? {} : { heading: row.heading };
+  // 見出し and the chapter propagate to every display line (wrapped continuations stay gothic,
+  // like indent); conditional for the same absent-key contract the row snapshots rely on.
+  const hs: { heading?: HeadingLevel; chapter?: number } = {
+    ...(row.heading === undefined ? {} : { heading: row.heading }),
+    ...(row.chapter === undefined ? {} : { chapter: row.chapter }),
+  };
   if (units.length === 0) {
     return [{ srcLine, at: 0, units: [], indent, ...hs }];
   }
@@ -840,7 +848,7 @@ function emitLine(line: DisplayLine, used?: Set<string>, head = ''): string {
  * numbers, and outside the ページ番号／総ページ数 counts. The grid and its reserved
  * bands are unchanged. Only the first two are withheld here — the line number is a CSS
  * counter matching `.page`, so its exemption lives in `build.ln.css`; 罫線/枠 stays on.
- * `values` are the book's ［＃ここに「…」の値を表示］ substitutions for the page furniture.
+ * `values` are the page's ［＃ここに「…」の値を表示］ substitutions for its furniture.
  */
 export interface RenderPage {
   readonly lines: readonly DisplayLine[];

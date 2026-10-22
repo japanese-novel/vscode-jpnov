@@ -493,8 +493,9 @@ The placeholders for ページ番号 and 見出し番号 are `0`, like that for 
 prints as itself: `［＃ここに「13」の値を表示］` renders `13`. A body chapter takes the annotations
 too: タイトル, ペンネーム and 見出し番号 are filled there. 総ページ数, 原稿用紙換算枚数 and ページ番号
 are known only once the layout is done, so in a chapter they stay `0`; 見出し番号 is `0` on a
-cover page and in the header and footer. On a line that carries a value annotation, a
-対象文字列 that fails to match is not reported.
+cover page. In the header and footer it is the number of the page's chapter; where chapters
+change on one page, the last chapter that begins on it. On a line that carries a value
+annotation, a 対象文字列 that fails to match is not reported.
 
 To print a value in kanji numerals, write `の値を位取りで表示` or `の値を命数で表示` in place of
 `の値を表示`. 位取り writes the digits one by one, 命数 with the powers of ten (十・百・千 and

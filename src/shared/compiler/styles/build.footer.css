@@ -3,8 +3,9 @@
    mirror of .hd's top:0), in smaller-than-body type. The side class picks the place per page: .c
    centres across the sheet, .r / .l pin a corner just inside the frame's side line, at
    SIDE_PAD + EDGE_INSET in rem (the page em, as in build.ln.css). Horizontal like the sheet it
-   sits on (only the .grid is vertical); ink #444 literal (print, not themed). */
-.ft{position:absolute;bottom:0;font-size:0.7em;line-height:1;color:#444;}
+   sits on (only the .grid is vertical); ink #444 literal (print, not themed). One line, never
+   wrapped, clipped at the paper edge like .hd. */
+.ft{position:absolute;bottom:0;font-size:0.7em;line-height:1;color:#444;white-space:nowrap;}
 .ft.c{left:0;right:0;text-align:center;}
 .ft.r{right:1.85rem;}
 .ft.l{left:1.85rem;}
