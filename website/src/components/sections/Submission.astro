@@ -1,7 +1,8 @@
 ---
 import { SUBMISSION_JPBOOK } from '../../copy/book.ts';
-import { VALUE_MARKS } from '../../copy/values.ts';
+import { KANJI, VALUE_MARKS } from '../../copy/values.ts';
 import JpRender from '../JpRender.astro';
+import Q from '../Q.astro';
 ---
 
 <section class="jp-submission" aria-labelledby="submission-h">
@@ -24,7 +25,8 @@ import JpRender from '../JpRender.astro';
         ))}
       </tbody>
     </table>
-    <p class="jp-note">ヘッダーとフッターにも同じ注記が書けます。そこでは「ページ番号」も使えます。</p>
+    <p class="jp-note">ヘッダーとフッターにも同じ注記が書けます。そこでは「ページ番号」も使え、見出し番号にはそのページの章の番号が入ります。</p>
+    <p class="jp-note">数は漢数字でも出せます。<code>{KANJI.plainTail}</code> を <code>{KANJI.positional.tail}</code> か <code>{KANJI.named.tail}</code> に書き換えると、<code>{KANJI.example}</code> は位取りで <code>{KANJI.positional.sample}</code>、命数で <code>{KANJI.named.sample}</code> になります。上の .jpbook のヘッダーは、タイトルに続けて見出し番号を命数で差し込んだものです。出力すると<Q>作品名　一</Q>のように入ります。</p>
     <p class="jp-note">原稿用紙換算枚数は、本文を 400 字詰め原稿用紙（縦書き 20 字 × 20 行）に組み直したときの枚数です。</p>
   </div>
 </section>

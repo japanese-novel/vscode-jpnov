@@ -7,7 +7,7 @@ import { lineText } from '../../../scripts/contract.ts';
 import { sampleOf } from '../../renders.ts';
 import type { BeatId } from '../../stage/beats.ts';
 import { BAIT_LINE, EMPH_ANNOTATION, EMPH_LINE, TYPED_FROM } from '../../stage/sample.ts';
-import { NAMES } from '../../stage/strings.ts';
+import { CHAPTERS, LATE_CHAPTER } from '../../stage/strings.ts';
 import { planTyping } from '../../stage/typedLine.ts';
 import type { TypedSpec } from '../../stage/typedLine.ts';
 import ActivityBar from './ActivityBar.astro';
@@ -29,10 +29,14 @@ const { snapshot } = Astro.props;
 const typing = sampleOf('stageTyping', 'preview');
 const emphasised = sampleOf('stageEmphasised', 'preview');
 const fixed = sampleOf('stageFixed', 'preview');
+const book = sampleOf('stageBook', 'book');
 const motion = snapshot === 'motion';
 const state = snapshot === 'write' ? typing : motion ? fixed : emphasised;
 const diagnostic = emphasised.diagnostics[0];
-const chapters = snapshot === 'collect' ? [NAMES.chapter1, NAMES.chapter2, NAMES.chapter3] : [NAMES.chapter1, NAMES.chapter3];
+// The late chapter is in the book from the collect snapshot on; the status row counts what is listed.
+const joined = snapshot === 'collect';
+const chapters = Object.entries(CHAPTERS).filter(([file]) => joined || file !== LATE_CHAPTER).map(([, name]) => name);
+const counts = joined ? book.counts : book.countsBefore;
 const currentLine = snapshot === 'write' ? state.editorLines.length - 1 : snapshot === 'fix' ? BAIT_LINE : motion ? TYPED_FROM - 1 : EMPH_LINE;
 const showPreview = snapshot !== 'write';
 
@@ -64,7 +68,7 @@ const bodies = motion
   <TitleBar />
   <div class="jp-win-body">
     <ActivityBar />
-    <SideBar chapters={chapters} pending={motion ? NAMES.chapter2 : undefined} />
+    <SideBar chapters={chapters} counts={counts} pending={motion ? { name: CHAPTERS[LATE_CHAPTER], counts: book.counts } : undefined} />
     <div class:list={['jp-editors', { 'jp-split': showPreview && !motion }]} data-t="editors">
       <EditorGroup
         lines={state.editorLines}

@@ -287,10 +287,14 @@ export function endAnnotation(mark: string, block: boolean): string {
   return annotation(`${block ? BLOCK_TO : ''}${mark}${SPAN_END}`);
 }
 
+/** What follows the 「name」 of a value display annotation: の値を表示, or の値をformatで表示 under a function. */
+export function valueTail(format?: string): string {
+  return format === undefined ? VALUE_SHOW : `${VALUE_OF}${format}${VALUE_SHOW_AS}`;
+}
+
 /** The value display annotation for `name`, under the function `format` when given. */
 export function valueAnnotation(name: string, format?: string): string {
-  const tail = format === undefined ? VALUE_SHOW : `${VALUE_OF}${format}${VALUE_SHOW_AS}`;
-  return annotation(`${VALUE_HERE}${CORNER_OPEN}${name}${CORNER_CLOSE}${tail}`);
+  return annotation(`${VALUE_HERE}${CORNER_OPEN}${name}${CORNER_CLOSE}${valueTail(format)}`);
 }
 
 /** The 縦中横 annotation naming `target`, written after it

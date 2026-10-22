@@ -1,10 +1,13 @@
 /**
  * The site's character set: everything the page can show in the Mincho face — the copy in
- * src/**, the manuscript samples, and every string inside the product renders — plus the
- * characters the build inserts (〓, the dash and leader translations) and printable ASCII.
+ * src/**, the strings the copy modules compute (src/copy/*.ts exports: the product's annotations
+ * and formatted examples are not literals in any file), the manuscript samples, and every string
+ * inside the product renders — plus the characters the build inserts (〓, the dash and leader
+ * translations) and printable ASCII.
  */
 import { readdir, readFile } from 'node:fs/promises';
 import { join, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { sitePath } from './root.ts';
 
@@ -39,18 +42,19 @@ const ALWAYS = `${Array.from({ length: 0x7f - 0x20 }, (_v, i) => String.fromChar
 /** Sorted, de-duplicated code points as a string. */
 export async function collectGlyphs(): Promise<string> {
   const set = new Set<string>(ALWAYS);
+  const addAll = (texts: Iterable<string>): void => {
+    for (const text of texts) {
+      for (const ch of text) {
+        set.add(ch);
+      }
+    }
+  };
   const files = await textFiles(sitePath('src'));
-  for (const text of await Promise.all(files.map((file) => readFile(file, 'utf8')))) {
-    for (const ch of text) {
-      set.add(ch);
-    }
-  }
+  addAll(await Promise.all(files.map((file) => readFile(file, 'utf8'))));
+  const copy = await Promise.all((await readdir(sitePath('src/copy'))).map((name): Promise<unknown> => import(pathToFileURL(sitePath(`src/copy/${name}`)).href)));
+  addAll(jsonStrings(copy));
   const renders: unknown = JSON.parse(await readFile(sitePath('src/generated/renders.json'), 'utf8'));
-  for (const text of jsonStrings(renders)) {
-    for (const ch of text.replace(/<[^>]*>/g, '')) {
-      set.add(ch);
-    }
-  }
+  addAll([...jsonStrings(renders)].map((text) => text.replace(/<[^>]*>/g, '')));
   return [...set]
     .filter((ch) => !/[\p{Cc}\s]/u.test(ch) || ch === '　')
     .sort((a, b) => (a.codePointAt(0) ?? 0) - (b.codePointAt(0) ?? 0))

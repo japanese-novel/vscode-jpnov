@@ -10,6 +10,8 @@ on:
       - src/server/**
       - src/client/webview/probe/**
       - src/client/webview/book/main.ts
+      - src/client/book/view.ts
+      - src/client/protocol.ts
       - l10n/**
       - docs/specimens/**
       - resources/icon.svg

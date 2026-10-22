@@ -90,15 +90,17 @@ function prefixSelectors(css: string, scope: string): string {
     .join('');
 }
 
+/**
+ * The scope element stands in for the document root. A preview embed sets --jp-vh (the pane
+ * height): the band and the em follow the product's own fit formula, and inline-size (= height
+ * under vertical-rl) is the band, padding excluded. A book embed sets --jp-em. Its box model under
+ * the site's preflight is the site's rule (global.css `.jp-scope`).
+ */
 function baseRule(scope: string, kind: 'preview' | 'book'): string {
-  const reset = `${scope},${scope} *,${scope} *::before,${scope} *::after{box-sizing:content-box;}`;
-  if (kind === 'preview') {
-    // The embed sets --jp-vh (the pane height); the band and the em follow the product's own
-    // fit formula, and inline-size (= height under vertical-rl) is the band, padding excluded.
-    return `${scope}{display:inline-block;vertical-align:top;position:relative;inline-size:var(--jp-band);` +
-      `--jp-band:calc(var(--jp-vh) - 32px);--jp-em:calc(var(--jp-band) / (var(--cpl) + ${String(2 * EDGE_INSET)}));}${reset}`;
-  }
-  return `${scope}{display:block;position:relative;font-size:var(--jp-em);}${reset}`;
+  const root = kind === 'preview'
+    ? `inline-size:var(--jp-band);--jp-band:calc(var(--jp-vh) - 32px);--jp-em:calc(var(--jp-band) / (var(--cpl) + ${String(2 * EDGE_INSET)}))`
+    : 'font-size:var(--jp-em)';
+  return `${scope}{position:relative;${root};}`;
 }
 
 /** Removes every `@media print{…}` group, nested groups included (css.ts nests a WebKit-only `@supports` in one). */

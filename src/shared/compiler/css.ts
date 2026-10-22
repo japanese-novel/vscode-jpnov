@@ -34,14 +34,30 @@ import { EMR_PROBE_JS } from './emrProbe.generated.ts';
 import * as S from './styles/styles.generated.ts';
 
 /**
+ * The static, media-independent class rules by the class name the emitters write: `tcy` (縦中横),
+ * `midashi` (見出し), `hang` (ぶら下げ), `insep` (分離禁止), `emr` (傍点 line compensation) and the
+ * ruby lanes, each authored as a `styles/class.*.css` fragment that carries its own rationale.
+ */
+const FRAGMENT_RULES: ReadonlyMap<string, string> = new Map([
+  ['tcy', S.classTcy],
+  ['midashi', S.classMidashi],
+  ['hang', S.classHang],
+  ['insep', S.classInsep],
+  ['rr', S.classRubyRr],
+  ['lr', S.classRubyLr],
+  ['br', S.classRubyBr],
+  ['ru', S.classRubyU],
+  ['emr', S.classEmr],
+]);
+
+/**
  * The CSS rule for one used class name, or '' for an unknown one (keeps the "no stray rules"
  * invariant). These are layout geometry / line furniture, not style-table entries: `indent-N`
  * (字下げ, N at most the notation's INDENT_MAX and capped by effectiveIndent in both emitters)
- * and `rh-N` (stretched ruby, unbounded N) are generated here; `tcy` (縦中横), `midashi`
- * (見出し), `hang` (ぶら下げ), `insep` (分離禁止), `emr` (傍点 line compensation) and the ruby
- * classes come from the static `styles/class.*.css` fragments. The indent suffix check is
- * defence in depth. Every other class (emph-* / dec-* / b / i) is forwarded to emphasis.ts's
- * {@link styleRule}, the single home of the style CSS values.
+ * and `rh-N` (stretched ruby, unbounded N) are generated here; the fixed classes come from
+ * {@link FRAGMENT_RULES}. The indent suffix check is defence in depth. Every other class
+ * (emph-* / dec-* / b / i) is forwarded to emphasis.ts's {@link styleRule}, the single home of
+ * the style CSS values.
  */
 function classRule(name: string): string {
   if (name.startsWith('indent-')) {
@@ -54,30 +70,7 @@ function classRule(name: string): string {
     const n = name.slice('rh-'.length);
     return /^[1-9][0-9]*$/.test(n) ? `.rh-${n}{min-height:${n}em}` : '';
   }
-  // Static, media-independent class rules, authored as `styles/class.*.css` fragments (each
-  // carries its own rationale). Unlike the generated `indent-N` / `rh-N` above, these are fixed
-  // constants.
-  switch (name) {
-    case 'tcy':
-      return S.classTcy;
-    case 'midashi':
-      return S.classMidashi;
-    case 'hang':
-      return S.classHang;
-    case 'insep':
-      return S.classInsep;
-    case 'rr':
-      return S.classRubyRr;
-    case 'lr':
-      return S.classRubyLr;
-    case 'br':
-      return S.classRubyBr;
-    case 'ru':
-      return S.classRubyU;
-    case 'emr':
-      return S.classEmr;
-  }
-  return styleRule(name);
+  return FRAGMENT_RULES.get(name) ?? styleRule(name);
 }
 
 /** The base colours `--edge` carries ({@link edgeBase}). */

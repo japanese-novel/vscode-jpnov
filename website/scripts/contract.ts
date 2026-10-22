@@ -3,6 +3,7 @@
  * src/generated/renders.json, produced from the product's own compiler, highlighter and lint
  * engine and baked into the page at build time. Nothing in the browser reads it.
  */
+import type { CountsVM } from '../../src/client/protocol.ts';
 
 export type SampleName =
   | 'hero'
@@ -101,6 +102,10 @@ export interface PreviewRender {
 export interface BookRender {
   readonly kind: 'book';
   readonly fragment: Fragment;
+  /** The body's figures as the Books view's status row prints them, in the product's Japanese. */
+  readonly counts: CountsVM;
+  /** The figures before the sample's `pending` chapter joins the book (the same as `counts` without one). */
+  readonly countsBefore: CountsVM;
   /** From the build's `@page` size and root font size; lets an embed size the sheet to any width. */
   readonly paper: { readonly widthMm: number; readonly heightMm: number; readonly fontMm: number };
   /** Pages kept in `fragment`. */

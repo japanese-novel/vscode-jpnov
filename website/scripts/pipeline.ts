@@ -5,16 +5,18 @@
  */
 import { readdir } from 'node:fs/promises';
 
+import type { CountsVM } from '../../src/client/protocol.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
 import { checkJpbook, composeBookChrome, entryPathOf, META_DEFAULTS, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { EDGE_INSET } from '../../src/shared/compiler/geometry.ts';
-import { renderBook } from '../../src/shared/compiler/document.ts';
+import { bookCounts, renderBook } from '../../src/shared/compiler/document.ts';
 import type { BookInput } from '../../src/shared/compiler/document.ts';
 import { renderPreview } from '../../src/shared/compiler/preview.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT, PREVIEW_CHROME_DEFAULT } from '../../src/shared/config/settings.ts';
 import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
 import { EMPH_ANNOTATION, EMPH_LINE, stateEmphasised, stateTyping } from '../src/stage/sample.ts';
 import type { BookRender, PreviewRender, Renders, SampleName, SampleRender } from './contract.ts';
+import { countsRow } from './counts.ts';
 import { colourLines } from './editor.ts';
 import { annotationHover } from './hover.ts';
 import { lintSource } from './lint.ts';
@@ -75,10 +77,10 @@ function renderBookSample(texts: Texts, sample: BookSample): { render: BookRende
         input: { files: [{ name: `${sample.source.specimen}.jpnov`, src: texts.specimen(sample.source.specimen) }] },
         chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...sample.chrome }, { ...META_DEFAULTS, header: sample.source.header }),
       };
+  const layout = { ...LAYOUT_DEFAULT, ...sample.layout };
   const html = renderBook({
     books: [book.input],
-    ...LAYOUT_DEFAULT,
-    ...sample.layout,
+    ...layout,
     paperSize: sample.paper?.size ?? BUILD_PAPER_DEFAULT.paperSize,
     paperOrientation: sample.paper?.orientation ?? BUILD_PAPER_DEFAULT.paperOrientation,
     chrome: book.chrome,
@@ -89,7 +91,12 @@ function renderBookSample(texts: Texts, sample: BookSample): { render: BookRende
     ...(sample.keepPages === undefined ? {} : { keepPages: sample.keepPages }),
     ...(sample.printButton === undefined ? {} : { printButton: sample.printButton }),
   });
-  return { render: { kind: 'book', ...scoped }, html };
+  const counts = (files: BookInput['files']): CountsVM => countsRow(bookCounts({ ...book.input, files }, layout));
+  const before = book.input.files.filter((f) => f.name !== sample.pending);
+  if (sample.pending !== undefined && before.length === book.input.files.length) {
+    throw new Error(`render: ${sample.name} has no chapter "${sample.pending}" to add later`);
+  }
+  return { render: { kind: 'book', counts: counts(book.input.files), countsBefore: counts(before), ...scoped }, html };
 }
 
 interface StageSources {

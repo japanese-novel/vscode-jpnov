@@ -26,11 +26,19 @@ export const PRODUCT = {
   viewTitle: (title: string): string => `${UI.container}: ${title}`,
 } as const;
 
-/** The sample workspace as the window names it (on disk the samples use ASCII names). */
+/** The stage book's chapters as the window names them, by their file in src/samples/ (ASCII on disk), in 目次 order. */
+export const CHAPTERS = {
+  'chapter1.jpnov': '第一章.jpnov',
+  'chapter2.jpnov': '第二章.jpnov',
+  'chapter3.jpnov': '第三章.jpnov',
+} as const;
+
+/** The chapter 章を追加… adds in the collect beat: absent before it, listed last and moved up by the timeline. */
+export const LATE_CHAPTER = 'chapter2.jpnov' satisfies keyof typeof CHAPTERS;
+
+/** The sample workspace as the window names it. */
 export const NAMES = {
   folder: '作品名',
   bookTitle: '作品名',
-  chapter1: '第一章.jpnov',
-  chapter2: '第二章.jpnov',
-  chapter3: '第三章.jpnov',
+  chapter1: CHAPTERS['chapter1.jpnov'],
 } as const;

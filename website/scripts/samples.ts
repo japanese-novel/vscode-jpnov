@@ -3,6 +3,7 @@ import type { LayoutSettings } from '../../src/shared/config/types.ts';
 import type { BuildChrome, PreviewChrome } from '../../src/shared/compiler/chrome.ts';
 import type { PaperOrientation, PaperSize } from '../../src/shared/compiler/geometry.ts';
 import { LINKS } from '../src/copy/links.ts';
+import { LATE_CHAPTER } from '../src/stage/strings.ts';
 import type { SampleName } from './contract.ts';
 
 /** docs/specimens/: the README screenshot specimens, shared so the site shows the same text. */
@@ -36,6 +37,8 @@ export interface BookSample {
   readonly paper?: { readonly size: PaperSize; readonly orientation: PaperOrientation };
   readonly keepPages?: readonly number[];
   readonly printButton?: { readonly href: string };
+  /** A chapter the stage adds to the book later: `countsBefore` is the body without it. Must name one of the book's files. */
+  readonly pending?: string;
 }
 
 export type Sample = PreviewSample | BookSample;
@@ -56,5 +59,5 @@ export const SAMPLES: readonly Sample[] = [
   { name: 'stageTyping', kind: 'preview', source: { state: 'typing' }, layout: STAGE_LAYOUT, vocabulary: 'book.jpbook' },
   { name: 'stageEmphasised', kind: 'preview', source: { state: 'emphasised' }, layout: STAGE_LAYOUT, vocabulary: 'book.jpbook' },
   { name: 'stageFixed', kind: 'preview', source: { state: 'fixed' }, layout: STAGE_LAYOUT, vocabulary: 'book.jpbook' },
-  { name: 'stageBook', kind: 'book', source: { jpbook: 'book.jpbook' }, layout: STAGE_LAYOUT, keepPages: [1], printButton: { href: PRINT_HREF } },
+  { name: 'stageBook', kind: 'book', source: { jpbook: 'book.jpbook' }, layout: STAGE_LAYOUT, keepPages: [1], printButton: { href: PRINT_HREF }, pending: LATE_CHAPTER },
 ];
