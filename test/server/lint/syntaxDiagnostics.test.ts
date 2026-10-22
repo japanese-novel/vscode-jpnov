@@ -321,6 +321,12 @@ const onLine = (src: string): unknown[] =>
     src.slice(d.range.start.character, d.range.end.character),
   ]);
 
+test('値の表示: a function word the notation does not define warns over the word, as a Warning', () => {
+  assert.deepEqual(onLine('［＃ここに「総ページ数」の値を名数で表示］'), [['syntax.valueFormatUnknown', '名数']]);
+  const [d] = annotationDiagnostics(doc('［＃ここに「13」の値を漢数字で表示］'));
+  assert.equal(d?.severity, DiagnosticSeverity.Warning);
+});
+
 test('縦中横: a span holding too much warns over what it holds, whatever closes it', () => {
   assert.deepEqual(onLine('［＃縦中横］1234［＃縦中横終わり］'), [['syntax.tcyTooLong', '1234']]);
   assert.deepEqual(onLine('［＃縦中横］123［＃縦中横終わり］'), []); // three render cleanly

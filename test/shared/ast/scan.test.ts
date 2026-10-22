@@ -350,6 +350,31 @@ test('値の表示 takes ANY non-empty name; an empty pair is a comment', () => 
   assert.deepEqual(kinds('全［＃ここに「総ページ数」の値を表示］ページ'), ['text', 'valueField', 'text']);
 });
 
+test('値の表示 under a function: the name up to the last 」の値を, the function to the final で表示; neither empty', () => {
+  for (const format of ['位取り', '命数', '漢数字', 'a」b', '値を', '表示']) {
+    for (const name of [...Object.values(VALUE_NAMES), '発行日', '13', 'a」b', 'a」の値をb']) {
+      const src = valueAnnotation(name, format);
+      assert.deepEqual(nodesOf(src).map(facts), [{ kind: 'valueField', text: src, name, format }], src);
+      const field = nodeOf(src, 'valueField');
+      assert.deepEqual(field.name.span, at(src, name), src);
+      assert.ok(field.format !== undefined, src);
+      assert.deepEqual(field.format.span, { start: src.length - 'で表示］'.length - format.length, end: src.length - 'で表示］'.length }, src);
+    }
+  }
+  assert.equal(nodeOf(valueAnnotation('13'), 'valueField').format, undefined);
+  assert.deepEqual(kinds('［＃ここに「」の値を命数で表示］'), ['comment']);
+  assert.deepEqual(kinds('［＃ここに「13」の値をで表示］'), ['comment']);
+  assert.deepEqual(kinds('［＃ここに「13」の値を命数表示］'), ['comment']); // no で
+  assert.deepEqual(kinds('［＃ここに「13」命数で表示］'), ['comment']); // no の値を
+  assert.deepEqual(kinds('［＃ここに「13」の値を命数で］'), ['comment']); // a truncated tail
+  assert.deepEqual(kinds('［＃ここに13の値を命数で表示］'), ['comment']); // no corner quotes
+  assert.deepEqual(kinds('全［＃ここに「総ページ数」の値を命数で表示］ページ'), ['text', 'valueField', 'text']);
+  assert.deepEqual(
+    nodeOf('［＃ここに「総ページ数」の値を命数で表示］', 'valueField').parts.map((p) => [p.role, p.text]),
+    [['bracket', '［＃'], ['scaffold', 'ここに'], ['corner', '「'], ['name', '総ページ数'], ['corner', '」'], ['scaffold', 'の値を'], ['keyword', '命数'], ['scaffold', 'で表示'], ['bracket', '］']],
+  );
+});
+
 test('値の表示: an Object.prototype name is a name like any other, never a lookup hazard', () => {
   // The name comes from the document: a plain object lookup would resolve these through the
   // prototype chain and substitute a function.

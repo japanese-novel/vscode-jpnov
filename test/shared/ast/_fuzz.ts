@@ -31,6 +31,7 @@ const TOO_LARGE = indentAnnotation(INDENT_MAX + 1);
 const NEAR_MISSES = [
   '［＃メモ］', '［＃］', '［＃改丁］', '［＃ここから罫囲み］', '［＃「」に傍点］', '［＃「語」は傍点］', '［＃「語」に太字］',
   '［＃「語」にの左に傍点］', '［＃ここから傍点］', '［＃の左に傍点］', '［＃3字下げ］', '［＃ここに「」の値を表示］',
+  '［＃ここに「13」の値をで表示］', '［＃ここに「」の値を命数で表示］', '［＃ここに「13」の値を命数表示］',
   '［＃「語」の左に「」のルビ］', '［＃見出し］', `［＃５字下け${D}］`, '［＃縦中横 ］',
   TOO_LARGE, blockOf(TOO_LARGE),
   ...Object.keys(GAIJI).map((inner) => `［＃${inner}］`), '［＃感嘆符疑問符］', '［＃感嘆符疑問符、1-8-79］',
@@ -93,7 +94,10 @@ function manuscript(seed: number): string {
       case 8:
         return '［＃改ページ］';
       case 9:
-        return `［＃ここに「${r.pick(VALUES)}」の値を表示］`;
+        return r.pick([
+          `［＃ここに「${r.pick(VALUES)}」の値を表示］`,
+          `［＃ここに「${r.pick(VALUES)}」の値を${r.pick(['位取り', '命数', '漢数字'])}で表示］`,
+        ]);
       case 10:
         return r.pick(BROKEN);
       default:

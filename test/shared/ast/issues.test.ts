@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { Held, Issue } from '../../../src/shared/ast/nodes.ts';
-import { INDENT_MAX, VALUE_NAMES, indentAnnotation, valueAnnotation, valueOf } from '../../../src/shared/ast/notation.ts';
+import { INDENT_MAX, VALUE_FORMATS, VALUE_NAMES, indentAnnotation, valueAnnotation, valueOf } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 
 import { at, blockOf, boundOf, heldOf, issuesOf, pairsOf } from './_shape.ts';
@@ -23,6 +23,20 @@ test('an unclosed ［＃ is reported over the broken annotation, never its termi
   ]);
   assert.deepEqual(unclosed('［＃注\r\n次'), [{ kind: 'unclosedAnnotation', span: { start: 0, end: 3 } }]);
   assert.deepEqual(unclosed('［＃注\r次'), [{ kind: 'unclosedAnnotation', span: { start: 0, end: 3 } }]);
+});
+
+// --------------------------------------------------------------- a function the notation does not define
+
+test('a function word outside VALUE_FORMATS is reported over the word; the field still shows its value', () => {
+  const unknown = valueAnnotation(VALUE_NAMES.page, '漢数字');
+  assert.deepEqual(issuesOf(unknown), [{ kind: 'valueFormatUnknown', span: at(unknown, '漢数字'), format: '漢数字' }]);
+  assert.equal(parse(unknown).lines[0]?.syntax[0]?.kind, 'valueField');
+  for (const format of Object.values(VALUE_FORMATS)) {
+    assert.deepEqual(issuesOf(valueAnnotation(VALUE_NAMES.page, format)), [], format);
+  }
+  assert.deepEqual(issuesOf(valueAnnotation(VALUE_NAMES.page)), []);
+  // A comment (an empty word) is no function at all.
+  assert.deepEqual(issuesOf(valueAnnotation(VALUE_NAMES.page, '')), []);
 });
 
 // --------------------------------------------------------------- 字下げ above the maximum

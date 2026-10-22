@@ -93,6 +93,8 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return `ruby reading ${a(0)} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)`;
     case 'syntax.indentTooLarge':
       return `字下げ is too large (keep it to ${a(0)} or less for it to take effect)`;
+    case 'syntax.valueFormatUnknown':
+      return `Unknown function "${a(0)}" (the value prints as it is)`;
     // hover (the lines of a jpnov/hover reply; see protocol.ts).
     case 'hover.postfix':
       return `${a(0)} (forward reference)`;
@@ -112,6 +114,8 @@ export function renderEnglish(code: MsgCode, args: readonly (string | number)[] 
       return 'Page break';
     case 'hover.value':
       return `Shows the value of "${a(0)}" (the build fills in the book's value)`;
+    case 'hover.valueFormat':
+      return `Shows the value of "${a(0)}" as ${a(1)} (the build fills in the book's value)`;
     case 'hover.gaiji':
       return `External character: ${a(0)}`;
     case 'hover.comment':

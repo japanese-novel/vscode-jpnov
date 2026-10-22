@@ -65,6 +65,8 @@ function messageOf(issue: Issue): LocalizableMessage {
       return { code: 'syntax.rubyBaseMissing', args: [issue.reading] };
     case 'rubyReadingEmpty':
       return { code: 'syntax.rubyReadingEmpty' };
+    case 'valueFormatUnknown':
+      return { code: 'syntax.valueFormatUnknown', args: [issue.format] };
     case 'rubyInTcy':
       return { code: 'syntax.rubyInTcy', args: [issue.reading] };
   }

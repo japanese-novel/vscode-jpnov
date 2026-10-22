@@ -127,12 +127,14 @@ Decide the stage first. The rules:
    AST, and a diagnostic the editor shows holds for every output.
 
    The values of ［＃ここに「…」の値を表示］ are data of the book, not settings:
-   the title and the pen name come from its `.jpbook`, the page count and the
-   sheet count from laying out its chapters (`bookCounts`, which also gives the
-   Books view its figures). They reach only the AST of a cover
-   page, and a cover page is resolved after the chapters are laid out. The editor
-   resolves without them, so it does not report an annotation that fails to bind
-   after a value: the real value is unknown.
+   the title and the pen name come from its `.jpbook`, a chapter's 見出し番号 from
+   its place in it, the page count and the sheet count from laying out its
+   chapters (`bookCounts`, which also gives the Books view its figures). The
+   first three reach the AST of every chapter (`chapterAsts`); the counts reach
+   only the AST of a cover page and the page furniture, since a cover page is
+   resolved after the chapters are laid out. The editor resolves without them,
+   so it does not report an annotation that fails to bind after a value: the real
+   value is unknown.
 
 3. **A character class lives with the rule that uses it.** Which characters form
    a ruby base is a rule of the notation: the Scanner. Which characters may not
@@ -165,6 +167,7 @@ Where things live today:
 | A `《…》` no ｜ opened and no base precedes | AST (the finding); editor (the fix, `src/server/syntax.ts`) | the scanner knows it made no ruby; respelling it as the 二重山括弧 外字注記, the brackets it already prints as, is the editor's call, and only where no ｜ said ruby was meant |
 | Which `※［＃…］` is a 外字注記 | Scanner | a rule of the notation: the annotation directly follows its `※` |
 | Showing a 外字注記 as its character | AST | content is what is shown |
+| What a value shows under 位取り／命数 (［＃ここに「…」の値を命数で表示］): its digits in kanji | AST | content is what is shown; the function is a spelling of the notation, read by the Scanner, applied where the value is substituted |
 | What one character shown is: a grapheme cluster, its kana composed | AST | content is what is shown; a target cannot cut one |
 | Dropping a character no output can carry (a C0 control other than tab and the line ends, U+FFFE, U+FFFF) | AST | content is what is shown; the nodes keep it, so the lint reports it |
 | Where each character shown was written in the source | AST | kana are composed, characters dropped, values and 外字注記 substituted there; a ruby and a 縦中横 keep the runs they were joined from; Output does not read the source |

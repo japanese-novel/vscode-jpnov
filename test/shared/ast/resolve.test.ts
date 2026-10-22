@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { VALUE_DEFAULTS, VALUE_NAMES, valueAnnotation } from '../../../src/shared/ast/notation.ts';
+import { VALUE_DEFAULTS, VALUE_FORMATS, VALUE_NAMES, valueAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { printSource } from '../../../src/shared/ast/print.ts';
 import { scan } from '../../../src/shared/ast/scan.ts';
@@ -182,6 +182,16 @@ test('a value field shows its value, its default without one; an empty value sho
   assert.deepEqual(content(valueAnnotation(VALUE_NAMES.page), REAL), [`value ${VALUE_DEFAULTS.page}`]);
   assert.deepEqual(content(valueAnnotation('発行日'), REAL), ['value 発行日']);
   assert.deepEqual(content(field, new Map([[VALUE_NAMES.title, '']])), []);
+});
+
+test('a value field under a function shows its value as the function formats it; the default too', () => {
+  const pages = (format: string): string => valueAnnotation(VALUE_NAMES.totalPages, format);
+  assert.deepEqual(content(pages(VALUE_FORMATS.named), REAL), ['value 二百十五']);
+  assert.deepEqual(content(pages(VALUE_FORMATS.positional), REAL), ['value 二一五']);
+  assert.deepEqual(content(pages(VALUE_FORMATS.named)), ['value 〇']);
+  assert.deepEqual(content(valueAnnotation(VALUE_NAMES.title, VALUE_FORMATS.named), REAL), ['value 作品名']);
+  assert.deepEqual(content(pages('漢数字'), REAL), ['value 215']);
+  assert.deepEqual(content(`全［＃縦中横］${pages(VALUE_FORMATS.named)}［＃縦中横終わり］ページ`, REAL), ['chars 全', 'tcy 二百十五', 'chars ページ']);
 });
 
 test('a postfix binds to the value as substituted', () => {

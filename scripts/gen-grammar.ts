@@ -33,7 +33,9 @@ import {
   SPAN_END,
   TCY,
   VALUE_HERE,
+  VALUE_OF,
   VALUE_SHOW,
+  VALUE_SHOW_AS,
   hasBlockForm,
   hasLeftSide,
 } from '../src/shared/ast/notation.ts';
@@ -92,8 +94,18 @@ const LEFT: Segment = { ...lit('direction', LEFT_SHORT), optional: true };
 /** 「対象」: the target keeps the default colour; it never holds a 」. */
 const TARGET: readonly Segment[] = [lit('corner', CORNER_OPEN), upTo('target', CORNER_CLOSE), lit('corner', CORNER_CLOSE)];
 
-/** 値の表示 ［＃ここに「名前」の値を表示］: any non-empty name; an unknown one shows as itself. */
-const VALUE_PARTS: readonly Segment[] = [OPEN, lit('scaffold', VALUE_HERE), lit('corner', CORNER_OPEN), upTo('name', ANNOTATION_CLOSE), lit('corner', CORNER_CLOSE), lit('scaffold', VALUE_SHOW), CLOSE];
+/** ［＃ここに「名前」, the head of both value display forms: any non-empty name. */
+const VALUE_HEAD: readonly Segment[] = [OPEN, lit('scaffold', VALUE_HERE), lit('corner', CORNER_OPEN), upTo('name', ANNOTATION_CLOSE), lit('corner', CORNER_CLOSE)];
+/** 値の表示 ［＃ここに「名前」の値を表示］: an unknown name shows as itself. */
+const VALUE_PARTS: readonly Segment[] = [...VALUE_HEAD, lit('scaffold', VALUE_SHOW), CLOSE];
+/** 値の表示 under a function ［＃ここに「名前」の値を〇〇で表示］: any non-empty function word that holds
+ *  no 」の値を, so the name ends at the last 」の値を, as the scanner cuts it. */
+const VALUE_FORMAT_PARTS: readonly Segment[] = [
+  ...VALUE_HEAD,
+  lit('scaffold', VALUE_OF),
+  { role: 'keyword', re: `(?:(?!${escapeRegExp(CORNER_CLOSE + VALUE_OF)})[^${charClass(ANNOTATION_CLOSE)}])+` },
+  lit('scaffold', VALUE_SHOW_AS), CLOSE,
+];
 /** A 《reading》 with its brackets, non-empty. */
 const READING_PARTS: readonly Segment[] = [lit('bracket', RUBY_OPEN), upTo('reading', RUBY_CLOSE), lit('bracket', RUBY_CLOSE)];
 /** Any other closed ［＃…］: a comment. */
@@ -117,6 +129,7 @@ const INDENT_COUNT = `０*[０-９]{1,${String(WIDTH)}}${escapeRegExp(INDENT)}`;
 const ANNOTATION: readonly Rule[] = [
   { comment: '改ページ.', parts: [OPEN, lit('keyword', PAGE_BREAK), CLOSE] },
   { comment: '値の表示 ［＃ここに「名前」の値を表示］: any non-empty name; an unknown one shows as itself.', parts: VALUE_PARTS },
+  { comment: '値の表示 under a function ［＃ここに「名前」の値を〇〇で表示］: any non-empty function word; an unknown one shows the value as it is.', parts: VALUE_FORMAT_PARTS },
   {
     comment: 'Block END ［＃ここで…終わり］, before the block START its 終わり would hide. 傍点／傍線 have no block form.',
     parts: [OPEN, lit('scaffold', BLOCK_TO), kw(`${escapeRegExp(INDENT)}|${BLOCK}`), END, CLOSE],
@@ -152,8 +165,8 @@ const ANY_ANNOTATION = seq(COMMENT_PARTS);
  * span open, an end with one open); the grammar, stateless, cannot tell and treats either as one.
  */
 const TCY_EDGE = `${OPEN.re}${escapeRegExp(TCY)}(?:${END.re})?${CLOSE.re}`;
-/** A value field: visible inside a base, as the scanner reads it. */
-const VALUE_FIELD = seq(VALUE_PARTS);
+/** A value field, either form: visible inside a base, as the scanner reads it. */
+const VALUE_FIELD = `(?:${seq(VALUE_PARTS)}|${seq(VALUE_FORMAT_PARTS)})`;
 /** One character of base text: anything but a 《, a ｜ or the ［ of an annotation. */
 const BASE_CHAR = `(?!${OPEN.re})[^${charClass(RUBY_OPEN + BASE_MARK)}]`;
 /** An annotation that shows nothing inside a base; a 縦中横 edge is not one (it ends the base). */

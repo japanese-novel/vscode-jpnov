@@ -312,7 +312,8 @@ is an icon button):
 - **Build to EPUB** — a reflowable EPUB 3 per book: vertical writing and
   right-to-left page turning carry over into the reader, while font size and
   line wrapping follow the reading device. One spine file per chapter, split again
-  at ［＃改ページ］.
+  at ［＃改ページ］. The table of contents lists each chapter by its first 見出し; a
+  chapter without one is listed by its 見出し番号 in kanji (一, 二, …).
 
 Outputs land in `<outDir>/<name>.{html,epub,txt}`, `<name>` being the
 `.jpbook`'s file name without the extension and `outDir` defaulting to
@@ -474,6 +475,7 @@ A cover file can pull in the book's own metadata:
 | Author | `［＃ここに「ペンネーム」の値を表示］` |
 | Total pages | `［＃ここに「総ページ数」の値を表示］` |
 | Manuscript sheets (the body reflowed onto 400-character 原稿用紙, 20 × 20) | `［＃ここに「原稿用紙換算枚数」の値を表示］` |
+| Chapter number (the chapter's place in the table of contents, from 1) | `［＃ここに「見出し番号」の値を表示］` |
 
 ```text
 ［＃５字下げ］［＃ここに「タイトル」の値を表示］
@@ -487,10 +489,25 @@ and ペンネーム print as their own names, 総ページ数 and 原稿用紙�
 file serves any number of books. To decorate a substituted value, wrap it in the
 start/end form (`［＃大見出し］［＃ここに「タイトル」の値を表示］［＃大見出し終わり］`).
 
-The placeholder for ページ番号 is `0`, like that for 総ページ数. Any other name prints as itself:
-`［＃ここに「13」の値を表示］` renders `13`. Values are filled on cover pages and in the header
-and footer only; in a body chapter every annotation prints its placeholder. On a line that
-carries a value annotation, a 対象文字列 that fails to match is not reported.
+The placeholders for ページ番号 and 見出し番号 are `0`, like that for 総ページ数. Any other name
+prints as itself: `［＃ここに「13」の値を表示］` renders `13`. A body chapter takes the annotations
+too: タイトル, ペンネーム and 見出し番号 are filled there. 総ページ数, 原稿用紙換算枚数 and ページ番号
+are known only once the layout is done, so in a chapter they stay `0`; 見出し番号 is `0` on a
+cover page and in the header and footer. On a line that carries a value annotation, a
+対象文字列 that fails to match is not reported.
+
+To print a value in kanji numerals, write `の値を位取りで表示` or `の値を命数で表示` in place of
+`の値を表示`. 位取り writes the digits one by one, 命数 with the powers of ten (十・百・千 and
+万・億・兆・京): `128` renders `一二八` under 位取り and `百二十八` under 命数. A value made of
+half-width digits is converted, `0` becoming `〇`; any other value prints as it is. A word other
+than 位取り or 命数 gets a yellow squiggle, and the value prints as it is.
+
+```text
+［＃７字下げ］全［＃ここに「総ページ数」の値を命数で表示］ページ
+```
+
+A chapter opening with `第［＃ここに「見出し番号」の値を命数で表示］章` reads `第二章` in the second
+chapter of the table of contents.
 
 The manuscript-sheet count is the number of vertical 20 × 20 manuscript sheets
 (400字詰め原稿用紙) the body fills, the unit Japanese literary contests state length in.

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { BuildChrome } from '../../../src/shared/compiler/chrome.ts';
 import type { DashMode, KinsokuMode } from '../../../src/shared/config/types.ts';
 import type { ValueLookup } from '../../../src/shared/ast/nodes.ts';
-import { GAIJI, VALUE_DEFAULTS, VALUE_NAMES, valueAnnotation, valueOf } from '../../../src/shared/ast/notation.ts';
+import { GAIJI, VALUE_DEFAULTS, VALUE_FORMATS, VALUE_NAMES, valueAnnotation, valueOf } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import {
   buildRows,
@@ -1126,6 +1126,10 @@ test('値の表示: a compile without values renders every name as its default',
   }
 });
 
+test('値の表示 under a function: the units carry the kanji the AST gives (the cases are the resolver\'s)', () => {
+  assert.equal(unitText(`全${valueAnnotation(VALUE_NAMES.totalPages, VALUE_FORMATS.named)}ページ`, REAL), '全二百十五ページ');
+});
+
 test('値の表示: opts.values substitutes by name; a name it lacks shows its default; an empty value emits nothing', () => {
   assert.equal(unitText('［＃ここに「タイトル」の値を表示］', REAL), '作品名');
   assert.equal(unitText('全［＃ここに「総ページ数」の値を表示］ページ', REAL), '全215ページ');
@@ -1241,6 +1245,20 @@ test('furniture: header and footer fill ［＃ここに「…」の値を表示�
   const parts = sheetsOf(out);
   assert.match(parts[0] ?? '', /<div class="hd c">作品名　1<\/div><div class="ft r">ペンネーム　1／2<\/div>/);
   assert.match(parts[1] ?? '', /<div class="hd c">作品名　2<\/div><div class="ft r">ペンネーム　2／2<\/div>/);
+});
+
+test('furniture: a value under 位取り or 命数 prints in kanji, the page numbers included', () => {
+  const values = new Map([[VALUE_NAMES.title, '作品名']]);
+  const chrome: BuildChrome = {
+    ...FURNISHED,
+    footerAlign: 'right',
+    header: `${valueAnnotation(VALUE_NAMES.title, VALUE_FORMATS.named)}　${valueAnnotation(VALUE_NAMES.page, VALUE_FORMATS.named)}`,
+    footer: `${valueAnnotation(VALUE_NAMES.page, VALUE_FORMATS.positional)}／${valueAnnotation(VALUE_NAMES.totalPages, VALUE_FORMATS.positional)}　${valueAnnotation('13', '漢数字')}`,
+  };
+  const pages = Array.from({ length: 11 }, (): RenderPage => ({ lines: page1('一'), values }));
+  const parts = sheetsOf(pagesToHtml(pages, undefined, chrome));
+  assert.match(parts[0] ?? '', /<div class="hd c">作品名　一<\/div><div class="ft r">一／一一　13<\/div>/);
+  assert.match(parts[10] ?? '', /<div class="hd c">作品名　十一<\/div><div class="ft r">一一／一一　13<\/div>/);
 });
 
 test('furniture: a name the page lacks prints as itself; a page without values prints every name', () => {

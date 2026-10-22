@@ -37,6 +37,7 @@ import {
   PAGE_BREAK,
   SPAN_END,
   TCY,
+  VALUE_FORMATS,
   VALUE_NAMES,
   annotation,
   indentAnnotation,
@@ -137,10 +138,19 @@ function indents(): string[] {
 }
 
 const EDGES: readonly string[] = [
-  ...Object.values(VALUE_NAMES).map(valueAnnotation),
+  ...Object.values(VALUE_NAMES).map((name) => valueAnnotation(name)),
   valueAnnotation('作品名'),
   valueAnnotation(''),
   valueAnnotation('a」b'),
+  ...Object.values(VALUE_FORMATS).flatMap((format) => [valueAnnotation(VALUE_NAMES.page, format), valueAnnotation('a」b', format)]),
+  valueAnnotation('13', '漢数字'),
+  valueAnnotation('', '命数'),
+  valueAnnotation('13', ''),
+  annotation('ここに「13」の値を命数表示'),
+  annotation('ここに「a」の値をb」の値をcで表示'),
+  annotation('ここに「a」の値をb」の値をで表示'),
+  annotation('ここに「a」の値を」の値をで表示'),
+  annotation('ここに「a」の値をbで表示」の値を表示'),
   postfix(`${LEFT_LONG}「よみ」${LEFT_RUBY}`),
   postfix(`${LEFT_LONG}「」${LEFT_RUBY}`),
   postfix(`${LEFT_LONG}「よ「み」${LEFT_RUBY}`),
@@ -165,6 +175,7 @@ const RUBY_LINES: readonly string[] = [
   // value field or a ※ as the only visible thing before the 《.
   'これは｜です', '｜a［＃x］｜b《r》', '｜a［＃x］《》b', '｜山田［＃こわれ《やまだ》', '｜山田《やまだ',
   '｜山田《やま《だ》', '｜山田》《やまだ》', '｜［山田《やまだ》', `｜${valueAnnotation(VALUE_NAMES.title)}《たいとる》`, '｜※《よみ》',
+  `｜${valueAnnotation(VALUE_NAMES.page, VALUE_FORMATS.named)}《いち》`,
   // Inside a 縦中横 the ｜ and the 《reading》 are markup still (the resolver drops them).
   '［＃縦中横］｜山田《やまだ》［＃縦中横終わり］',
 ];

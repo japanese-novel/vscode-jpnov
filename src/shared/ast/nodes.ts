@@ -32,10 +32,10 @@ export interface Part {
 
 /**
  * What a part of an annotation is: `bracket` ［＃ ］ ｜ 《 》 and the ※ of a 外字注記; `scaffold`
- * ここから ここで 終わり ここに の値を表示; `connector` に は; `corner` 「 」; `direction` の左に 左に;
- * `keyword` the command word (a variant, 改ページ, ３字下げ, 縦中横, a heading literal, のルビ, what
- * a 外字注記 holds); `name` a value name; `target` a 対象文字列; `reading` a reading; `inner` the
- * text of an unrecognized annotation.
+ * ここから ここで 終わり ここに の値を表示 の値を で表示; `connector` に は; `corner` 「 」; `direction`
+ * の左に 左に; `keyword` the command word (a variant, 改ページ, ３字下げ, 縦中横, a heading literal,
+ * のルビ, what a 外字注記 holds, the function of a value display); `name` a value name; `target` a
+ * 対象文字列; `reading` a reading; `inner` the text of an unrecognized annotation.
  */
 export type PartRole =
   | 'bracket'
@@ -194,6 +194,8 @@ export interface RubyLeftPostfixNode extends AnnotationBase, Targeted {
 export interface ValueFieldNode extends AnnotationBase {
   readonly kind: 'valueField';
   readonly name: Part;
+  /** The function word of ［＃ここに「…」の値を〇〇で表示］; absent in the plain form. */
+  readonly format?: Part;
 }
 
 /** A 外字注記 that is read, its ※ included: one character (https://www.aozora.gr.jp/annotation/external_character.html). */
@@ -332,7 +334,9 @@ export type Issue =
   | { readonly kind: 'unterminatedTcy' | 'danglingTcyEnd'; readonly span: Span }
   | { readonly kind: 'postfixTargetMissing'; readonly span: Span; readonly target: string }
   /** A ruby a 縦中横 swallowed: its reading (as shown) is dropped, the base text alone makes the cell. */
-  | { readonly kind: 'rubyInTcy'; readonly span: Span; readonly reading: string };
+  | { readonly kind: 'rubyInTcy'; readonly span: Span; readonly reading: string }
+  // `span`: the function word of a ［＃ここに「…」の値を〇〇で表示］ the notation does not define; the value shows as it is.
+  | { readonly kind: 'valueFormatUnknown'; readonly span: Span; readonly format: string };
 
 // Documents
 

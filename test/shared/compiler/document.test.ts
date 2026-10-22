@@ -4,7 +4,7 @@ import type { BuildChrome, FurnitureAlign } from '../../../src/shared/compiler/c
 import { FURNITURE_ALIGNS } from '../../../src/shared/compiler/chrome.ts';
 import { bookCounts, chapterGlue, concatBookText, MANUSCRIPT_SHEET, renderBook, type BookInput } from '../../../src/shared/compiler/document.ts';
 import { FOOTER_BAND, HEADER_BAND, SIDE_PAD } from '../../../src/shared/compiler/geometry.ts';
-import { INDENT_MAX, VALUE_DEFAULTS, indentAnnotation } from '../../../src/shared/ast/notation.ts';
+import { INDENT_MAX, VALUE_DEFAULTS, VALUE_FORMATS, VALUE_NAMES, indentAnnotation, valueAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { blockIndent } from '../ast/_shape.ts';
 import { D, UNSHOWN } from '../_kana.ts';
@@ -686,18 +686,33 @@ test('cover: ページ番号 has no value on a cover page, so its default prints
   assert.match(body, new RegExp(`<div class="line" data-line="0">${VALUE_DEFAULTS.page}</div>`));
 });
 
-test('cover: a value annotation in the BODY prints its default (body chapters take no values)', () => {
+test('body: a chapter takes the book\'s タイトル／ペンネーム and its own 見出し番号; the counts print their defaults there', () => {
+  const chapter = (n: string): string => [
+    `第${valueAnnotation(VALUE_NAMES.heading, VALUE_FORMATS.named)}章（${valueAnnotation(VALUE_NAMES.heading)}）`,
+    `${valueAnnotation(VALUE_NAMES.title)}／${valueAnnotation(VALUE_NAMES.author)}`,
+    `${valueAnnotation(VALUE_NAMES.totalPages)}・${valueAnnotation(VALUE_NAMES.sheets)}・${valueAnnotation(VALUE_NAMES.page)}`,
+    n,
+  ].join('\n');
   const body = bodyOf(
     renderBooks([
       withCover(
         [{ name: 'c.jpnov', src: '表紙' }],
-        [{ name: 'a.jpnov', src: '［＃ここに「タイトル」の値を表示］' }],
-        { title: '実際のタイトル' },
+        [{ name: 'a.jpnov', src: chapter('一') }, { name: 'b.jpnov', src: chapter('二') }],
+        { title: '作品名', author: 'ペンネーム' },
       ),
     ]),
   );
-  assert.match(body, /<div class="line" data-line="0">タイトル<\/div>/);
-  assert.doesNotMatch(body, /実際のタイトル/);
+  assert.match(body, /<div class="line" data-line="0">第一章（1）<\/div>/);
+  assert.match(body, /<div class="line" data-line="0">第二章（2）<\/div>/);
+  assert.equal(body.match(/<div class="line" data-line="1">作品名／ペンネーム<\/div>/g)?.length, 2);
+  // 総ページ数・原稿用紙換算枚数・ページ番号 come from the layout, so a chapter shows their defaults.
+  assert.equal(
+    body.match(new RegExp(`<div class="line" data-line="2">${VALUE_DEFAULTS.totalPages}・${VALUE_DEFAULTS.sheets}・${VALUE_DEFAULTS.page}</div>`, 'g'))?.length,
+    2,
+  );
+  // 見出し番号 is a chapter's own: a cover prints its default.
+  const cover = bodyOf(renderBooks([withCover([{ name: 'c.jpnov', src: valueAnnotation(VALUE_NAMES.heading) }], [{ name: 'a.jpnov', src: '本文' }])]));
+  assert.match(cover, new RegExp(`<div class="line" data-line="0">${VALUE_DEFAULTS.heading}</div>`));
 });
 
 test('cover: covers interleave per book and the footer numbers the bodies continuously', () => {
@@ -998,6 +1013,20 @@ test('bookCounts: characters are the ones a reader sees', () => {
   assert.equal(chars('一\n\n二'), 2); // line ends and blank lines do not
   assert.equal(chars(`か${D}`), 1); // one cluster, one character
   assert.equal(chars(''), 0);
+});
+
+test('bookCounts: a chapter counts the title it shows, as the build lays it out', () => {
+  const files = [{ name: 'a.jpnov', src: valueAnnotation(VALUE_NAMES.title) }];
+  assert.equal(bookCounts({ files }, BODY_LAYOUT).chars, 0);
+  assert.equal(bookCounts({ files, title: '作品名' }, BODY_LAYOUT).chars, 3);
+  // …and the figures stay the cover's.
+  // 19 lines under the title line: one sheet with an empty title, two once the title wraps.
+  const long = [{ name: 'a.jpnov', src: `${valueAnnotation(VALUE_NAMES.title)}\n${repeat(MANUSCRIPT_SHEET.linesPerPage - 1, 'あ')}` }];
+  const titled = { ...counted(long), title: 'あ'.repeat(MANUSCRIPT_SHEET.charsPerLine * 2) };
+  const { pages, sheets } = countsOf([titled]);
+  assert.equal(String(bookCounts(titled, BODY_LAYOUT).pages), pages);
+  assert.equal(String(bookCounts(titled, BODY_LAYOUT).sheets), sheets);
+  assert.notEqual(bookCounts(titled, BODY_LAYOUT).sheets, bookCounts(counted(long), BODY_LAYOUT).sheets);
 });
 
 test('bookCounts: the chapter divider counts, the cover never does', () => {

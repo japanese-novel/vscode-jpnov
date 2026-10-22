@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken } from 'vscode-languageserver/node';
 
-import { checkJpbook, composeBookChrome, entryPathOf, jpbookStem, META_DEFAULTS, parseJpbook } from '#/shared/book/jpbook.ts';
+import { checkJpbook, completeMeta, composeBookChrome, entryPathOf, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
 import { bookCounts, concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { TitledBook } from '#/shared/compiler/document.ts';
@@ -431,7 +431,10 @@ export async function handleBookCounts(ctx: ServerContext, params: BookCountsPar
   try {
     const parsed = parseJpbook(manifest.text);
     const files = await readEntries(ctx, parentUri(params.uri), parsed.lines, 'ok', token);
-    return { counts: bookCounts({ files, divider: parsed.meta.divider ?? META_DEFAULTS.divider }, resolveHtmlSettings(params.settings)) };
+    // The chapters take the book's タイトル／ペンネーム completed as a build completes them, so the
+    // figures count the same text the cover's 総ページ数 reports.
+    const { title, author, divider } = completeMeta(parsed);
+    return { counts: bookCounts({ files, divider, title, author }, resolveHtmlSettings(params.settings)) };
   } catch {
     return { counts: null };
   }
