@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { createParseCache } from '../../src/server/parsed.ts';
+import { shownLines } from '../../src/server/shown.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
 import { scan } from '../../src/shared/ast/scan.ts';
 
@@ -25,6 +26,17 @@ test('one version is scanned and resolved once; the resolve builds on that scan'
   assert.equal(cache.syntaxOf(d), syntax); // resolving replaces nothing
   assert.deepEqual(syntax, scan(SRC));
   assert.deepEqual(ast, parse(SRC));
+});
+
+test('the lines as shown are read once per version, over that version\'s resolve', () => {
+  const cache = createParseCache();
+  const d = doc(SRC);
+  const shown = cache.shownOf(d);
+  assert.equal(cache.shownOf(d), shown);
+  assert.deepEqual(shown, shownLines(cache.astOf(d)));
+  TextDocument.update(d, [{ text: '「あ' }], 2);
+  assert.notEqual(cache.shownOf(d), shown);
+  assert.equal(cache.shownOf(d)[0]?.depthAtEnd, 1);
 });
 
 test('an edit is a new version: the document object is the same, its parse is not', () => {

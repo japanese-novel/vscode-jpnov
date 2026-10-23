@@ -1,7 +1,7 @@
 /**
  * Format rules — 原稿作法 checks over line shape. Each rule is one `(ctx) => LineRule` factory;
- * line-form exemptions (見出し, directive-only, blank, multi-line utterance, ornament/list lines)
- * come from the walker's flags and the helpers below.
+ * line-form exemptions (見出し, directive-only, blank, multi-line utterance, an inset ornament or
+ * list line) come from the walker's flags.
  */
 import type { Span } from '../../../shared/ast/nodes.ts';
 import { tcyAnnotation } from '../../../shared/ast/notation.ts';
@@ -9,11 +9,11 @@ import { charClass } from '../../../shared/utils/regex.ts';
 import { DASH_CHARS } from '../../../shared/dash.ts';
 import { modeOf } from '../../../shared/lint/select.ts';
 
+import { isControlChar, isSpace } from '../prescan.ts';
 import { CLOSERS, SENTENCE_MARKS, TERMINATORS } from '../sentences.ts';
-import type { FixSpec, LineRule, LintLine, ProseView, RuleContext } from '../types.ts';
+import type { LineRule, LintLine, ProseView, RuleContext } from '../types.ts';
 
-import { maxOf, viewFix, viewSpan } from './adapt.ts';
-import { isControlChar } from './chars.ts';
+import { erasableFrom, maxOf, viewFix, viewSpan } from './adapt.ts';
 
 /** Characters allowed to open a paragraph besides the 字下げ space (typed, or shown by a ［＃○字下げ］):
  *  the opening brackets, 《 among them as the 二重山括弧 外字注記 shows it. */
@@ -45,35 +45,6 @@ function exempt(line: LintLine): boolean {
   return line.blank || line.directiveOnly || line.heading !== undefined;
 }
 
-/** True for a space-like unit (either width) — never a paragraph's first "real" character. */
-function isSpace(ch: string): boolean {
-  return ch === '　' || ch === ' ' || ch === '\t';
-}
-
-/** Any character that makes a line PROSE: kana, kanji, or alphanumerics of either width. */
-const WORD_CHAR = /[\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Han}A-Za-z0-9Ａ-Ｚａ-ｚ０-９]/u;
-
-/** A line of nothing but leaders/dashes (whitespace allowed) is a PAUSE — prose, not ornament:
- *  a silence paragraph reads as a sentence, so the strict convention gives it its 字下げ and 。
- *  (…… is not a sentence ender), exactly like any other narration line. */
-const PAUSE_ONLY = new RegExp(`^[ \\t　…‥${[...DASH_CHARS].join('')}]+$`);
-
-/** True for a hand-written ORNAMENT line — a scene break like ＊ or ◇＊◇ — which takes neither a
- *  字下げ nor a 句点 by convention. A pause line (…… / ―― only) is deliberately NOT one. */
-function isDecoration(view: ProseView): boolean {
-  return view.text !== '' && !WORD_CHAR.test(view.text) && !PAUSE_ONLY.test(view.text);
-}
-
-/** True for a bullet line (・ポーション×３ — a status-screen list): inset material, not a
- *  paragraph of 地の文, so it takes neither the 字下げ nor the 句点. */
-function isListLine(view: ProseView): boolean {
-  let k = 0;
-  while (k < view.text.length && isSpace(view.text.charAt(k))) {
-    k += 1;
-  }
-  return view.text.charAt(k) === '・';
-}
-
 /** 行頭字下げ: a 地の文 line must open with 　 / an opening bracket (a ［＃○字下げ］ shows the
  *  spaces) or sit in a block 字下げ. The fix inserts the 　 before the first unit's markup (a ｜,
  *  a ［＃縦中横］) and after a ［＃０字下げ］, which shows nothing. */
@@ -84,12 +55,12 @@ export function indentRule(ctx: RuleContext): LineRule {
         return;
       }
       const v = line.prose();
-      const first = v.units[0];
+      const first = v.unit(0);
       // A continuation line of a multi-line utterance starts inside the quote — not a paragraph.
       if (first === undefined || first.depth > 0 || LEADING_CHARS.includes(v.text.charAt(0))) {
         return;
       }
-      if (isDecoration(v) || isListLine(v)) {
+      if (line.inset()) {
         return;
       }
       ctx.report(viewSpan(v, 0, 1), { fix: { insert: first, side: 'before', text: '　' } });
@@ -107,10 +78,10 @@ export function endPeriodRule(ctx: RuleContext): LineRule {
       if (exempt(line) || line.openDepthAtEnd > 0) {
         return;
       }
-      const v = line.prose();
-      if (isDecoration(v) || isListLine(v)) {
+      if (line.inset()) {
         return;
       }
+      const v = line.prose();
       let k = v.text.length - 1;
       // A C1 control character is skipped like a space: noControlChar deletes it.
       while (k >= 0 && (isSpace(v.text.charAt(k)) || isControlChar(v.text.charCodeAt(k)))) {
@@ -119,7 +90,7 @@ export function endPeriodRule(ctx: RuleContext): LineRule {
       if (k < 0 || LINE_TERMINALS.has(v.text.charAt(k))) {
         return;
       }
-      const unit = v.units[k];
+      const unit = v.unit(k);
       if (unit === undefined) {
         return;
       }
@@ -136,7 +107,7 @@ export function closingPunctRule(ctx: RuleContext): LineRule {
       let i = 0;
       while (i < v.text.length) {
         const ch = v.text.charAt(i);
-        if ((ch !== '。' && ch !== '、') || (v.units[i]?.depth ?? 0) === 0) {
+        if ((ch !== '。' && ch !== '、') || (v.unit(i)?.depth ?? 0) === 0) {
           i += 1;
           continue;
         }
@@ -145,10 +116,10 @@ export function closingPunctRule(ctx: RuleContext): LineRule {
           i += 1;
         }
         const closer = v.text.charAt(i);
-        const runDepth = v.units[a]?.depth ?? 0;
+        const runDepth = v.unit(a)?.depth ?? 0;
         // The closer sits one level shallower than the interior it closes; a dangling closer
         // (walker keeps it at the same depth) is noUnmatchedPair's finding, not ours.
-        if ((closer === '」' || closer === '』') && (v.units[i]?.depth ?? 0) < runDepth) {
+        if ((closer === '」' || closer === '』') && (v.unit(i)?.depth ?? 0) < runDepth) {
           const fix = viewFix(v, a, i, '');
           ctx.report(viewSpan(v, a, i), fix === undefined ? undefined : { fix });
         }
@@ -184,7 +155,7 @@ export function exclamationSpaceRule(ctx: RuleContext): LineRule {
         if (b >= v.text.length || AFTER_MARKS.has(next)) {
           return;
         }
-        const last = v.units[b - 1];
+        const last = v.unit(b - 1);
         if (last === undefined) {
           return;
         }
@@ -363,23 +334,23 @@ export function trailingSpaceRule(ctx: RuleContext): LineRule {
   return {
     line(line: LintLine): void {
       const v = line.prose();
-      const last = v.units[v.units.length - 1];
+      const len = v.text.length;
+      const last = v.unit(len - 1);
       if (last?.end !== line.srcEnd) {
         return;
       }
-      let k = v.text.length;
+      let k = len;
       while (k > 0 && isSpace(v.text.charAt(k - 1))) {
         k -= 1;
       }
-      if (k === v.text.length) {
+      if (k === len) {
         return;
       }
-      // The run may straddle markup (`　［＃…］　`): the fix deletes its tail up to there, the next round the rest.
-      let fix: FixSpec | undefined;
-      for (let j = k; j < v.text.length && fix === undefined; j += 1) {
-        fix = viewFix(v, j, v.text.length, '');
-      }
-      ctx.report(viewSpan(v, k, v.text.length), fix === undefined ? undefined : { fix });
+      // The run may straddle markup (`　［＃…］　`): the fix deletes the longest tail that is one
+      // source span, the next round the rest.
+      const j = erasableFrom(v, k, len);
+      const fix = j < len ? viewFix(v, j, len, '') : undefined;
+      ctx.report(viewSpan(v, k, len), fix === undefined ? undefined : { fix });
     },
   };
 }
@@ -431,7 +402,7 @@ export function noIndentRule(ctx: RuleContext): LineRule {
         k += 1;
       }
       const ch = v.text.charAt(k);
-      if (k === 0 || (ch !== '「' && ch !== '『') || (v.units[k]?.depth ?? 1) !== 0) {
+      if (k === 0 || (ch !== '「' && ch !== '『') || (v.unit(k)?.depth ?? 1) !== 0) {
         return;
       }
       const fix = viewFix(v, 0, k, '');

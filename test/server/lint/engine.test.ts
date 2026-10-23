@@ -691,6 +691,20 @@ test('noTrailingSpace: a line of nothing but spaces is the whole-line case', () 
   ]);
 });
 
+test('noTrailingSpace: a run that straddles markup is deleted from the markup on, the rest the next round; a ［＃○字下げ］ goes whole', () => {
+  assert.deepEqual(lintAll('好き　［＃メモ］　　', TRAILING), [
+    { code: 'lint.common.noTrailingSpace', text: '　［＃メモ］　　', fix: { text: '　　', newText: '' } },
+  ]);
+  assert.equal(applied('好き　［＃メモ］　　', TRAILING), '好き　［＃メモ］');
+  assert.equal(applied('好き　［＃２字下げ］　', TRAILING), '好き');
+  assert.equal(applied('好き［＃２字下げ］　［＃メモ］　', TRAILING), '好き［＃２字下げ］　［＃メモ］');
+  // A ruby ends in its reading: the space after it is the run, the base is not.
+  assert.deepEqual(lint('好き｜　　《ま》', TRAILING), []);
+  assert.equal(applied('好き｜　　《ま》　', TRAILING), '好き｜　　《ま》');
+  const long = `好き${'　'.repeat(2000)}`;
+  assert.equal(applied(long, TRAILING), '好き');
+});
+
 test('noTrailingSpace leaves blank lines, prose, and lines ending in markup that shows nothing alone', () => {
   // The line end is what is shown: a postfix or a comment there shows nothing, so the space before
   // it is not trailing.

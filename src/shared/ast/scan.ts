@@ -15,7 +15,7 @@
  *
  * Pure + vscode-free.
  */
-import { graphemes, isHiragana, isKanji, isKatakana, isUnshown } from '../chars.ts';
+import { graphemes, isDigit, isHiragana, isKanji, isKatakana, isLatinLetter, isUnshown } from '../chars.ts';
 
 import { classifyAnnotation, gaijiNode } from './classify.ts';
 import { append } from '../utils/lists.ts';
@@ -37,14 +37,7 @@ type CharClass = 'kanji' | 'hiragana' | 'katakana' | 'alnum' | null;
 
 /** ASCII and full-width Latin letters + digits, as a single class. */
 function isAlnum(cp: number): boolean {
-  return (
-    (cp >= 0x30 && cp <= 0x39) ||
-    (cp >= 0x41 && cp <= 0x5a) ||
-    (cp >= 0x61 && cp <= 0x7a) ||
-    (cp >= 0xff10 && cp <= 0xff19) ||
-    (cp >= 0xff21 && cp <= 0xff3a) ||
-    (cp >= 0xff41 && cp <= 0xff5a)
-  );
+  return isDigit(cp) || isLatinLetter(cp);
 }
 
 function classOf(cp: number): CharClass {

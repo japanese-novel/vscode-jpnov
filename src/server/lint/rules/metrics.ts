@@ -6,22 +6,22 @@
  * Sentence rules measure the narration and dialogue views separately, so an utterance is one
  * sentence of its own and its 〇 sentinel costs the surrounding 地の文 exactly one square.
  */
-import { graphemeCount, isCjkIdeograph } from '../../../shared/chars.ts';
+import { graphemeCount, isCjkIdeograph, isDigit } from '../../../shared/chars.ts';
 
-import { splitSentences } from '../sentences.ts';
 import type { LineRule, LintLine, ProseView, RuleContext } from '../types.ts';
 
 import { maxOf, viewSpan } from './adapt.ts';
 
 /** Feeds every sentence of the line's narration AND dialogue views to `visit` — the one place
- *  the "an utterance is measured on its own" split lives, so sentence rules cannot diverge. */
+ *  the "an utterance is measured on its own" split lives, so sentence rules cannot diverge. The
+ *  line splits each view once, whichever rule asks first. */
 function eachSentence(
   line: LintLine,
   visit: (view: ProseView, start: number, end: number) => void,
 ): void {
   for (const which of ['narration', 'dialogue'] as const) {
     const view = line[which]();
-    for (const s of splitSentences(view)) {
+    for (const s of line.sentences(which)) {
       visit(view, s.start, s.end);
     }
   }
@@ -103,18 +103,17 @@ export function maxKanjiRunRule(ctx: RuleContext): LineRule {
  *  keeps Arabic numerals short (a long run reads poorly on a vertical grid). */
 export function arabicDigitsRule(ctx: RuleContext): LineRule {
   const max = maxOf(ctx);
-  const isDigit = (ch: string): boolean => /[0-9０-９]/.test(ch);
   return {
     line(line: LintLine): void {
       const v = line.prose();
       let i = 0;
       while (i < v.text.length) {
-        if (!isDigit(v.text.charAt(i))) {
+        if (!isDigit(v.text.charCodeAt(i))) {
           i += 1;
           continue;
         }
         const a = i;
-        while (i < v.text.length && isDigit(v.text.charAt(i))) {
+        while (i < v.text.length && isDigit(v.text.charCodeAt(i))) {
           i += 1;
         }
         if (i - a > max) {

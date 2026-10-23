@@ -79,10 +79,11 @@ import { parentUri } from './fsUri.ts';
 import { buildCodeActions, fixAllEdits } from './lint/codeActions.ts';
 import { computeLintFindings } from './lint/engine.ts';
 import { createParseCache } from './parsed.ts';
+import type { ShownLine } from './shown.ts';
 import { reportError } from './report.ts';
 import type { ServerContext } from './context.ts';
 import { createHighlightStore } from './highlight/vocabulary.ts';
-import { buildSemanticTokens, SEMANTIC_LEGEND } from './semanticTokens.ts';
+import { buildSemanticTokens, createSemanticTokenStore, SEMANTIC_LEGEND } from './semanticTokens.ts';
 import { syntaxFindings } from './syntax.ts';
 import { completeJpbook, diagnoseJpbook, documentLinksForJpbook } from './jpbook.ts';
 import { parseJpbook } from '#/shared/book/jpbook.ts';
@@ -124,6 +125,9 @@ const context: ServerContext = {
 // One parse per open manuscript and version, shared by the editor features and the preview below.
 const parsed = createParseCache();
 
+// The last whole semantic tokens of each open manuscript: an edit sends the difference.
+const semanticTokens = createSemanticTokenStore();
+
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const options = params.initializationOptions as InitializationOptions | undefined;
   context.lintSelection = selectRules(options?.lintConfig ?? {});
@@ -136,7 +140,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       },
       semanticTokensProvider: {
         legend: SEMANTIC_LEGEND,
-        full: true,
+        full: { delta: true },
+        range: true,
       },
       // *.jpbook editor features (routed for `jpbook` via the document selector).
       // Trigger on "/" (descend a subdir) AND on every digit: VS Code's quick-suggest does not
@@ -217,45 +222,69 @@ connection.onRequest(
 );
 
 // Semantic tokens: Aozora markup + dialogue colouring (always), plus cast/keyword highlighting when
-// a book listing the document declares any. Fully synchronous — markup and colours emit on the first request.
+// a book listing the document declares any. Fully synchronous — markup and colours emit on the first
+// request. The client asks for the visible range first, then the whole document, then the edits
+// since the last whole result; only jpnov documents are highlighted (book files share the selector
+// but stay plain).
+function novelAt(uri: string): TextDocument | undefined {
+  const doc = documents.get(uri);
+  return doc?.languageId === 'jpnov' ? doc : undefined;
+}
+
 connection.languages.semanticTokens.on((params) => {
-  const doc = documents.get(params.textDocument.uri);
-  // Only jpnov documents are highlighted (book files share the selector but stay plain).
-  if (doc?.languageId !== 'jpnov') {
+  const doc = novelAt(params.textDocument.uri);
+  if (doc === undefined) {
     return { data: [] };
   }
-  return buildSemanticTokens(parsed.astOf(doc), context.highlight.recognizerFor(params.textDocument.uri));
+  return semanticTokens.full(doc.uri, parsed.astOf(doc), context.highlight.recognizerFor(doc.uri), parsed.shownOf(doc));
+});
+
+connection.languages.semanticTokens.onDelta((params) => {
+  const doc = novelAt(params.textDocument.uri);
+  if (doc === undefined) {
+    return { data: [] };
+  }
+  return semanticTokens.delta(doc.uri, params.previousResultId, parsed.astOf(doc), context.highlight.recognizerFor(doc.uri), parsed.shownOf(doc));
+});
+
+connection.languages.semanticTokens.onRange((params) => {
+  const doc = novelAt(params.textDocument.uri);
+  if (doc === undefined) {
+    return { data: [] };
+  }
+  const { start, end } = params.range;
+  return buildSemanticTokens(parsed.astOf(doc), context.highlight.recognizerFor(doc.uri), parsed.shownOf(doc), { from: start.line, to: end.line + 1 });
 });
 
 // The annotation under the cursor of an open .jpnov: its hover, what lights up with it, and the
 // rename of a 対象文字列 with the body it names. Each reads the editor's parse of the buffer.
 connection.onRequest(HoverRequest, (params: HoverParams): HoverResult | null => {
-  const doc = documents.get(params.uri);
-  if (doc?.languageId !== 'jpnov') {
+  const doc = novelAt(params.uri);
+  if (doc === undefined) {
     return null;
   }
   return hoverAt(doc, parsed.astOf(doc), params.position);
 });
 
 connection.onDocumentHighlight((params) => {
-  const doc = documents.get(params.textDocument.uri);
-  if (doc?.languageId !== 'jpnov') {
+  const doc = novelAt(params.textDocument.uri);
+  if (doc === undefined) {
     return [];
   }
   return highlightsAt(doc, parsed.astOf(doc), params.position);
 });
 
 connection.onPrepareRename((params) => {
-  const doc = documents.get(params.textDocument.uri);
-  if (doc?.languageId !== 'jpnov') {
+  const doc = novelAt(params.textDocument.uri);
+  if (doc === undefined) {
     return null;
   }
   return prepareRenameAt(doc, parsed.astOf(doc), params.position);
 });
 
 connection.onRenameRequest((params) => {
-  const doc = documents.get(params.textDocument.uri);
-  if (doc?.languageId !== 'jpnov') {
+  const doc = novelAt(params.textDocument.uri);
+  if (doc === undefined) {
     return null;
   }
   return renameAt(doc, parsed.astOf(doc), params.position, params.newName);
@@ -341,11 +370,12 @@ const PROSE_DEBOUNCE_MS = 300;
 const findingsCache = new Map<string, { version: number; findings: Finding[] }>();
 
 /** Everything `doc` publishes: the syntax findings under every lint configuration, then the lint's.
- *  A lint that throws loses only its own findings: the syntax ones still replace what was published. */
-function findingsOf(doc: TextDocument, ast: Ast): Finding[] {
+ *  A lint that throws loses only its own findings: the syntax ones still replace what was published.
+ *  `shown` is the open document's lines as shown from the parse cache; a text parsed on its own has none. */
+function findingsOf(doc: TextDocument, ast: Ast, shown?: readonly ShownLine[]): Finding[] {
   const syntax = syntaxFindings(doc, ast);
   try {
-    return [...syntax, ...computeLintFindings(doc, ast, context.lintSelection)];
+    return [...syntax, ...computeLintFindings(doc, ast, context.lintSelection, shown)];
   } catch (err) {
     reportError(context, err);
     return syntax;
@@ -364,7 +394,7 @@ function currentFindings(doc: TextDocument): Finding[] {
   if (cached?.version === doc.version) {
     return cached.findings;
   }
-  const findings = findingsOf(doc, parsed.astOf(doc));
+  const findings = findingsOf(doc, parsed.astOf(doc), parsed.shownOf(doc));
   findingsCache.set(doc.uri, { version: doc.version, findings });
   return findings;
 }
@@ -408,8 +438,8 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
  * is parsed on its own, outside the cache of the open ones.
  */
 function findingsForText(uri: string, text: string): Finding[] {
-  const open = documents.get(uri);
-  return open?.languageId === 'jpnov' && open.getText() === text
+  const open = novelAt(uri);
+  return open?.getText() === text
     ? currentFindings(open)
     : findingsOf(TextDocument.create(uri, 'jpnov', 0, text), parse(text));
 }
@@ -460,6 +490,7 @@ documents.onDidClose((e) => {
   proseDebounce.delete(e.document.uri);
   findingsCache.delete(e.document.uri);
   parsed.drop(e.document.uri);
+  semanticTokens.drop(e.document.uri);
   if (e.document.languageId === 'jpbook' || e.document.languageId === 'jpnov') {
     void connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
   }

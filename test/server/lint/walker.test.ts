@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { walkLines } from '../../../src/server/lint/walker.ts';
-import type { Carrier, LintLine, ProseView } from '../../../src/server/lint/types.ts';
+import type { Carrier, LintLine, ProseUnit, ProseView } from '../../../src/server/lint/types.ts';
 import { VALUE_NAMES, valueAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { gaijiOf } from '../../shared/ast/_shape.ts';
@@ -19,10 +19,15 @@ function lines(src: string): LintLine[] {
   return [...walkLines(parse(src))];
 }
 
+/** Every unit of `view`, in order. */
+function units(view: ProseView): ProseUnit[] {
+  return Array.from({ length: view.text.length }, (_, k) => view.unit(k) ?? assert.fail(`no unit ${String(k)}`));
+}
+
 /** The source text a view span `[a, b)` covers: from where its first unit was written to where its last one ends. */
 function covered(src: string, view: ProseView, a: number, b: number): string {
-  const start = view.units[a]?.src ?? 0;
-  const end = view.units[b - 1]?.end ?? start;
+  const start = view.unit(a)?.src ?? 0;
+  const end = view.unit(b - 1)?.end ?? start;
   return src.slice(start, end);
 }
 
@@ -38,7 +43,7 @@ test('plain narration: one line, one piece, prose is identity', () => {
   assert.equal(l.blank, false);
   assert.equal(l.openDepthAtEnd, 0);
   // every unit names its piece and a carrier of typed text
-  assert.ok(l.prose().units.every((u) => u.piece === l.pieces[0] && u.carrier?.kind === 'run'));
+  assert.ok(units(l.prose()).every((u) => u.piece === l.pieces[0] && u.carrier?.kind === 'run'));
 });
 
 test('dialogue interior collapses to 〇 in the narration view and fills the dialogue view', () => {
@@ -53,7 +58,7 @@ test('dialogue interior collapses to 〇 in the narration view and fills the dia
   const i = n.text.indexOf('太郎');
   assert.equal(covered(src, n, i, i + 2), '太郎');
   // the 〇 sentinel is synthetic: no piece, no carrier, mapped at the interior's first unit
-  const s = n.units[n.text.indexOf('〇')];
+  const s = n.unit(n.text.indexOf('〇'));
   assert.equal(s?.piece, null);
   assert.equal(s.carrier, null);
   assert.equal(s.src, src.indexOf('ヤ'));
@@ -63,7 +68,7 @@ test('depth: top-level corners are 地の文 (0), interiors ≥ 1, nested corner
   const [l] = lines('地「外『内』外」文');
   assert.ok(l);
   const v = l.prose();
-  const depthAt = (ch: string): number => v.units[v.text.indexOf(ch)]?.depth ?? -1;
+  const depthAt = (ch: string): number => v.unit(v.text.indexOf(ch))?.depth ?? -1;
   assert.equal(depthAt('「'), 0);
   assert.equal(depthAt('」'), 0);
   assert.equal(depthAt('外'), 1);
@@ -120,7 +125,7 @@ test('a broken ［＃ is shown as typed: read-only units, no piece', () => {
   const [l0, l1] = lines('地の文［＃こわれ\n次の行');
   assert.equal(l0?.prose().text, '地の文［＃こわれ');
   assert.deepEqual(l0.pieces.map((p) => p.text), ['地の文']);
-  const broken = l0.prose().units[4];
+  const broken = l0.prose().unit(4);
   assert.equal(broken?.piece, null);
   assert.equal(broken.carrier?.kind, 'run');
   assert.equal(l1?.prose().text, '次の行');
@@ -141,8 +146,8 @@ test('consecutive utterances are separator-joined in the dialogue view', () => {
   assert.ok(l);
   const d = l.dialogue();
   assert.equal(d.text, 'A\nBC');
-  assert.equal(d.units[1]?.piece, null); // the separator is synthetic
-  assert.equal(d.units[1].carrier, null);
+  assert.equal(d.unit(1)?.piece, null); // the separator is synthetic
+  assert.equal(d.unit(1)?.carrier, null);
   assert.equal(covered(src, d, 2, 4), 'BC');
 });
 
@@ -175,7 +180,7 @@ test('a composed kana is one unit whose source is two; a dropped character leave
   assert.ok(l);
   const v = l.prose();
   assert.equal(v.text, 'がきく');
-  assert.deepEqual(v.units.map((u) => [u.src, u.end]), [[0, 2], [2, 4], [4, 5]]);
+  assert.deepEqual(units(v).map((u) => [u.src, u.end]), [[0, 2], [2, 4], [4, 5]]);
   assert.deepEqual(l.pieces.map((p) => [p.text, p.srcStart]), [[src, 0]]); // the piece is the source, verbatim
   assert.equal(covered(src, v, 0, 1), `か${D}`);
 });
@@ -271,18 +276,18 @@ test('a value, a 外字注記 and the spaces of a ［＃N字下げ］ are units 
   const v = l.prose();
   assert.equal(v.text, `なに⁉次${VALUE_NAMES.title}と　　末`);
   assert.deepEqual(l.pieces.map((p) => p.text), ['なに', '次', 'と', '末']);
-  const gaiji = v.units[2];
+  const gaiji = v.unit(2);
   assert.equal(gaiji?.piece, null);
   assert.equal(gaiji.carrier?.kind, 'run');
   assert.equal(src.slice(gaiji.src, gaiji.end), mark);
-  const value = v.units[4];
+  const value = v.unit(4);
   assert.equal(value?.piece, null);
   assert.equal(src.slice(value.src, value.end), TITLE);
-  const space = v.units[v.text.indexOf('　')];
+  const space = v.unit(v.text.indexOf('　'));
   assert.equal(space?.piece, null);
   assert.equal(space.carrier?.kind, 'indent');
   assert.equal(src.slice(space.src, space.end), '［＃２字下げ］');
-  assert.equal(v.units[v.text.indexOf('　') + 1]?.carrier, space.carrier); // one carrier for the annotation's spaces
+  assert.equal(v.unit(v.text.indexOf('　') + 1)?.carrier, space.carrier); // one carrier for the annotation's spaces
 });
 
 test('what an annotation shows never opens an utterance, and takes the depth where it sits', () => {
@@ -292,8 +297,8 @@ test('what an annotation shows never opens an utterance, and takes the depth whe
   assert.equal(l.prose().text, `「《あ」${VALUE_NAMES.title}`);
   assert.equal(l.narration().text, `「〇」${VALUE_NAMES.title}`); // the 〇 sits on the 外字注記, the utterance's first unit
   assert.equal(l.dialogue().text, '《あ');
-  assert.equal(l.prose().units[1]?.depth, 1);
-  assert.equal(l.narration().units[1]?.src, 1);
+  assert.equal(l.prose().unit(1)?.depth, 1);
+  assert.equal(l.narration().unit(1)?.src, 1);
 });
 
 // --- carrier extents: where an insert before/after a unit lands ---
@@ -305,7 +310,7 @@ function outer(src: string, n = 0): [string, string][] {
   const v = l.prose();
   const out: [string, string][] = [];
   let last: Carrier | null = null;
-  for (const [k, unit] of v.units.entries()) {
+  for (const [k, unit] of units(v).entries()) {
     if (unit.carrier === null) {
       continue;
     }
@@ -327,7 +332,7 @@ test('a ruby is one carrier from its ｜ or base through the reading; the text a
   assert.deepEqual(outer('｜大人《おとな》は笑った。'), [['大人', '｜大人《おとな》'], ['は笑った。', 'は笑った。']]);
   assert.deepEqual(outer('「山田《やまだ》」'), [['「', '「'], ['山田', '山田《やまだ》'], ['」', '」']]);
   const [l] = lines('｜大人《おとな》');
-  assert.equal(l?.prose().units[0]?.carrier?.kind, 'cell');
+  assert.equal(l?.prose().unit(0)?.carrier?.kind, 'cell');
 });
 
 test('a span wraps the carrier inside it; stacked and postfix closers all extend it', () => {
@@ -451,8 +456,8 @@ test('a ｜ base of a value field alone: the value is the cell, read-only', () =
   const [l] = lines(`あ${ruby}は`);
   assert.ok(l);
   assert.deepEqual(l.pieces.map((p) => p.text), ['あ', 'は']);
-  assert.equal(l.prose().units[1]?.piece, null);
-  assert.equal(l.prose().units[1]?.carrier?.kind, 'cell');
+  assert.equal(l.prose().unit(1)?.piece, null);
+  assert.equal(l.prose().unit(1)?.carrier?.kind, 'cell');
   // A base of a comment alone is no ruby to the Scanner (rubyBaseMissing): the ｜ and 《た》 are prose.
   assert.deepEqual(outer('あ｜［＃メモ］《た》は'), [['あ｜', 'あ｜'], ['《た》は', '《た》は']]);
 });
@@ -500,4 +505,35 @@ test('NFD: the view shows the kana composed; the piece keeps the source and its 
   assert.equal(l.prose().text, 'ガラス');
   assert.deepEqual(l.pieces.map((p) => [p.text, p.srcStart]), [[`カ${D}ラス`, 0]]);
   assert.deepEqual(outer(src), [['ガラス', src]]);
+});
+
+// --- what the line remembers for the rules ---
+
+test('a unit is made when asked for, past the text there is none; its piece and carrier are the line\'s own', () => {
+  const [l] = lines('あ「い」');
+  assert.ok(l);
+  const v = l.prose();
+  assert.equal(v.unit(4), undefined);
+  assert.equal(v.unit(-1), undefined);
+  assert.notEqual(v.unit(0), v.unit(0)); // a fresh object each time…
+  assert.equal(v.unit(0)?.piece, v.unit(0)?.piece); // …over the same piece and carrier
+  assert.equal(v.unit(0)?.carrier, v.unit(3)?.carrier);
+  assert.deepEqual(units(l.narration()).map((u) => u.depth), [0, 0, 0, 0]); // 〇 is 地の文
+  assert.deepEqual(units(l.dialogue()).map((u) => [u.src, u.end, u.depth]), [[2, 3, 1]]);
+});
+
+test('the sentences of a view are split once per line and view', () => {
+  const [l] = lines('一つ。二つ。「三つ。四つ。」');
+  assert.ok(l);
+  const narration = l.sentences('narration');
+  assert.equal(l.sentences('narration'), narration);
+  assert.deepEqual(narration.map((s) => l.narration().text.slice(s.start, s.end)), ['一つ。', '二つ。', '「〇」']);
+  assert.deepEqual(l.sentences('dialogue').map((s) => l.dialogue().text.slice(s.start, s.end)), ['三つ。', '四つ。']);
+  assert.equal(l.sentences('dialogue'), l.sentences('dialogue'));
+});
+
+test('inset: an ornament line or a bullet line, never a pause line, prose or a blank', () => {
+  const ls = lines('＊\n◇＊◇\n　・ポーション×３\n……\n――\n　本文。\n\n１２３');
+  assert.deepEqual(ls.map((l) => l.inset()), [true, true, true, false, false, false, false, false]);
+  assert.equal(ls[0]?.inset(), ls[0]?.inset());
 });

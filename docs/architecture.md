@@ -91,12 +91,17 @@ The text build prints the nodes.
 `parse` is `scan` followed by `resolve`.
 
 The editor side of the server keeps one scan and one resolve per document
-version (`src/server/parsed.ts`). The highlighter reads the nodes for the markup
-and the AST for the narration; the syntax diagnostics, the hover, the lint and
-the preview read the AST. The lint judges the content, the line as its reader
-sees it (`src/server/shown.ts`), and lands its fixes on the nodes: what was
-typed is edited in place, what an annotation shows is not, and an insert at its
-edge goes outside the annotation. The builds parse on their
+version (`src/server/parsed.ts`), and beside them one reading of the lines as
+shown (`src/server/shown.ts`): per line, the runs of the content in display
+order with where each character was written, and where the utterances 「」『』
+open and close, one dialogue stack over the whole manuscript. The highlighter
+reads the nodes for the markup and the lines as shown for the narration; the
+lint walks the lines as shown for its views; the syntax diagnostics, the hover
+and the preview read the AST. The lint judges the content, the line as its
+reader sees it, and lands its fixes on the nodes: what was typed is edited in
+place, what an annotation shows is not, and an insert at its edge goes outside
+the annotation. The highlighter answers a range of lines from the same reading,
+and an edit with the difference from the last whole result. The builds parse on their
 own, from the files they read through `jpnov/readText`; a cover page, and the
 page furniture, also get the book's values. The server keeps the last book's
 chapters parsed and laid out (`ChapterCache` in `document.ts`), each under the
