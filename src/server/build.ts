@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken } from 'vscode-languageserver/node';
 
-import { checkJpbook, completeMeta, composeBookChrome, composeBookInput, entryPaths, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
+import { checkJpbook, completeMeta, composeBookChrome, composeBookInput, entryPaths, hasJpbookExt, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
 import { bookCounts, concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { ChapterCache, TitledBook } from '#/shared/compiler/document.ts';
@@ -142,7 +142,7 @@ async function* walkJpbooks(
   }
   for (const dirent of dirents) {
     const rel = dirRel === '' ? dirent.name : `${dirRel}/${dirent.name}`;
-    if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.jpbook')) {
+    if (dirent.isFile() && hasJpbookExt(dirent.name)) {
       yield { uri: childUri(dirUri, dirent.name), fileRel: rel };
     } else if (dirent.isDirectory()) {
       if (dirent.name.startsWith('.') || dirent.name === 'node_modules') {

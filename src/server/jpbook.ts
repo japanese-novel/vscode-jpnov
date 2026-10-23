@@ -81,14 +81,28 @@ function dividerWarnings(pl: ParsedLine): Diagnostic[] {
   ];
 }
 
-/** Classifies a `file:` URI on disk; any error (incl. ENOENT) is `'missing'`. */
-async function statEntry(uri: string): Promise<'file' | 'dir' | 'missing'> {
+/** Classifies a `file:` URI on disk; a path that resolves nowhere (null) and any error (incl. ENOENT) are `'missing'`. */
+async function statEntry(uri: string | null): Promise<'file' | 'dir' | 'missing'> {
+  if (uri === null) {
+    return 'missing';
+  }
   try {
     const s = await stat(fileURLToPath(uri));
     return s.isDirectory() ? 'dir' : 'file';
   } catch {
     return 'missing';
   }
+}
+
+/** The Error an entry line earns by {@link statEntry}'s verdict; a present file earns none. */
+const EXISTENCE_CODES = { missing: 'jpbook.fileNotFound', dir: 'jpbook.entryIsDirectory' } as const;
+
+/** The existence Error of one entry line, or undefined for a present file. */
+async function existenceDiagnostic(uri: string | null, range: Range, value: string): Promise<Diagnostic | undefined> {
+  const verdict = await statEntry(uri);
+  return verdict === 'file'
+    ? undefined
+    : diagnostic(range, { code: EXISTENCE_CODES[verdict], args: [value] }, DiagnosticSeverity.Error);
 }
 
 async function readDirEntries(dirUri: string): Promise<{ name: string; isDir: boolean }[]> {
@@ -105,11 +119,14 @@ async function readDirEntries(dirUri: string): Promise<{ name: string; isDir: bo
  * {@link parseJpbook}'s line kinds), then, on a `file:` book, existence (a missing path or one
  * resolving to a directory is an Error), then the names `others` (the books sharing a page with
  * this one) write differently. Used by both the live editor handler and the build, so the two never
- * disagree.
+ * disagree. The entries are stat'ed together: a book of fifty chapters waits for one round trip,
+ * not fifty.
  */
 export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook, others: readonly BookNames[]): Promise<Diagnostic[]> {
   const canCheckFs = isFileScheme(dirUri);
-  const diagnostics: Diagnostic[] = [];
+  // In line order: a path line holds its slot while its stat runs, and the slot stays empty for a present file.
+  const diagnostics: (Diagnostic | undefined)[] = [];
+  const checks: Promise<void>[] = [];
 
   if (parsed.metaError !== null) {
     const { line, range, error } = parsed.metaError;
@@ -146,17 +163,10 @@ export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook, other
     if (entry === null || !canCheckFs) {
       continue; // a name is no path; existence unverifiable off `file:` — leave the path un-flagged.
     }
-    const uri = resolveUri(dirUri, entry.value);
-    const verdict = uri === null ? 'missing' : await statEntry(uri);
-    if (verdict === 'missing') {
-      diagnostics.push(
-        diagnostic(range, { code: 'jpbook.fileNotFound', args: [entry.value] }, DiagnosticSeverity.Error),
-      );
-    } else if (verdict === 'dir') {
-      diagnostics.push(
-        diagnostic(range, { code: 'jpbook.entryIsDirectory', args: [entry.value] }, DiagnosticSeverity.Error),
-      );
-    }
+    const slot = diagnostics.push(undefined) - 1;
+    checks.push(existenceDiagnostic(resolveUri(dirUri, entry.value), range, entry.value).then((d) => {
+      diagnostics[slot] = d;
+    }));
   }
 
   for (const list of NAME_LISTS) {
@@ -172,7 +182,8 @@ export async function diagnoseJpbook(dirUri: string, parsed: ParsedJpbook, other
       }
     }
   }
-  return diagnostics;
+  await Promise.all(checks);
+  return diagnostics.filter((d) => d !== undefined);
 }
 
 /**
@@ -262,8 +273,7 @@ export async function completeJpbook(
     // Suppress when nothing meaningful follows the cursor and the path already names a file.
     const whole = lineText.slice(pathStart).trim();
     if (whole !== '' && prefix.slice(pathStart).trim() === whole) {
-      const wholeUri = resolveUri(dirUri, whole);
-      if (wholeUri !== null && (await statEntry(wholeUri)) === 'file') {
+      if ((await statEntry(resolveUri(dirUri, whole))) === 'file') {
         return [];
       }
     }

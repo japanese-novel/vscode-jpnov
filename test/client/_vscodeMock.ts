@@ -218,6 +218,11 @@ export interface FakeConfigurationChange {
   affectsConfiguration(section: string): boolean;
 }
 
+/** `FileRenameEvent`. */
+export interface FakeFileRenameEvent {
+  readonly files: readonly { readonly oldUri: Uri; readonly newUri: Uri }[];
+}
+
 /** `WorkspaceFoldersChangeEvent`. */
 export interface FakeWorkspaceFoldersChange {
   added: readonly { uri: Uri }[];
@@ -284,6 +289,8 @@ export interface MockState {
   onDidOpenDoc: EventEmitter<FakeTextDocument>;
   onDidCloseDoc: EventEmitter<FakeTextDocument>;
   onDidSaveDoc: EventEmitter<FakeTextDocument>;
+  /** `workspace.onDidRenameFiles`: a test fires this with the event's `files`. */
+  onDidRenameFiles: EventEmitter<FakeFileRenameEvent>;
   /** What `window.showSaveDialog` resolves to (undefined = dismissed), and the options of each call. */
   saveDialogResult: Uri | undefined;
   saveDialogCalls: unknown[];
@@ -331,10 +338,10 @@ export interface MockState {
   configUpdates: { key: string; value: unknown; target: unknown }[];
   /** `workspace.fs.readDirectory` responses: uri string → entries, or 'error' to reject. */
   readDirectoryResults: Map<string, [string, number][] | 'error'>;
-  /** `workspace.findFiles` responses: base folder uri string → matches ([] when absent), or 'error'. */
+  /** `workspace.findFiles` responses: the base folder's uri string (a `RelativePattern`) or the glob itself (a string) → matches ([] when absent), or 'error'. */
   findFilesResults: Map<string, Uri[] | 'error'>;
-  /** Recorded findFiles invocations, so tests can assert the deep search was (not) consulted. */
-  findFilesCalls: { include: RelativePattern; maxResults: number | undefined }[];
+  /** Recorded findFiles invocations, so tests can assert a sweep was (not) consulted. */
+  findFilesCalls: { include: RelativePattern | string; maxResults: number | undefined }[];
   createdDirs: string[];
   openedDocs: string[];
   errorMessages: string[];
@@ -373,6 +380,7 @@ export function createMockState(): MockState {
     onDidOpenDoc: new EventEmitter<FakeTextDocument>(),
     onDidCloseDoc: new EventEmitter<FakeTextDocument>(),
     onDidSaveDoc: new EventEmitter<FakeTextDocument>(),
+    onDidRenameFiles: new EventEmitter<FakeFileRenameEvent>(),
     saveDialogResult: undefined,
     saveDialogCalls: [],
     warningMessages: [],
@@ -436,6 +444,7 @@ export function resetMockState(s: MockState): void {
   s.onDidOpenDoc.dispose();
   s.onDidCloseDoc.dispose();
   s.onDidSaveDoc.dispose();
+  s.onDidRenameFiles.dispose();
   s.saveDialogResult = undefined;
   s.saveDialogCalls.length = 0;
   s.warningMessages.length = 0;
@@ -665,7 +674,7 @@ export function buildVscode(state: MockState): Record<string, unknown> {
     // File-operation events (Explorer gestures): registration-only, like the watcher above.
     onDidCreateFiles: registrationOnly,
     onDidDeleteFiles: registrationOnly,
-    onDidRenameFiles: registrationOnly,
+    onDidRenameFiles: state.onDidRenameFiles.event,
     onDidOpenTextDocument: state.onDidOpenDoc.event,
     onDidCloseTextDocument: state.onDidCloseDoc.event,
     onDidSaveTextDocument: state.onDidSaveDoc.event,
@@ -723,12 +732,12 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       return Promise.resolve(existing ?? doc(uri.toString(), 'jpnov'));
     },
     findFiles(
-      include: RelativePattern,
+      include: RelativePattern | string,
       _exclude?: string | null,
       maxResults?: number,
     ): Promise<Uri[]> {
       state.findFilesCalls.push({ include, maxResults });
-      const base = include.base;
+      const base = typeof include === 'string' ? include : include.base;
       const key = typeof base === 'string'
         ? base
         : base instanceof Uri

@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 
 import { fullWidthDigits, INDENT_MAX } from '../../src/shared/ast/notation.ts';
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
-import { buildVscode, createMockState, doc, FakeQuickPick, FileType, resetMockState, Uri } from './_vscodeMock.ts';
+import { buildVscode, createMockState, doc, FakeQuickPick, FileType, RelativePattern, resetMockState, Uri } from './_vscodeMock.ts';
 import type { EntryNode, ListNode, MetaNode } from '../../src/client/book/manage.ts';
 import { HEAD } from '../shared/book/_fixture.ts';
 
@@ -250,7 +250,7 @@ test('a book under no workspace folder searches its own folder and warns about n
   state.quickPickQueue.push([{ toggle: 'ichi.jpnov' }, { type: '../ni' }, 'accept']);
   await runAddFiles('chapters', { uri: alone, rootUri: null as unknown as string, fileRel: '本.jpbook' });
 
-  assert.deepEqual(state.findFilesCalls.map((c) => (c.include.base as Uri).toString()), ['file:///home']);
+  assert.deepEqual(state.findFilesCalls.map((c) => ((c.include as RelativePattern).base as Uri).toString()), ['file:///home']);
   assert.deepEqual(picker().items.filter((i) => i.description === undefined).map((i) => i.label), ['ichi.jpnov']);
   assert.deepEqual(state.warningMessages, []);
   assert.deepEqual(state.writtenFiles, [{ uri: 'file:///ni.jpnov', content: '' }]);

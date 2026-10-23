@@ -138,6 +138,17 @@ function fakeClient(books: unknown[], buildResult?: unknown, server: ChapterServ
   return client;
 }
 
+/** Counts the `listBooks` requests `client` sends from now on. */
+function countLists(client: ReturnType<typeof fakeClient>): () => number {
+  let lists = 0;
+  const original = client.sendRequest.bind(client);
+  client.sendRequest = (type: string, params: unknown, token?: unknown): Promise<unknown> => {
+    lists += type === ListBooksRequest ? 1 : 0;
+    return original(type, params, token);
+  };
+  return () => lists;
+}
+
 type MsgList = { type?: string; [k: string]: unknown }[];
 
 function posts(view: { webview: { posted: unknown[] } }): MsgList {
@@ -279,22 +290,45 @@ test('the list and the build carry the open books (with the outDir resolved for 
   assert.deepEqual({ projectDirs: build.projectDirs, openBooks: build.openBooks }, expected);
 });
 
-test('opening, closing or saving a .jpbook outside every folder re-lists; one under a folder does not', async () => {
+test('opening, closing or saving a .jpbook outside every folder re-lists once per burst; one under a folder does not', async (t) => {
   const { client } = await setup([entry('file:///ws', 'x')]);
-  let lists = 0;
-  const original = client.sendRequest.bind(client);
-  client.sendRequest = (type: string, params: unknown, token?: unknown): Promise<unknown> => {
-    lists += type === ListBooksRequest ? 1 : 0;
-    return original(type, params, token);
-  };
+  const lists = countLists(client);
   const outside = doc('file:///home/本.jpbook', 'jpbook', '');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  state.onDidOpenDoc.fire(doc('file:///ws/src/x.jpbook', 'jpbook', ''));
+  state.onDidOpenDoc.fire(doc('file:///home/memo.jpnov', 'jpnov', ''));
+  t.mock.timers.runAll();
+  assert.equal(lists(), 0);
   state.onDidOpenDoc.fire(outside);
   state.onDidCloseDoc.fire(outside);
   state.onDidSaveDoc.fire(outside);
-  state.onDidOpenDoc.fire(doc('file:///ws/src/x.jpbook', 'jpbook', ''));
-  state.onDidOpenDoc.fire(doc('file:///home/memo.jpnov', 'jpnov', ''));
+  t.mock.timers.runAll();
+  t.mock.timers.reset();
   await tick();
-  assert.equal(lists, 3);
+  assert.equal(lists(), 1);
+});
+
+test('a burst of .jpbook watcher events re-lists once after the pause; a direct refresh in between stands in for it', async (t) => {
+  const root = 'file:///ws';
+  const { client, provider } = await setup([entry(root, 'x')]);
+  const lists = countLists(client);
+  const watcher = state.watchers.get('**/*.jpbook');
+  assert.ok(watcher);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const n of [1, 2, 3]) {
+    watcher.create.fire(Uri.parse(`${root}/src/v${String(n)}.jpbook`));
+  }
+  watcher.change.fire(Uri.parse(`${root}/src/x.jpbook`));
+  watcher.delete.fire(Uri.parse(`${root}/src/v1.jpbook`));
+  assert.equal(lists(), 0); // nothing before the pause
+  t.mock.timers.runAll();
+  assert.equal(lists(), 1);
+  watcher.create.fire(Uri.parse(`${root}/src/v4.jpbook`));
+  await provider.refresh(); // the user's own refresh drops the pending one
+  t.mock.timers.runAll();
+  t.mock.timers.reset();
+  await tick();
+  assert.equal(lists(), 2);
 });
 
 test('state posted before the first enumeration is flagged loading', async () => {
@@ -1372,12 +1406,7 @@ test('a book that cannot be opened returns the view to the list with a toast and
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
   const { view, client } = await setup([entry(root, 'a', 'A')]);
-  let lists = 0;
-  const send = client.sendRequest.bind(client);
-  client.sendRequest = (type: string, params: unknown, token?: unknown): Promise<unknown> => {
-    lists += type === ListBooksRequest ? 1 : 0;
-    return send(type, params, token);
-  };
+  const lists = countLists(client);
   state.unopenableDocs.add(bookUri);
   view.webview.receive({ type: 'openDetail', uri: bookUri });
   await tick();
@@ -1387,7 +1416,7 @@ test('a book that cannot be opened returns the view to the list with a toast and
   assert.equal((view as { title?: string }).title, undefined);
   const ctx = state.executedCommands.filter((c) => c.command === 'setContext' && c.args[0] === 'jpnov.booksDetail');
   assert.equal(ctx.at(-1)?.args[1], false);
-  assert.equal(lists, 1);
+  assert.equal(lists(), 1);
 });
 
 test('a row whose book left the list is refused the same way', async () => {

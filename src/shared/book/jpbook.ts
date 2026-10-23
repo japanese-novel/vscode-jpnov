@@ -388,13 +388,20 @@ function colonIndex(value: string): number {
 }
 
 /** True iff `name` carries the manuscript extension, in any letter case. */
-function hasJpnovExt(name: string): boolean {
+export function hasJpnovExt(name: string): boolean {
   return /\.jpnov$/i.test(name);
+}
+
+const JPBOOK_EXT = /\.jpbook$/i;
+
+/** True iff `name` carries the book extension, in any letter case. */
+export function hasJpbookExt(name: string): boolean {
+  return JPBOOK_EXT.test(name);
 }
 
 /** A book file's name (or path) without `.jpbook` (any letter case): the base of its output name and its label when it has no title. */
 export function jpbookStem(name: string): string {
-  return name.replace(/\.jpbook$/i, '');
+  return name.replace(JPBOOK_EXT, '');
 }
 
 /**
@@ -784,7 +791,7 @@ export function completeEntryLine(
     .filter((entry) => {
       const lower = entry.name.toLowerCase();
       return !entry.name.startsWith('.') &&
-        !lower.endsWith('.jpbook') &&
+        !hasJpbookExt(entry.name) &&
         (entry.isDir || hasJpnovExt(entry.name)) &&
         lower.startsWith(seg);
     })
