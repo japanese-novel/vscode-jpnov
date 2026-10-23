@@ -1,14 +1,14 @@
 /**
  * The "Books" panel: a client-owned WebviewView (`contributes.views.jpnov`, `"type": "webview"`)
  * listing every buildable book — those under the workspace folders, plus the `.jpbook` files open
- * outside them — with a checkbox, plus a per-book DETAIL screen; the bottom bar
- * builds ONLY the checked books. This provider is the single source of truth for the book list
+ * outside them — with a checkbox, plus a per-book DETAIL screen; the list's bottom bar
+ * builds ONLY the checked books, the detail's its one book. This provider is the single source of truth for the book list
  * and the selection — the webview only renders the last pushed `state` and dispatches actions.
  * The SERVER enumerates and renders (`jpnov/listBooks`, `jpnov/build`); the provider owns every
  * artifact write (the server never touches `vscode.fs`; `readText.ts` answers its reads) and the
  * Print action's browser hand-off.
- * Form editing lives in `manage.ts`, reached by dispatching `jpbook.*` commands with a
- * synthesized node. extension.ts registers the view and hands it here once the server is started.
+ * Form editing lives in `manage.ts`: each webview verb names the row as rendered (`EntryNode`),
+ * and the provider calls the matching function directly. extension.ts registers the view and hands it here once the server is started.
  */
 import * as vscode from 'vscode';
 
@@ -203,7 +203,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private detailChapters: { readonly book: string; readonly rows: ReadonlyMap<string, ChapterRow> } = { book: '', rows: new Map() };
   /** The contributed view title captured at resolve, restored when the detail closes. */
   private defaultTitle: string | undefined;
-  /** Serializes the row verbs (remove / move / drop), see `runEntryVerb`. */
+  /** Serializes the row verbs (edit / remove / move), see `runEntryVerb`. */
   private entryChain: Promise<void> = Promise.resolve();
   /** How many times the watcher saw each chapter file change: part of its stamp, so a rewrite that keeps the size and the mtime still reads anew. */
   private readonly diskChanges = new Map<string, number>();
@@ -586,7 +586,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /**
-   * Runs a row verb (remove / move / drop) after the ones before it, then re-pushes the open detail
+   * Runs a row verb (edit / remove / move) after the ones before it, then re-pushes the open detail
    * whether or not anything changed: each verb plans against the text the previous one left, and
    * the panel re-syncs at once instead of after the save → watcher → listBooks round trip. A
    * failed verb never wedges the chain.

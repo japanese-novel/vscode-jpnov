@@ -1,8 +1,10 @@
 # Security Policy
 
-Japanese Novel runs entirely on your machine. The extension makes no network requests and
-starts no process other than its bundled Language Server. Nothing you write is sent anywhere
-unless you build the manuscript and share the output yourself.
+Japanese Novel runs entirely on your machine. The extension makes no network requests. Besides
+its bundled Language Server, the only process it starts is the browser that opens the built HTML
+for Print / Save as PDF, when the `jpnov.layout.print.browser` setting names one; otherwise the
+OS default browser opens it. Nothing you write is sent anywhere unless you build the manuscript
+and share the output yourself.
 
 You may, however, open a manuscript written by someone else. The extension declares support for
 [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) in untrusted

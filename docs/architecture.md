@@ -104,13 +104,14 @@ the annotation. The highlighter answers a range of lines from the same reading,
 and an edit with the difference from the last whole result. The builds parse on their
 own, from the files they read through `jpnov/readText`; a cover page, and the
 page furniture, also get the book's values. The server keeps the last book's
-chapters parsed and laid out (`ChapterCache` in `document.ts`), each under the
+chapters parsed and laid out (`ChapterCache` of `src/shared/compiler/document.ts`, held
+by the server's context, `src/server/context.ts`), each under the
 text and values it was made from, with the columns its rows wrapped into: the
 Books view counts a book on every pause in a chapter, so a count parses and
 lays out the edited chapter alone, and the build that follows reuses the rest.
 The text of a chapter the editor holds open comes from the server's synced copy;
 a closed chapter's is kept from one count to the next under the stamp
-(`mtime`/`size`) the client stats its file with.
+(`mtime`/`size`, plus how many changes its watcher saw) the client stats its file with.
 
 The outputs:
 

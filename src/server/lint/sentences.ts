@@ -22,7 +22,7 @@ export const SENTENCE_MARKS = new Set(['！', '？', '!', '?', '‼', '⁇', '�
 export const TERMINATORS = new Set(['。', ...SENTENCE_MARKS]);
 /** Closers absorbed into the sentence right after its terminator run (〜。」 stays one sentence).
  *  Exported as THE closing-bracket set of the rule layer — format.ts derives its line-end and
- *  after-！？ sets from it, so the three closer sets can never drift apart again. */
+ *  after-！？ sets from it, so the three closer sets cannot drift apart. */
 export const CLOSERS = new Set(['」', '』', '）', ')', '】', '〉', '》', '］', '”', '’']);
 const WHITESPACE = new Set([...SPACES, '\n']);
 

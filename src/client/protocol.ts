@@ -43,7 +43,7 @@ export interface EntryVM {
 
 /**
  * Which entry list a detail row or a panel verb refers to — also the `DetailMessage` field
- * names. Mirrors `EntryList` in `#/shared/book/jpbook.ts` (this module imports nothing).
+ * names. Mirrors `EntryList` in `#/shared/book/jpbook.ts` (not imported: this module takes nothing from the book layer).
  */
 export type EntryList = 'chapters' | 'covers' | 'characters' | 'keywords';
 

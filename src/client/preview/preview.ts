@@ -43,10 +43,9 @@ import { buildPreviewSettings } from '../renderConfig.ts';
 import { PREVIEW_JS, SHELL_CSS, WIDGET_CSS } from './webviewBundle.generated.ts';
 
 /**
- * Trailing-edge debounce for edit-driven re-renders. Every keystroke otherwise renders the whole
- * document and swaps the full webview DOM; 120ms coalesces a typing burst into one
- * render while staying under the ~200ms "feels live" bar. Only the edit path is debounced —
- * open/adopt/editor-switch renders stay immediate.
+ * Trailing-edge debounce for edit-driven re-renders: a typing burst costs one render (every render
+ * swaps the whole webview DOM). Only the edit path is debounced — open/adopt/editor-switch renders
+ * stay immediate.
  */
 const RENDER_DEBOUNCE_MS = 120;
 

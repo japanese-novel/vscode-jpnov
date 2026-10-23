@@ -25,7 +25,7 @@ import { diagnostic, finding } from './diagnostics.ts';
 import type { Finding, Fix } from './diagnostics.ts';
 import { rangeOf } from './targets.ts';
 
-/** Combined cells squish visibly beyond this many characters (measured in headless Chrome). */
+/** Combined cells squish visibly beyond this many characters. */
 export const TCY_MAX = 3;
 
 interface Found {

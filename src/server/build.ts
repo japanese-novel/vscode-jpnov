@@ -71,11 +71,7 @@ interface BookTarget extends Omit<BookEntry, 'title'> {
   readonly stem: string;
 }
 
-/**
- * How one build is narrowed. `books` is required-but-`| undefined` (not optional) on purpose:
- * under `exactOptionalPropertyTypes` that keeps the always-constructed literal in
- * `handleBuild` free of an omit-when-undefined dance.
- */
+/** What every book of one build shares: its format, the re-resolved settings, and the chapter cache when it builds one book alone. */
 interface BuildSelection {
   readonly format: BuildFormat;
   /** The re-resolved render settings; every format reads its slice, the paper/chrome fields are html-only. */

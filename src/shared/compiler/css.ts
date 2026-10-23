@@ -148,7 +148,7 @@ function rootVars(vars: Record<string, RootValue>): string {
  * on the `.page` frame pseudo-element, each anchored an independent `k × var(--pitch)` from
  * the frame's right edge in the sheet's em. NEVER a repeated tile here — Chromium's print
  * rasterizer tiles those on a device-pixel-snapped period, drifting off the vector-placed
- * glyph columns (~half a column across an A4 page) and dropping some repetitions. The
+ * glyph columns and dropping some repetitions. The
  * preview's segment has no page extent, so its frame repeats one column-wide tile instead
  * (preview.edge.css); that is screen-only.
  */
