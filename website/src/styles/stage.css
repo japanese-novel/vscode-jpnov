@@ -19,6 +19,8 @@
 @media (prefers-reduced-motion: no-preference) and (min-width: 56.25rem) {
   html.jp-js .jp-stage-motion { display: block; }
   html.jp-js .jp-stage-static { display: none; }
+  /* The camera scales the window: its own layer is rastered once per rest, not once per scale step. */
+  html.jp-js .jp-stage-motion .jp-win { will-change: transform; }
 }
 /* The clip box of the camera: the window scales past its own box toward the viewport. */
 .jp-stage-motion { height: 100vh; overflow: hidden; }

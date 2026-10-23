@@ -7,8 +7,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import type { Renders } from '../scripts/contract.ts';
-import { readSiteText, sitePath } from '../scripts/root.ts';
+import { readRenders, readSiteText, sitePath } from '../scripts/root.ts';
 
 const PREFIX = 'jp-';
 const CLASS_NAME = /\.([A-Za-z_][\w-]*)/g;
@@ -94,7 +93,7 @@ function markupTokens(source: string): string[] {
 
 const styles = await Promise.all((await files('src/styles', '.css')).map(async (path) => ({ path, css: await readFile(path, 'utf8') })));
 const components = await Promise.all((await files('src', '.astro')).concat(await files('src', '.ts')).map(async (path) => ({ path, source: await readFile(path, 'utf8') })));
-const renders = JSON.parse(await readSiteText('src/generated/renders.json')) as Renders;
+const renders = await readRenders();
 
 /** The product's class names, from every embedded fragment (body tokens and stylesheet selectors, the scope class excluded). */
 const product = new Set<string>();

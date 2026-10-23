@@ -145,10 +145,19 @@ pre.jp-source {
 /* One level above the scoped stylesheet's own `.scope .page` rule, which comes later in the document. */
 .jp-paper-crop .jp-scope .page { margin: 0; box-shadow: none; }
 figcaption { font-size: 0.875rem; line-height: 1.8; color: color-mix(in srgb, var(--color-ink) 72%, transparent); margin-top: 1rem; }
-/* Marked elements are revealed by src/scripts/reveal.ts under this same query (REVEAL_QUERY). */
+/* Marked elements start offset and hidden, and src/scripts/reveal.ts flips jp-revealed as they
+   cross 80% of the viewport, under this same query (REVEAL_QUERY). The curve is easeOutQuad. */
 @media (prefers-reduced-motion: no-preference) and (min-width: 48rem) {
-  html.jp-js [data-reveal] { opacity: 0; }
+  html.jp-js [data-reveal] { opacity: 0; transition: 0.9s cubic-bezier(0.25, 0.46, 0.45, 0.94); transition-property: opacity, translate; }
+  html.jp-js [data-reveal="up"] { translate: 0 40px; }
+  html.jp-js [data-reveal="left"] { translate: -40px 0; }
+  html.jp-js [data-reveal="right"] { translate: 40px 0; }
+  html.jp-js [data-reveal].jp-revealed { opacity: 1; translate: 0 0; }
 }
+/* The sections below the stage are laid out and painted only near the viewport (the 傍点 probe's
+   geometry reads still lay out the one with an .emr line). The placeholder is a round middle of
+   their content heights; a rendered height replaces it. */
+main > section:not(.jp-stage) { content-visibility: auto; contain-intrinsic-size: auto 100rem; }
 
 /* ---- hero ------------------------------------------------------------------------------ */
 .jp-hero { padding-top: clamp(2.5rem, 5vw, 4rem); }

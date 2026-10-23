@@ -1,7 +1,7 @@
 /**
- * Mounts the stage: registers ScrollTrigger, runs the 傍点 probe on each of its refreshes (load,
- * fonts ready, resize), and builds the pinned timeline only where motion and a wide viewport
- * apply (the CSS shows the static sequence otherwise).
+ * Runs the stage (loaded by index.ts where the motion query matches): registers ScrollTrigger,
+ * runs the 傍点 probe on each of its refreshes (load, fonts ready, resize), and builds the pinned
+ * timeline only while motion and a wide viewport apply (the CSS shows the static sequence otherwise).
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -10,7 +10,7 @@ import { pinEmrShift } from '../../../src/client/webview/probe/emrShift.ts';
 import { MOTION_QUERY } from '../styles/tokens.ts';
 import { buildTimeline } from './timeline.ts';
 
-export function mountStage(): void {
+export function runStage(): void {
   const root = document.querySelector<HTMLElement>('[data-motion]');
   if (root === null) {
     return;

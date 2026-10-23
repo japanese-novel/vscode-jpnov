@@ -9,7 +9,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { sitePath } from './root.ts';
+import { readRenders, sitePath } from './root.ts';
 
 const TEXT_EXT = /\.(astro|ts|md|css|jpnov|jpbook)$/;
 const SKIP = /^(generated|node_modules)\//;
@@ -37,6 +37,9 @@ function* jsonStrings(value: unknown): Generator<string> {
   }
 }
 
+/** The one instance of the variable font: the site's bold (the 太字 specimen) is synthesised. */
+export const FONT_WEIGHT = 400;
+
 const ALWAYS = `${Array.from({ length: 0x7f - 0x20 }, (_v, i) => String.fromCharCode(0x20 + i)).join('')}　〓…‥―—─`;
 
 /** Sorted, de-duplicated code points as a string. */
@@ -53,7 +56,7 @@ export async function collectGlyphs(): Promise<string> {
   addAll(await Promise.all(files.map((file) => readFile(file, 'utf8'))));
   const copy = await Promise.all((await readdir(sitePath('src/copy'))).map((name): Promise<unknown> => import(pathToFileURL(sitePath(`src/copy/${name}`)).href)));
   addAll(jsonStrings(copy));
-  const renders: unknown = JSON.parse(await readFile(sitePath('src/generated/renders.json'), 'utf8'));
+  const renders: unknown = await readRenders();
   addAll([...jsonStrings(renders)].flatMap((text) => text.split(/<[^>]*>/)));
   return [...set]
     .filter((ch) => !/[\p{Cc}\s]/u.test(ch) || ch === '　')
