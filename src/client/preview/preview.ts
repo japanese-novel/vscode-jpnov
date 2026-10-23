@@ -112,6 +112,15 @@ export class Preview {
   /** Whether the last render that landed was a failure (its request rejected); {@link retry} repaints then. */
   private failed = false;
   /**
+   * The render the webview holds: the document object (a reopened document is a new one, counting
+   * its versions from 1 again) and its {@link renderKey}. A render of the same document, version,
+   * settings and widget state paints nothing new, so it posts the cursor instead. Cleared by a
+   * failed render, by teardown(), and by a widget change (the webview's inputs then differ from the render).
+   */
+  private rendered: { readonly doc: vscode.TextDocument; readonly key: string } | undefined;
+  /** A render was skipped while the panel was hidden: the panel paints once when it shows again. */
+  private stale = false;
+  /**
    * The position the panel last parked its document at (seeded by adopt() with the persisted
    * state): where a re-render of that document (fresh settings, a server restart) parks while no
    * editor shows it, so the scroll position survives. Panel-scoped, dropped by teardown().
@@ -140,11 +149,12 @@ export class Preview {
     // while no panel is open).
     this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor((next) => {
       const editor = this.previewableEditor(next);
-      if (editor !== undefined) {
-        this.followed = editor;
-        this.lastDocUri = editor.document.uri.toString();
-        void this.renderDocument(editor.document);
+      if (editor === undefined) {
+        return;
       }
+      this.followed = editor;
+      this.lastDocUri = editor.document.uri.toString();
+      void this.renderDocument(editor.document);
     });
   }
 
@@ -266,6 +276,7 @@ export class Preview {
     }
     this.cancelScheduledRender(); // a change committed just before the click must not re-open the chip
     this.layoutOverride.clear();
+    this.rendered = undefined; // the widget's inputs no longer show the render: repaint whatever the key says
     this.syncContext();
     this.refresh();
   }
@@ -376,6 +387,7 @@ export class Preview {
         } else {
           this.layoutOverride.set(key, { value, base });
         }
+        this.rendered = undefined; // the widget's inputs no longer show the render: repaint whatever the key says
         this.syncContext();
         this.scheduleRender(key);
       }
@@ -443,6 +455,13 @@ export class Preview {
       panel.webview.onDidReceiveMessage((message: unknown) => {
         this.onWebviewMessage(message);
       }),
+      // A render skipped while hidden lands once the panel shows.
+      panel.onDidChangeViewState(({ webviewPanel }) => {
+        const doc = this.openPreviewable(this.currentDocUri);
+        if (webviewPanel.visible && this.stale && doc !== undefined) {
+          void this.renderDocument(doc);
+        }
+      }),
       // Re-render on every edit to the file currently shown; the server draws its synced copy (the
       // live dirty buffer), and the trailing render re-checks that the panel still shows the file.
       vscode.workspace.onDidChangeTextDocument((e) => {
@@ -483,7 +502,8 @@ export class Preview {
   /**
    * Renders `doc` into the panel. Self-catching (a failed request paints a placeholder) and
    * renderSeq-serialized (a stale response never lands), so every call site may fire-and-forget
-   * with `void`.
+   * with `void`. Nothing is painted while the panel is hidden (once when it shows), nor when the
+   * webview already holds this render ({@link rendered}): the followed editor's cursor is posted instead.
    */
   private async renderDocument(doc: vscode.TextDocument, focus?: PreviewLayoutKey): Promise<void> {
     const panel = this.panel;
@@ -496,8 +516,12 @@ export class Preview {
     this.currentDocUri = uri;
     this.lastDocUri = uri;
     panel.title = vscode.l10n.t('{0} — Preview', lastPathSegment(uri));
+    if (!panel.visible) {
+      this.stale = true;
+      return;
+    }
+    this.stale = false;
 
-    const seq = ++this.renderSeq;
     const snapshot = buildPreviewSettings();
     const base = resolvePreviewSettings(snapshot);
     this.retireOverrides(base);
@@ -505,6 +529,13 @@ export class Preview {
     const settings = { ...snapshot };
     for (const [key, override] of this.layoutOverride) {
       settings[key] = override.value;
+    }
+    const key = renderKey(doc.version, settings, this.layoutOverride.size > 0);
+    // The bump drops a render still in flight for another document: the panel stays on this one.
+    const seq = ++this.renderSeq;
+    if (doc === this.rendered?.doc && key === this.rendered.key) {
+      this.reveal(uri, this.editorCursor(this.followed, uri) ?? DOC_HEAD);
+      return;
     }
     const params: RenderFileParams = { uri, settings };
     // Sampled now: what this render lays out is what its widget must show, whatever changes meanwhile.
@@ -520,6 +551,7 @@ export class Preview {
     } catch (err) {
       if (seq === this.renderSeq) {
         this.failed = true;
+        this.rendered = undefined;
         const message = errorText(err);
         panel.webview.html = this.shell(
           `<p>${vscode.l10n.t('Preview failed. {0}', escapeHtml(message))}</p>`,
@@ -545,6 +577,7 @@ export class Preview {
       (this.shown?.uri === uri ? this.shown.cursor : undefined) ??
       DOC_HEAD;
     this.shown = { uri, cursor: active };
+    this.rendered = { doc, key };
     panel.webview.html = this.harden(result.html, panel.webview, active, uri, layout);
   }
 
@@ -643,10 +676,17 @@ export class Preview {
     this.currentDocUri = undefined;
     this.shown = undefined;
     this.failed = false;
+    this.rendered = undefined;
+    this.stale = false;
     // The overrides live with the panel: the next one starts on the settings.
     this.layoutOverride.clear();
     this.syncContext();
   }
+}
+
+/** What a render of a document paints from, as one string: its version, the settings as sent, and whether the widget shows an override (its hint). */
+function renderKey(version: number, settings: PreviewSettings, adjusted: boolean): string {
+  return JSON.stringify([version, settings, adjusted]);
 }
 
 /** The earliest active cursor among `selections`, by line then character; the document head if none. */

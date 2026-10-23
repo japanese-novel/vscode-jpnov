@@ -29,15 +29,17 @@ export function runsIn(content: readonly Inline[]): Chars[] {
  * shows ({@link isFixedOrigin}) all sit at the annotation.
  */
 export function clusterStarts(run: Chars, clusters: readonly string[] = graphemes(run.text)): number[] {
-  if (isFixedOrigin(run.origin)) {
-    return clusters.map(() => run.span.start);
-  }
   let offset = 0;
   return clusters.map((ch, k) => {
-    const start = run.starts?.[k] ?? run.span.start + offset;
+    const start = clusterStart(run, k, offset);
     offset += ch.length;
     return start;
   });
+}
+
+/** Where the `k`-th character of `run` was written, `offset` being its UTF-16 offset in `run.text`: see {@link clusterStarts}. */
+export function clusterStart(run: Chars, k: number, offset: number): number {
+  return isFixedOrigin(run.origin) ? run.span.start : run.starts?.[k] ?? run.span.start + offset;
 }
 
 /** Source order, the order of every list the AST hands out: by start, then by end. */

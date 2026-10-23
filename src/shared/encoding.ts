@@ -17,7 +17,7 @@
  * one with a cell, such as 《, is written as itself.
  */
 import { GAIJI, gaijiAnnotation } from './ast/notation.ts';
-import { clustersOf, composeKana, dropWithOrigin, graphemes } from './chars.ts';
+import { clustersOf, composeKana, dropWithOrigin, isSingletonUnit } from './chars.ts';
 import { charClass } from './utils/regex.ts';
 
 /** `jpnov.layout.txt.encoding` members — the encodings a built `.txt` can be written in. */
@@ -184,7 +184,7 @@ export function unencodableChars(text: string): UnencodableChar[] {
       continue;
     }
     clusters ??= clustersOf(shown);
-    const { segment, index } = clusters.containing(i) ?? { segment: shown.charAt(i), index: i }; // never the fallback: i is inside shown
+    const { segment, index } = clusterAt(shown, clusters, i);
     if (!holdsWhole(composeKana(segment), map)) {
       // Reported on the RAW code point: the mark itself has no cell, so a cluster whose composition
       // lacks one always lands here — the offset noNfd reports too, which lets the engine de-duplicate.
@@ -225,30 +225,56 @@ export function encodeTxt(text: string, encoding: TxtEncoding): EncodedTxt {
   }
 
   const map = shiftJisTable();
-  const bytes: number[] = [];
+  const written = text.replace(notedGaijiChars(), (ch) => gaijiAnnotation(ch) ?? ch);
+  // A unit writes at most two bytes, and a cluster written as 〓 holds at least one unit: the bound.
+  const bytes = new Uint8Array(written.length * 2);
+  let n = 0;
   let substitutions = 0;
   // Per grapheme cluster, because one written character must occupy one square on the page grid:
   // ❤️ and 👨‍👩‍👦 are 2 and 5 code points but one square each. The cluster's kana are composed first
   // (か + U+3099 writes が); whatever else can be written is written (辻 survives when only its
   // variation selector is unrepresentable), and a cluster that yields nothing becomes one 〓.
-  const written = text.replace(notedGaijiChars(), (ch) => gaijiAnnotation(ch) ?? ch);
-  for (const segment of graphemes(written)) {
-    const before = bytes.length;
+  // A unit with a cell that the next unit cannot join (a singleton, or the end) is a cluster of its
+  // own: nearly every character, written without the segmenter. That rests on no cell joining the
+  // character after it (no Prepend, ZWJ or Hangul jamo has one); the encoding test pins it.
+  let clusters: Intl.Segments | undefined;
+  let i = 0;
+  while (i < written.length) {
+    const cell = map.get(written.charCodeAt(i));
+    if (cell !== undefined && (i + 1 === written.length || isSingletonUnit(written.charCodeAt(i + 1)))) {
+      n = writeCell(bytes, n, cell);
+      i += 1;
+      continue;
+    }
+    clusters ??= clustersOf(written);
+    const { segment, index } = clusterAt(written, clusters, i);
+    const before = n;
     for (const ch of composeKana(segment)) {
       const packed = map.get(ch.codePointAt(0) ?? 0);
-      if (packed === undefined) {
-        continue;
-      }
-      if (packed > 0xff) {
-        bytes.push(packed >> 8, packed & 0xff);
-      } else {
-        bytes.push(packed);
+      if (packed !== undefined) {
+        n = writeCell(bytes, n, packed);
       }
     }
-    if (bytes.length === before) {
-      bytes.push(GETA_CELL >> 8, GETA_CELL & 0xff);
+    if (n === before) {
+      n = writeCell(bytes, n, GETA_CELL);
       substitutions += 1;
     }
+    i = index + segment.length;
   }
-  return { bytes: Uint8Array.from(bytes), substitutions };
+  return { bytes: bytes.slice(0, n), substitutions }; // a copy of the final size: the view's buffer would carry the slack
+}
+
+/** Writes the packed cell `packed` (one or two bytes) at `n`; returns the next free index. */
+function writeCell(bytes: Uint8Array, n: number, packed: number): number {
+  if (packed > 0xff) {
+    bytes[n] = packed >> 8;
+    n += 1;
+  }
+  bytes[n] = packed & 0xff;
+  return n + 1;
+}
+
+/** The cluster of `text` holding unit `i`; always one, `i` being inside `text`. */
+function clusterAt(text: string, clusters: Intl.Segments, i: number): { segment: string; index: number } {
+  return clusters.containing(i) ?? { segment: text.charAt(i), index: i };
 }

@@ -8,6 +8,10 @@ const UNSAFE = /[&<>"]/;
  * not double-escaped.) Most calls hold none of the four: the layout escapes per character.
  */
 export function escapeHtml(s: string): string {
+  // One code unit above `>` (U+003E) is none of the four (U+0022, U+0026, U+003C, U+003E): the layout's per-character case, no regex.
+  if (s.length === 1 && s.charCodeAt(0) > 0x3e) {
+    return s;
+  }
   if (!UNSAFE.test(s)) {
     return s;
   }

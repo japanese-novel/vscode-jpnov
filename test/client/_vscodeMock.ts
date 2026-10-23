@@ -233,9 +233,13 @@ export interface FakeWebviewPanel {
   /** The arguments of every `reveal` call, captured for assertions. */
   revealed: { column: number | undefined; preserveFocus: boolean | undefined }[];
   disposed: boolean;
+  /** `WebviewPanel.visible`; tests flip it with `setVisible`, which fires `onDidChangeViewState`. */
+  visible: boolean;
+  setVisible(visible: boolean): void;
   reveal(column?: number, preserveFocus?: boolean): void;
   dispose(): void;
   onDidDispose(listener: Listener<void>): Disposable;
+  onDidChangeViewState(listener: Listener<{ webviewPanel: FakeWebviewPanel }>): Disposable;
 }
 
 /** The InputBoxOptions fields the extension's prompts set, typed once for assertions. */
@@ -984,6 +988,7 @@ export function createFakePanel(
   opts?: unknown,
 ): FakeWebviewPanel {
   const disposeEmitter = new EventEmitter<void>();
+  const viewStateEmitter = new EventEmitter<{ webviewPanel: FakeWebviewPanel }>();
   return {
     viewType,
     title,
@@ -991,6 +996,11 @@ export function createFakePanel(
     viewColumn: undefined,
     revealed: [],
     disposed: false,
+    visible: true,
+    setVisible(visible: boolean) {
+      this.visible = visible;
+      viewStateEmitter.fire({ webviewPanel: this });
+    },
     reveal(column?: number, preserveFocus?: boolean) {
       this.revealed.push({ column, preserveFocus });
     },
@@ -999,6 +1009,7 @@ export function createFakePanel(
       disposeEmitter.fire();
     },
     onDidDispose: disposeEmitter.event,
+    onDidChangeViewState: viewStateEmitter.event,
   };
 }
 

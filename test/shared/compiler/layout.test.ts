@@ -8,7 +8,6 @@ import { parse } from '../../../src/shared/ast/parse.ts';
 import {
   buildRows,
   flowToHtml,
-  headChar,
   paginate,
   pagesToHtml,
   type DisplayLine,
@@ -1330,7 +1329,7 @@ test('a ｜ base holding a postfix, a span or a left ruby renders exactly like t
   );
   // A comment inside splits the base text, not the ruby: one unit over the whole base.
   const [u] = unitsOf('｜山田［＃x］太郎《やまだたろう》');
-  assert.deepEqual([u?.text, u?.cells, u?.ruby], ['山田太郎', 4, { base: '山田太郎', right: 'やまだたろう' }]);
+  assert.deepEqual([u?.text, u?.cells, u?.ruby?.base, u?.ruby?.right?.text], ['山田太郎', 4, '山田太郎', 'やまだたろう']);
 });
 
 test('a ｜ base of a value field puts the ruby over what the field shows', () => {
@@ -1375,8 +1374,8 @@ test('a postfix inside a ｜ base may target text before the ｜; a 縦中横 sp
     [['12', 'tcy', undefined], ['三', 'rr', '三']],
   );
   assert.deepEqual(
-    unitsOf('青空｜文庫［＃「青空」の左に「あおぞら」のルビ］《ぶんこ》').map((u) => [u.text, u.ruby]),
-    [['青空', { base: '青空', left: 'あおぞら' }], ['文庫', { base: '文庫', right: 'ぶんこ' }]],
+    unitsOf('青空｜文庫［＃「青空」の左に「あおぞら」のルビ］《ぶんこ》').map((u) => [u.text, u.ruby?.base, u.ruby?.left?.text, u.ruby?.right?.text]),
+    [['青空', '青空', 'あおぞら', undefined], ['文庫', '文庫', undefined, 'ぶんこ']],
   );
   // The ｜ inside the span stays literal in the combined cell; 2《いち》 is an ordinary implicit ruby.
   assert.deepEqual(
@@ -1400,15 +1399,15 @@ test('NFD: a decomposed kana lays out exactly like its NFC twin — one cell, co
   const atOf = (text: string): number | undefined => unitsOf(nfd).find((u) => u.text === text)?.at;
   assert.deepEqual([atOf('が'), atOf('開')], [at(nfd, `か${D}開`).start, at(nfd, '開').start]);
   const ruby = unitsOf(nfd).find((u) => u.ruby !== undefined);
-  assert.deepEqual([ruby?.cells, ruby?.ruby], [4, { base: 'ガラス戸', right: 'がらすど' }]);
+  assert.deepEqual([ruby?.cells, ruby?.ruby?.base, ruby?.ruby?.right?.text], [4, 'ガラス戸', 'がらすど']);
   assert.deepEqual(unitsOf(`か${D}き`).map((u) => [u.text, u.cells]), [['が', 1], ['き', 1]]);
 });
 
 test('NFD: an implicit base and a left reading compose too', () => {
   const [u] = unitsOf(`カ${D}ラス《か${D}らす》`);
-  assert.deepEqual([u?.text, u?.cells, u?.ruby], ['ガラス', 3, { base: 'ガラス', right: 'がらす' }]);
+  assert.deepEqual([u?.text, u?.cells, u?.ruby?.base, u?.ruby?.right?.text], ['ガラス', 3, 'ガラス', 'がらす']);
   const left = `聖剣《せいけん》［＃「聖剣」の左に「つるき${D}」のルビ］`;
-  assert.equal(unitsOf(left)[0]?.ruby?.left, 'つるぎ');
+  assert.equal(unitsOf(left)[0]?.ruby?.left?.text, 'つるぎ');
   assert.equal(html(left), html('聖剣《せいけん》［＃「聖剣」の左に「つるぎ」のルビ］'));
 });
 
@@ -1474,7 +1473,7 @@ test('a ruby measures its base and its readings in clusters', () => {
   // A one-cluster base under a five-kana reading: the box outgrows the base, so it stretches.
   for (const src of [`｜${TSUJI}《つじのみち》`, `${TSUJI}《つじのみち》`]) {
     const [u] = unitsOf(src);
-    assert.deepEqual([u?.cells, u?.cssClass, u?.ruby], [2, 'rr rh-2', { base: TSUJI, right: 'つじのみち' }], src);
+    assert.deepEqual([u?.cells, u?.cssClass, u?.ruby?.base, u?.ruby?.right?.text, u?.ruby?.left], [2, 'rr rh-2', TSUJI, 'つじのみち', undefined], src);
   }
   assert.deepEqual(unitsOf(`｜${TSUJI}《つじ》`).map((u) => [u.cells, u.cssClass]), [[1, 'rr']]);
   // A reading of four clusters (five code points) between rubies, where no overhang settles: two cells.
@@ -1595,10 +1594,4 @@ test('a character no output can carry takes no cell; the columns after it keep t
 
 test('a comment loses the character before it is escaped, so no -- can form around it', () => {
   assert.match(html('［＃-\u0007-］本'), /<div class="line" data-line="0"><!--- - -->本<\/div>/);
-});
-
-test('headChar: the first code point, astral or not', () => {
-  assert.equal(headChar(CLUSTERS[0]), '辻');
-  assert.equal(headChar('\u{20BB7}\u{E0100}'), '\u{20BB7}');
-  assert.equal(headChar('a'), 'a');
 });

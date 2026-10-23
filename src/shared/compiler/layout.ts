@@ -18,22 +18,35 @@
  * What the notation MEANS is the AST's call (ast/resolve.ts): this module reads a line's content
  * and state and decides only how they are set on the page.
  */
-import type { Ast, HeadingLevel, Inline, Line, Mark, Marks, ValueLookup } from '../ast/nodes.ts';
+import type { Ast, HeadingLevel, Inline, Line, Mark, Marks, Ruby, ValueLookup } from '../ast/nodes.ts';
 import { paintsNothing } from '../ast/resolve.ts';
-import { clusterStarts } from '../ast/span.ts';
+import { clusterStart } from '../ast/span.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
-import { graphemeCount, graphemes } from '../chars.ts';
-import { DASH_BY_MODE, DASH_CHARS, DASH_GLYPH } from '../dash.ts';
+import { clusterStrings, codePoints, graphemeCount, graphemes } from '../chars.ts';
+import { DASH_BY_MODE, DASH_CODES, DASH_GLYPH } from '../dash.ts';
+import { append } from '../utils/lists.ts';
 import type { BuildChrome } from './chrome.ts';
 import { markClass } from './emphasis.ts';
 import { escapeComment, escapeHtml } from '../utils/escape.ts';
 import { cutFurniture, pageFurniture } from './furniture.ts';
 
-/** The strings of a ruby unit: its base and the reading on either side. */
+/** One side of a ruby, measured once: the reading, the lane units it paints, and their painted width. */
+export interface RubySide {
+  readonly text: string;
+  /** {@link readingUnits} of `text`: what the lane paints, one `<span>` each. */
+  readonly units: readonly string[];
+  /** Painted width in quarter-em at the 0.5em lane size: 2 per full-width glyph, the collapsed and trimmed length of a half-width run. */
+  readonly quarters: number;
+}
+
+/** The strings of a ruby unit, measured once for every pass that sizes or paints it: the base with its lane units and cluster count, a reading per side. */
 export interface RubyText {
-  base: string;
-  right?: string | undefined;
-  left?: string | undefined;
+  readonly base: string;
+  readonly baseUnits: readonly string[];
+  /** The clusters of `base`: its on-grid advance. */
+  readonly baseCount: number;
+  readonly right?: RubySide | undefined;
+  readonly left?: RubySide | undefined;
 }
 
 /**
@@ -51,9 +64,11 @@ export interface Unit {
    * annotation belongs to the column before; a 外字注記 is written where its ※ is.
    */
   readonly at: number;
+  /** The four channels in a fixed order as one class attribute, the adjacent-merge key ({@link unitKey}); '' = no decoration. */
+  readonly key: string;
   /**
    * Space-separated on-demand stylesheet classes baked inside `html` (tcy / rr / lr / br /
-   * rh-N / hang / insep / ru) — not channels (invisible to unitKey); emitLine collects them into
+   * rh-N / hang / insep / ru) — not channels (invisible to `key`); emitLine collects them into
    * `used` so css.ts emits each rule only when actually present (zero dead rules).
    */
   cssClass?: string | undefined;
@@ -111,7 +126,7 @@ export interface DisplayLine {
 
 /** An annotation that took no effect: a zero-width HTML comment of its inner text, as the AST shows it. */
 function commentUnit(inner: string, at: number): Unit {
-  return { cells: 0, html: `<!--${escapeComment(inner)}-->`, text: '', at };
+  return { cells: 0, html: `<!--${escapeComment(inner)}-->`, text: '', at, key: '' };
 }
 
 /**
@@ -129,7 +144,7 @@ const HALF_WIDTH_RUN = /^[\x20-\x7e]/;
  * Justification units for a ruby-lane run (a reading or a base): one per CJK glyph (U+3000
  * included — it paints as its own full-width blank), one per half-width run with its U+0020s
  * kept inside — a space must reach the DOM and paint at word-space width. The ONE source
- * {@link readingSpans} paints and {@link rubyCells} measures, so grid and ink cannot drift.
+ * {@link spansOf} paints and {@link measureSide} measures, so grid and ink cannot drift.
  */
 function readingUnits(reading: string): string[] {
   const units: string[] = [];
@@ -151,6 +166,29 @@ function readingUnits(reading: string): string[] {
   return units;
 }
 
+/** A reading measured for its lane, once: see {@link RubySide}. */
+function measureSide(text: string): RubySide {
+  const units = readingUnits(text);
+  let quarters = 0;
+  for (const u of units) {
+    // Painted width, not source length: CSS collapses a U+0020 run to one space and trims a
+    // unit's edges, so counting raw chars would stretch the base under phantom spaces.
+    quarters += HALF_WIDTH_RUN.test(u) ? u.replace(/ +/g, ' ').trim().length : 2;
+  }
+  return { text, units, quarters };
+}
+
+/** The ruby of an AST inline, measured once: the settle pass and both emitters read the measurements. */
+function rubyTextOf(item: Ruby): RubyText {
+  return {
+    base: item.base,
+    baseUnits: readingUnits(item.base),
+    baseCount: graphemeCount(item.base),
+    ...(item.right === undefined ? {} : { right: measureSide(item.right.text) }),
+    ...(item.left === undefined ? {} : { left: measureSide(item.left.text) }),
+  };
+}
+
 /**
  * A ruby unit's advance in WHOLE cells: max of the base run and each reading at the 0.5em lane
  * size (full-width glyph = 2 quarter-em, half-width ≈ 1, so a rotated Latin reading is not
@@ -158,21 +196,17 @@ function readingUnits(reading: string): string[] {
  * and the lane distribution all derive from this ONE number, so grid and paint never disagree.
  */
 function rubyCells(r: RubyText, overhang = 0): number {
-  const advance = (s: string | undefined): number => {
-    let quarters = 0;
-    for (const u of readingUnits(s ?? '')) {
-      // Painted width, not source length: CSS collapses a U+0020 run to one space and trims a
-      // unit's edges, so counting raw chars would stretch the base under phantom spaces.
-      quarters += HALF_WIDTH_RUN.test(u) ? u.replace(/ +/g, ' ').trim().length : 2;
-    }
-    return Math.ceil(Math.max(0, quarters - overhang) / 4);
-  };
-  return Math.max(graphemeCount(r.base), advance(r.right), advance(r.left));
+  const advance = (s: RubySide | undefined): number => (s === undefined ? 0 : Math.ceil(Math.max(0, s.quarters - overhang) / 4));
+  return Math.max(r.baseCount, advance(r.right), advance(r.left));
 }
 
-/** The lane markup for a run: its {@link readingUnits}, HTML-escaped, one `<span>` each. */
-function readingSpans(reading: string): string {
-  return readingUnits(reading).map((u) => `<span>${escapeHtml(u)}</span>`).join('');
+/** The lane markup of measured units ({@link readingUnits}): HTML-escaped, one `<span>` each. */
+function spansOf(units: readonly string[]): string {
+  let html = '';
+  for (const u of units) {
+    html += `<span>${escapeHtml(u)}</span>`;
+  }
+  return html;
 }
 
 /**
@@ -180,22 +214,22 @@ function readingSpans(reading: string): string {
  * has no working double-sided ruby and native's fractional advance breaks the whole-cell
  * grid. `<ruby>`/`<rt>` stay semantic; the positioned lane is the single `<span>` inside each
  * `<rt>`, because WebKit forces position:static on `<rt>` (WebCore/style/StyleAdjuster.cpp).
- * Base and readings are {@link readingSpans} units; a reading longer than the base adds the
- * on-demand `rh-N` stretch class.
+ * Base and readings are {@link spansOf} units; `lane` is {@link rubyLane} at the decided advance,
+ * which the caller also sinks as the unit's `cssClass`.
  */
-function rubyHtml(r: RubyText, cells: number): string {
-  const right = r.right === undefined ? '' : `<rt><span>${readingSpans(r.right)}</span></rt>`;
-  const left = r.left === undefined ? '' : `<rt class="rt-l"><span>${readingSpans(r.left)}</span></rt>`;
-  return `<ruby class="${rubyLane(r, cells)}">${readingSpans(r.base)}${right}${left}</ruby>`;
+function rubyHtml(r: RubyText, lane: string): string {
+  const right = r.right === undefined ? '' : `<rt><span>${spansOf(r.right.units)}</span></rt>`;
+  const left = r.left === undefined ? '' : `<rt class="rt-l"><span>${spansOf(r.left.units)}</span></rt>`;
+  return `<ruby class="${lane}">${spansOf(r.baseUnits)}${right}${left}</ruby>`;
 }
 
 /**
  * The stylesheet class of a ruby at the DECIDED advance: its side class (rr/lr/br) plus `rh-N`
- * when the box outgrows the base. Shared by {@link rubyHtml}, {@link unitsOf} and the settle
- * pass so class attribute, used-sink and cell accounting never drift apart.
+ * when the box outgrows the base. Computed once per decision and handed to {@link rubyHtml}, so
+ * class attribute, used-sink and cell accounting never drift apart.
  */
 function rubyLane(r: RubyText, cells: number): string {
-  const stretch = cells > graphemeCount(r.base) ? ` rh-${String(cells)}` : '';
+  const stretch = cells > r.baseCount ? ` rh-${String(cells)}` : '';
   const side = r.left === undefined ? 'rr' : r.right === undefined ? 'lr' : 'br';
   return side + stretch;
 }
@@ -205,54 +239,57 @@ function classOf(mark: Mark | undefined): string | undefined {
   return mark === undefined ? undefined : markClass(mark);
 }
 
-/** A unit carrying the four channels of `marks` — one stable hidden class for all real units. */
-function mk(cells: number, html: string, text: string, marks: Marks, at: number): Unit {
-  return {
-    cells,
-    html,
-    text,
-    at,
-    emph: classOf(marks.emph),
-    line: classOf(marks.line),
-    weight: classOf(marks.weight),
-    style: classOf(marks.style),
-  };
+/** The four channel classes of one item's marks and their key: constant across the item, so computed once, not per cluster. */
+type Channels = Pick<Unit, 'emph' | 'line' | 'weight' | 'style' | 'key'>;
+
+function channelsOf(marks: Marks): Channels {
+  const channels = { emph: classOf(marks.emph), line: classOf(marks.line), weight: classOf(marks.weight), style: classOf(marks.style) };
+  return { ...channels, key: unitKey(channels) };
+}
+
+/** A unit carrying the four channels of `ch` and their key — one stable hidden class for all real units. */
+function mk(cells: number, html: string, text: string, at: number, ch: Channels): Unit {
+  return { cells, html, text, at, key: ch.key, emph: ch.emph, line: ch.line, weight: ch.weight, style: ch.style };
 }
 
 /**
- * The units of one content inline. `want` is the configured dash glyph: it is emitted as
- * {@link DASH_GLYPH} while `Unit.text` keeps the source character, so 分離禁止 still classes it
- * — except inside an unclosed ［＃, which prints exactly as typed. 縦中横 and ルビ cells build
- * their own html: a dash inside one stays the source glyph. `lineStart` is the source offset of
- * the item's line: each `at` counts from it.
+ * Pushes the units of one content inline onto `out`. `want` is the configured dash glyph: it is
+ * emitted as {@link DASH_GLYPH} while `Unit.text` keeps the source character, so 分離禁止 still
+ * classes it — except inside an unclosed ［＃, which prints exactly as typed. 縦中横 and ルビ cells
+ * build their own html: a dash inside one stays the source glyph. `lineStart` is the source offset
+ * of the item's line: each `at` counts from it.
  */
-function unitsOf(item: Inline, want: string | undefined, lineStart: number): Unit[] {
+function unitsOf(item: Inline, want: string | undefined, lineStart: number, out: Unit[]): void {
   const at = item.span.start - lineStart;
   switch (item.kind) {
     case 'chars': {
       const translate = item.origin !== 'broken';
-      const clusters = graphemes(item.text);
-      const starts = clusterStarts(item, clusters);
+      const ch = channelsOf(item.marks);
       // A value and the spaces of a ［＃○字下げ］ count as written where their annotation ends; a 外字注記 where its ※ is.
       const atEnd = item.origin === 'value' || item.origin === 'indent';
-      return clusters.map((ch, k) => {
-        const written = atEnd ? item.span.end : (starts[k] ?? item.span.start);
-        return mk(1, translate && ch === want ? DASH_GLYPH : escapeHtml(ch), ch, item.marks, written - lineStart);
-      });
+      let offset = 0;
+      let k = 0;
+      for (const c of clusterStrings(item.text)) {
+        const written = atEnd ? item.span.end : clusterStart(item, k, offset);
+        offset += c.length;
+        k += 1;
+        out.push(mk(1, translate && c === want ? DASH_GLYPH : escapeHtml(c), c, written - lineStart, ch));
+      }
+      return;
     }
     case 'ruby': {
-      const ruby: RubyText = {
-        base: item.base,
-        ...(item.right === undefined ? {} : { right: item.right.text }),
-        ...(item.left === undefined ? {} : { left: item.left.text }),
-      };
+      const ruby = rubyTextOf(item);
       const cells = rubyCells(ruby); // safe whole-cell advance; the settle pass may tighten
-      return [{ ...mk(cells, rubyHtml(ruby, cells), item.base, item.marks, at), ruby, cssClass: rubyLane(ruby, cells) }];
+      const lane = rubyLane(ruby, cells);
+      out.push({ ...mk(cells, rubyHtml(ruby, lane), item.base, at, channelsOf(item.marks)), ruby, cssClass: lane });
+      return;
     }
     case 'tcy':
-      return [{ ...mk(1, `<span class="tcy">${escapeHtml(item.text)}</span>`, item.text, item.marks, at), cssClass: 'tcy' }];
+      out.push({ ...mk(1, `<span class="tcy">${escapeHtml(item.text)}</span>`, item.text, at, channelsOf(item.marks)), cssClass: 'tcy' });
+      return;
     case 'comment':
-      return [commentUnit(item.inner, at)];
+      out.push(commentUnit(item.inner, at));
+      return;
     default: {
       const exhaustive: never = item;
       throw new Error(`unitsOf: unhandled inline ${JSON.stringify(exhaustive)}`);
@@ -284,9 +321,10 @@ function settleRubyOverhang(units: Unit[]): void {
     }
     const tight = rubyCells(u.ruby, RUBY_OVERHANG_QUARTERS);
     if (tight < u.cells && tolerant(i, -1) && tolerant(i, 1)) {
+      const lane = rubyLane(u.ruby, tight);
       u.cells = tight;
-      u.cssClass = rubyLane(u.ruby, tight);
-      u.html = rubyHtml(u.ruby, tight);
+      u.cssClass = lane;
+      u.html = rubyHtml(u.ruby, lane);
     }
   }
 }
@@ -318,7 +356,10 @@ export function buildRows(ast: Ast, opts?: { readonly dash?: DashMode | undefine
   ast.lines.forEach((line, at) => {
     const shape = rowShape(line, at === end);
     if (shape.line) {
-      const units = line.content.flatMap((item) => unitsOf(item, want, line.span.start));
+      const units: Unit[] = [];
+      for (const item of line.content) {
+        unitsOf(item, want, line.span.start, units);
+      }
       settleRubyOverhang(units);
       // `heading` is CONDITIONAL: row snapshots deepEqual whole objects, so an absent heading
       // must be an absent KEY, never an explicit undefined.
@@ -335,14 +376,16 @@ export function buildRows(ast: Ast, opts?: { readonly dash?: DashMode | undefine
   return rows;
 }
 
+// The 禁則 tables are code points ({@link codePoints}): a cluster is classed by {@link headCode}, and no string is cut per unit.
+
 /**
  * Chars forbidden at line END (追い出し: push down to the next line) — 行末禁則.
  * 始め括弧 (cl-01, https://www.w3.org/TR/jlreq/#character_classes).
  */
-const KINSOKU_OPEN = new Set('「『（〔［｛〈《【〘〖｟〝');
+const KINSOKU_OPEN = codePoints('「『（〔［｛〈《【〘〖｟〝');
 /** 区切り約物 (cl-04): full-width, half-width, single-codepoint. */
 const DIVIDING = '！？!?‼⁇⁈⁉';
-const KINSOKU_DIVIDING = new Set(DIVIDING);
+const KINSOKU_DIVIDING = codePoints(DIVIDING);
 /** 句読点: the 行頭禁則 characters that may also hang (ぶら下げ). */
 const HANGABLE_CHARS = '、。，．';
 /**
@@ -350,42 +393,46 @@ const HANGABLE_CHARS = '、。，．';
  * 終わり括弧・句読点・区切り約物・中点類・繰り返し記号 (cl-02/04/05/06/07/09,
  * https://www.w3.org/TR/jlreq/#character_classes) = Word 標準 / CSS `line-break: normal`.
  */
-const KINSOKU_CLOSE = new Set(
+const CLOSE_CHARS =
   '」』）〕］｝〉》】〙〗｠〟' + // 終わり括弧
-    HANGABLE_CHARS + // 句読点
-    DIVIDING + // 区切り約物
-    '・：；' + // 中点類
-    '々〻ゝゞヽヾ', // 繰り返し記号
-);
+  HANGABLE_CHARS + // 句読点
+  DIVIDING + // 区切り約物
+  '・：；' + // 中点類
+  '々〻ゝゞヽヾ'; // 繰り返し記号
+const KINSOKU_CLOSE = codePoints(CLOSE_CHARS);
 /** The strict tier adds 長音 (cl-10) and 小書き仮名 (cl-11) = Word 高レベル / CSS `strict`. */
-const KINSOKU_CLOSE_STRICT = new Set(
+const KINSOKU_CLOSE_STRICT = codePoints(
   'ー' + // 長音
     'ぁぃぅぇぉっゃゅょゎゕゖ' + // 小書き平仮名
     'ァィゥェォッャュョヮヵヶ' + // 小書き片仮名
-    [...KINSOKU_CLOSE].join(''),
+    CLOSE_CHARS,
 );
 
-/** The first code point of `text` as a string: the character a cluster is classed by. */
-export function headChar(text: string): string {
-  return text.slice(0, (text.codePointAt(0) ?? 0) > 0xffff ? 2 : 1); // slice, not fromCodePoint: this sits under every unit of the wrap
+/** The 行頭禁則 set for a tier. */
+function closeFor(mode: KinsokuMode): Set<number> {
+  return mode === 'strict' ? KINSOKU_CLOSE_STRICT : KINSOKU_CLOSE;
 }
 
-/** The 行頭禁則 set for a tier. */
-function closeFor(mode: KinsokuMode): Set<string> {
-  return mode === 'strict' ? KINSOKU_CLOSE_STRICT : KINSOKU_CLOSE;
+/** The code point a cluster is classed by: its first; -1 for no text. */
+function headCode(text: string): number {
+  return text.codePointAt(0) ?? -1;
 }
 
 /**
  * EVERY character of a real (cells>0) unit is in `set` — so a 縦中横 約物 pair (text "!?") counts
  * whole, while a digit tcy or a ruby base stays free. The cells guard keeps zero-width
- * comments (text '') out of the vacuously-true empty iteration.
+ * comments (text '') out of the vacuously-true empty iteration. A unit of one character (the
+ * common case) is one cluster classed by its first code point: a lookup, no segmentation.
  */
-function everyCharIn(u: Unit | undefined, set: Set<string>): boolean {
+function everyCharIn(u: Unit | undefined, set: Set<number>): boolean {
   if (u === undefined || u.cells === 0 || u.text.length === 0) {
     return false;
   }
+  if (isCharUnit(u)) {
+    return set.has(headCode(u.text));
+  }
   for (const c of graphemes(u.text)) {
-    if (!set.has(headChar(c))) {
+    if (!set.has(headCode(c))) {
       return false;
     }
   }
@@ -393,7 +440,13 @@ function everyCharIn(u: Unit | undefined, set: Set<string>): boolean {
 }
 
 /** A unit of one character: a cell of {@link unitsOf}'s `chars` case, neither 縦中横 nor ルビ nor merged. */
-function isCharUnit(u: Unit | undefined): u is Unit {
+interface CharUnit extends Unit {
+  readonly cells: 1;
+  readonly cssClass?: undefined;
+  readonly ruby?: undefined;
+}
+
+function isCharUnit(u: Unit | undefined): u is CharUnit {
   return u?.cells === 1 && u.cssClass === undefined && u.ruby === undefined;
 }
 
@@ -401,7 +454,7 @@ function isCharUnit(u: Unit | undefined): u is Unit {
  * ぶら下げ対象は句読点のみ (JIS X 4051 の慣例; 閉じ括弧・約物は対象外). The hung glyph's ink
  * stays inside the EDGE_INSET reserve past the last cell, clear of the 枠.
  */
-const HANGABLE = new Set(HANGABLE_CHARS);
+const HANGABLE = codePoints(HANGABLE_CHARS);
 
 /** Where the column that opens at `units[from]` starts: see {@link DisplayLine.at}. */
 function columnAt(units: readonly Unit[], from: number): number {
@@ -423,9 +476,9 @@ function nextReal(units: readonly Unit[], from: number): number {
  * an opening bracket, and the next real unit would not open the following line on a 行頭禁則
  * char — those cases fall through to 追い出し. No next unit at all hangs fine.
  */
-function canHang(units: readonly Unit[], start: number, i: number, close: Set<string>): boolean {
+function canHang(units: readonly Unit[], start: number, i: number, close: Set<number>): boolean {
   const h = units[i];
-  if (!isCharUnit(h) || !HANGABLE.has(headChar(h.text))) {
+  if (!isCharUnit(h) || !HANGABLE.has(headCode(h.text))) {
     return false;
   }
   const p = lastReal(units, start, i);
@@ -436,7 +489,7 @@ function canHang(units: readonly Unit[], start: number, i: number, close: Set<st
 }
 
 /** A column opening at `units[from]` would not start on a 行頭禁則 char; no real unit left is fine. */
-function freeHead(units: readonly Unit[], from: number, close: Set<string>): boolean {
+function freeHead(units: readonly Unit[], from: number, close: Set<number>): boolean {
   const n = nextReal(units, from);
   return n < 0 || !everyCharIn(units[n], close);
 }
@@ -459,6 +512,7 @@ function makeHangUnit(u: Unit): Unit {
     text: u.text,
     html: `<span class="hang">${u.html}</span>`,
     at: u.at,
+    key: u.key,
     cssClass: 'hang',
     emph: u.emph,
     line: u.line,
@@ -484,37 +538,37 @@ function lastReal(units: readonly Unit[], start: number, before: number): number
  * (full-width ！？ need no binding: they are 行頭禁則, so the 追い出し cascade already moves a
  * split pair whole).
  */
-const INSEP_LEADER = new Set('…‥'); // U+2026 U+2025
-const INSEP_BANG = new Set('!?'); // half-width; exactly-2 runs only
+const INSEP_LEADER = codePoints('…‥'); // U+2026 U+2025
+const INSEP_BANG = codePoints('!?'); // half-width; exactly-2 runs only
 
 /**
- * The 分離禁止 class a unit binds under, or undefined (classed / ruby / multi-char / zero-width).
- * `bang: false` leaves the half-width `!?` class out (the reflow emitter — the reader wraps there).
+ * The 分離禁止 class a unit binds under, or undefined (classed / ruby / multi-char / zero-width):
+ * the table itself, compared by identity. `bang` false leaves the half-width `!?` class out (the
+ * reflow emitter — the reader wraps there).
  */
-export function insepClass(u: Unit | undefined, { bang = true }: { bang?: boolean } = {}): Set<string> | undefined {
+export function insepClass(u: Unit | undefined, bang = true): Set<number> | undefined {
   if (!isCharUnit(u)) {
     return undefined;
   }
-  const head = headChar(u.text);
-  if (DASH_CHARS.has(head)) {
-    return DASH_CHARS;
+  const cp = headCode(u.text);
+  if (DASH_CODES.has(cp)) {
+    return DASH_CODES;
   }
-  if (INSEP_LEADER.has(head)) {
+  if (INSEP_LEADER.has(cp)) {
     return INSEP_LEADER;
   }
-  return bang && INSEP_BANG.has(head) ? INSEP_BANG : undefined;
+  return bang && INSEP_BANG.has(cp) ? INSEP_BANG : undefined;
 }
 
 /**
  * The end (exclusive) of the 分離禁止 run that `head` = `units[i]` opens under `cls`: the units after
  * it with the same class and the same channel key. `bang` as for {@link insepClass}.
  */
-export function insepRunEnd(units: readonly Unit[], head: Unit, i: number, cls: Set<string>, bang: boolean): number {
-  const key = unitKey(head);
+export function insepRunEnd(units: readonly Unit[], head: Unit, i: number, cls: Set<number>, bang: boolean): number {
   let end = i + 1;
   while (end < units.length) {
     const next = units[end];
-    if (next === undefined || insepClass(next, { bang }) !== cls || unitKey(next) !== key) {
+    if (next === undefined || insepClass(next, bang) !== cls || next.key !== head.key) {
       break;
     }
     end += 1;
@@ -535,7 +589,7 @@ export function mergeRun(units: readonly Unit[], head: Unit, start: number, end:
       html += u.html;
     }
   }
-  const merged: Unit = { cells, text, html, at: head.at, emph: head.emph, line: head.line, weight: head.weight, style: head.style };
+  const merged: Unit = { cells, text, html, at: head.at, key: head.key, emph: head.emph, line: head.line, weight: head.weight, style: head.style };
   if (head.cssClass !== undefined) {
     // emitLine's class sink is what emits the rule, so a merged unit must keep the class.
     merged.cssClass = head.cssClass;
@@ -550,8 +604,7 @@ export function mergeRun(units: readonly Unit[], head: Unit, start: number, end:
  * free single); `strict` binds the whole run. Returns `units` itself when nothing binds.
  */
 function separate(units: readonly Unit[], mode: KinsokuMode): readonly Unit[] {
-  let out: Unit[] | undefined; // created on the first bind; units[0..copied) are already in it
-  let copied = 0;
+  const patch = new UnitPatcher(units);
   for (let i = 0; i < units.length; i += 1) {
     const head = units[i];
     const cls = insepClass(head);
@@ -561,37 +614,50 @@ function separate(units: readonly Unit[], mode: KinsokuMode): readonly Unit[] {
     const end = insepRunEnd(units, head, i, cls, true);
     const len = end - i;
     if (len >= 2 && (cls !== INSEP_BANG || len === 2)) {
-      out ??= [];
-      for (let j = copied; j < i; j += 1) {
-        const u = units[j];
-        if (u !== undefined) {
-          out.push(u);
-        }
-      }
       if (mode === 'strict' && cls !== INSEP_BANG) {
-        out.push(mergeRun(units, head, i, end));
+        patch.replace(i, end, mergeRun(units, head, i, end));
       } else {
-        for (let j = i; j < end; j += 2) {
+        for (let j = i; end - j >= 2; j += 2) {
           const u = units[j];
           if (u !== undefined) {
-            out.push(end - j >= 2 ? mergeRun(units, u, j, j + 2) : u);
+            patch.replace(j, j + 2, mergeRun(units, u, j, j + 2));
           }
         }
       }
-      copied = end;
     }
     i = end - 1;
   }
-  if (out === undefined) {
-    return units;
+  return patch.done();
+}
+
+/**
+ * Replaces runs of a unit list by single units, in order, copying nothing until the first
+ * replacement: {@link done} returns the list itself when none was made — most lines.
+ */
+export class UnitPatcher {
+  private readonly units: readonly Unit[];
+  private out: Unit[] | undefined;
+  private copied = 0; // units[0..copied) are in `out`
+
+  constructor(units: readonly Unit[]) {
+    this.units = units;
   }
-  for (let j = copied; j < units.length; j += 1) {
-    const u = units[j];
-    if (u !== undefined) {
-      out.push(u);
+
+  /** `units[from..to)` become `by`. */
+  replace(from: number, to: number, by: Unit): void {
+    this.out ??= [];
+    append(this.out, this.units.slice(this.copied, from));
+    this.out.push(by);
+    this.copied = to;
+  }
+
+  done(): readonly Unit[] {
+    if (this.out === undefined) {
+      return this.units;
     }
+    append(this.out, this.units.slice(this.copied));
+    return this.out;
   }
-  return out;
 }
 
 /**
@@ -777,9 +843,10 @@ export function paginate(
 
 /**
  * The four channels in a FIXED order → a deterministic class attribute that doubles as the
- * adjacent-merge key. '' = no decoration (the common case — no allocation, no `<span>`).
+ * adjacent-merge key. '' = no decoration (the common case — no allocation, no `<span>`). Composed
+ * once per item ({@link channelsOf}); every unit carries the result as `key`.
  */
-export function unitKey(u: Unit): string {
+function unitKey(u: Pick<Unit, 'emph' | 'line' | 'weight' | 'style'>): string {
   if (
     u.emph === undefined &&
     u.line === undefined &&
@@ -809,11 +876,27 @@ export function unitKey(u: Unit): string {
  * channel keys both land in `used` so css.ts emits exactly the rules present.
  */
 function sinkInto(used: Set<string>, classes: string | undefined): void {
-  if (classes !== undefined && classes !== '') {
-    for (const c of classes.split(' ')) {
-      used.add(c);
-    }
+  if (classes === undefined || classes === '') {
+    return;
   }
+  if (!classes.includes(' ')) {
+    used.add(classes); // one token, the common case: no split
+    return;
+  }
+  for (const c of classes.split(' ')) {
+    used.add(c);
+  }
+}
+
+/** A right-side 傍点 on `u`: Chromium pushes the whole line's baseline for its mark band. */
+function isRightEmph(u: Unit): boolean {
+  return u.emph !== undefined && !u.emph.endsWith('-l');
+}
+
+/** A unit run's markup, and whether a right-side 傍点 is in it (the line's `emr` counter-shift). */
+export interface EmittedUnits {
+  readonly html: string;
+  readonly rightEmph: boolean;
 }
 
 /**
@@ -821,20 +904,21 @@ function sinkInto(used: Set<string>, classes: string | undefined): void {
  * channel-run merging the paginated build and the reflow (EPUB) output share, so their inline
  * markup can never drift.
  */
-export function emitUnits(units: readonly Unit[], used: Set<string>): string {
+export function emitUnits(units: readonly Unit[], used: Set<string>): EmittedUnits {
   let html = '';
   let open = ''; // '' sentinel (a real key is never '')
+  let rightEmph = false;
   for (const u of units) {
     sinkInto(used, u.cssClass);
-    const key = unitKey(u);
-    if (key !== open) {
+    if (u.key !== open) {
       if (open !== '') {
         html += '</span>';
       }
-      open = key;
+      open = u.key;
       if (open !== '') {
         sinkInto(used, open);
         html += `<span class="${open}">`;
+        rightEmph ||= isRightEmph(u); // the channels are constant across a run: its head says
       }
     }
     html += u.html;
@@ -842,16 +926,17 @@ export function emitUnits(units: readonly Unit[], used: Set<string>): string {
   if (open !== '') {
     html += '</span>';
   }
-  return html;
+  return { html, rightEmph };
 }
 
 function emitLine(line: DisplayLine, used: Set<string>, head = ''): string {
-  let html = emitUnits(line.units, used);
+  const body = emitUnits(line.units, used);
+  let { html } = body;
   if (line.hang !== undefined) {
     // The hung 句読点 lands after the last cell; its channel span cannot join a neighbour's
     // (that span just closed above), so it carries its own.
     sinkInto(used, line.hang.cssClass);
-    const hk = unitKey(line.hang);
+    const hk = line.hang.key;
     if (hk === '') {
       html += line.hang.html;
     } else {
@@ -870,9 +955,7 @@ function emitLine(line: DisplayLine, used: Set<string>, head = ''): string {
   }
   // Right-side 傍点 anywhere on the line: Chromium pushes the whole line's baseline for the mark
   // band, so the line carries the counter-shift class (class.emr.css measures and pins the amount).
-  const rightEmph = (u: Unit): boolean => u.emph !== undefined && !u.emph.endsWith('-l');
-  const emrClass =
-    line.units.some(rightEmph) || (line.hang !== undefined && rightEmph(line.hang)) ? ' emr' : '';
+  const emrClass = body.rightEmph || (line.hang !== undefined && isRightEmph(line.hang)) ? ' emr' : '';
   if (emrClass !== '') {
     used.add('emr');
   }

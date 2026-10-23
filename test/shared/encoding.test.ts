@@ -17,6 +17,7 @@ import {
   unencodableChars,
   type TxtEncoding,
 } from '../../src/shared/encoding.ts';
+import { graphemes } from '../../src/shared/chars.ts';
 import { CLUSTERS, D, TSUJI, UNSHOWN } from './_kana.ts';
 
 import { gaijiOf } from './ast/_shape.ts';
@@ -303,4 +304,29 @@ test('clusters scattered through held prose are each reported once, in order', (
     { cluster: '\u{1F1EF}\u{1F1F5}', cp: 0x1f1ef, offset: at('\u{1F1EF}'), length: 2 },
     { cluster: 'e\u0301', cp: 0x0301, offset: at('\u0301'), length: 1 },
   ]);
+});
+
+test('a text is written as its clusters would be one by one, whatever joins them', () => {
+  // The walk writes most units without segmenting; a cluster of several code points must still be
+  // written whole (composed, partially, or as one 〓), wherever it sits.
+  const joined = ['\u304B\u3099', '\u2764\uFE0F', TSUJI, '\uFF76\u3099', '\u{1F468}\u200D\u{1F469}\u200D\u{1F466}', '\u304B\u0301', '\u3099', 'a\u0300'];
+  const plain = '　吾輩《わがはい》は猫である。名前はまだ無い!? ABC、「えーっ」――……';
+  const texts = [plain, ...joined.map((c) => `${plain}${c}${plain}`), joined.join(''), `${joined.join(plain)}${plain}`, joined.join(' ')];
+  for (const text of texts) {
+    const whole = encodeTxt(text, 'shiftJis');
+    const parts = graphemes(text).map((c) => encodeTxt(c, 'shiftJis'));
+    assert.deepEqual([...whole.bytes], parts.flatMap((p) => [...p.bytes]), text);
+    assert.equal(whole.substitutions, parts.reduce((n, p) => n + p.substitutions, 0), text);
+  }
+});
+
+test('no character with a cell joins the character after it: what the per-unit walk rests on', () => {
+  // The encoder writes a unit alone when the next unit is a singleton. A Prepend, a ZWJ or a Hangul
+  // jamo would glue onto that singleton (UAX #29 GB9b, GB11, GB6-8); none has a Shift JIS cell.
+  for (let cp = 0; cp <= 0xffff; cp++) {
+    if (isShiftJisEncodable(cp) && cp !== 0x0d) {
+      assert.equal(graphemes(`${String.fromCodePoint(cp)}あ`).length, 2, cp.toString(16));
+    }
+  }
+  assert.equal(graphemes('\r\n').length, 1, 'CR LF is the one pair of cells that joins, and LF is no singleton: the walk segments it');
 });
