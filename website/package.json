@@ -11,15 +11,12 @@
     "gen": "npm run render && npm run icons",
     "predev": "npm run gen",
     "dev": "astro dev",
-    "prebuild": "npm run gen",
     "build": "astro build",
     "preview": "astro preview",
-    "precheck": "npm run gen",
     "check": "astro check",
     "lint": "eslint .",
-    "pretest": "npm run gen",
     "test": "node --test \"test/**/*.test.ts\"",
-    "verify": "npm run check && npm run lint && npm test && npm run build",
+    "verify": "npm run gen && npm run check && npm run lint && npm test && npm run build",
     "fonts": "node scripts/fonts.ts"
   },
   "devDependencies": {

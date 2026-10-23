@@ -25,10 +25,10 @@ import Typesetting from '../components/sections/Typesetting.astro';
 
 <script>
   import { mountReveal } from '../scripts/reveal.ts';
-  import { mountStage } from '../stage/mount.ts';
+  import { mountStage } from '../stage/index.ts';
 
-  mountStage();
   mountReveal();
+  mountStage();
   // Base.astro drops jp-js unless this line is reached.
   document.documentElement.classList.add('jp-js-ready');
 </script>

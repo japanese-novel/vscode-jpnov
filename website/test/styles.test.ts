@@ -1,13 +1,29 @@
 /** The stylesheets carry the values the scripts share with them (src/styles/tokens.ts) and the product's font stack. */
 import assert from 'node:assert/strict';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { DEFAULT_FONT_STACK } from '../../src/shared/compiler/css.ts';
-import { readSiteText } from '../scripts/root.ts';
+import { readSiteText, sitePath } from '../scripts/root.ts';
 import { MOTION_QUERY, REVEAL_QUERY, SPLIT_EDITOR_WIDTH } from '../src/styles/tokens.ts';
 
 test('the Mincho stack is the product’s default stack', async () => {
   assert.ok((await readSiteText('src/styles/global.css')).includes(`--font-mincho: ${DEFAULT_FONT_STACK};`));
+});
+
+test('every data-reveal direction in the components has its offset in global.css', async () => {
+  const css = await readSiteText('src/styles/global.css');
+  const dir = sitePath('src');
+  for (const rel of await readdir(dir, { recursive: true })) {
+    if (!rel.endsWith('.astro')) {
+      continue;
+    }
+    for (const m of (await readFile(join(dir, rel), 'utf8')).matchAll(/data-reveal="([^"]*)"/g)) {
+      const direction = m[1] ?? '';
+      assert.ok(css.includes(`[data-reveal="${direction}"]`), `${rel}: data-reveal="${direction}"`);
+    }
+  }
 });
 
 test('the stylesheets gate motion and size the split editor with the scripts’ values', async () => {

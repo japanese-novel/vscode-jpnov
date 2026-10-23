@@ -18,7 +18,8 @@ harvested utility such as `.grid` lands on the fragments. `test/classes.test.ts`
 ```sh
 cd website
 npm ci
-npm run dev       # local server
-npm run verify    # astro check + eslint + tests + build
+npm run dev       # local server (runs gen first)
+npm run verify    # gen + astro check + eslint + tests + build
+npm run gen       # the generated modules alone; check, test and build read them without running it
 npm run fonts     # regenerate the committed Noto Serif JP subset after copy changes
 ```

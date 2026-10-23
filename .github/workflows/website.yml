@@ -53,10 +53,14 @@ jobs:
       - name: Site install
         run: npm ci
         working-directory: website
+      # The steps below are the site's `npm run verify`, split for the log.
+      - name: Site generated modules (the compiler fragments and the codicons)
+        run: npm run gen
+        working-directory: website
       - name: Site gates (astro check, lint, tests)
         run: npm run check && npm run lint && npm test
         working-directory: website
-      - name: Build (prebuild renders the compiler fragments)
+      - name: Build
         run: npm run build
         working-directory: website
       - uses: actions/upload-pages-artifact@v5

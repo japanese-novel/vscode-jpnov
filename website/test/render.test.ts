@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
 import { test } from 'node:test';
 
-import { buildRenders } from '../scripts/pipeline.ts';
-import { sitePath } from '../scripts/root.ts';
+import { readRenders, sitePath } from '../scripts/root.ts';
 import { LINKS } from '../src/copy/links.ts';
 import { BAIT_LINE } from '../src/stage/sample.ts';
 
-// pipeline.ts itself throws when a sample is missing, when the emphasised state carries anything but
-// the one indent finding, and when the product's fix-all does not give chapter1.jpnov back.
-const renders = await buildRenders();
+// What `npm run gen` wrote: pipeline.ts stops gen when a sample is missing, when the emphasised
+// state carries anything but the one indent finding, or when the product's fix-all does not give
+// chapter1.jpnov back.
+const renders = await readRenders();
 const sample = (name: keyof typeof renders.samples) => renders.samples[name];
 
 test('the emphasised stage state carries the indent finding on the bait line, with its Japanese message', () => {
