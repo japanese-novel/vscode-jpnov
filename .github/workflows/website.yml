@@ -9,14 +9,16 @@ on:
       - src/shared/**
       - src/server/**
       - src/client/webview/probe/**
-      - src/client/webview/book/main.ts
-      - src/client/book/view.ts
+      - src/client/webview/book/glyphs.ts
+      - src/client/book/counts.ts
       - src/client/protocol.ts
       - l10n/**
       - docs/specimens/**
       - resources/icon.svg
+      - resources/book.svg
       - scripts/gen*.ts
       - scripts/write.ts
+      - scripts/specimens.ts
       - package.json
       - package-lock.json
       - package.nls.ja.json

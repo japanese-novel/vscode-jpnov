@@ -69,7 +69,7 @@ const bodies = motion
   <div class="jp-win-body">
     <ActivityBar />
     <SideBar chapters={chapters} counts={counts} pending={motion ? { name: CHAPTERS[LATE_CHAPTER], counts: book.counts } : undefined} />
-    <div class:list={['jp-editors', { 'jp-split': showPreview && !motion }]} data-t="editors">
+    <div class:list={['jp-editors', { 'jp-split': showPreview && !motion }]}>
       <EditorGroup
         lines={state.editorLines}
         currentLine={currentLine}

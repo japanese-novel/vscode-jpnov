@@ -16,7 +16,6 @@ export const VSCODE = {
   statusIndent: 'スペース: 4',
   statusEncoding: 'UTF-8',
   statusEol: 'LF',
-  lintSource: 'jpnov(lint.narration.indent)',
   problems: '0',
 } as const;
 

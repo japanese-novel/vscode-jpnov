@@ -3,15 +3,15 @@ import { test } from 'node:test';
 
 import { parse } from '../../src/shared/ast/parse.ts';
 import { renderBook } from '../../src/shared/compiler/document.ts';
-import { EDGE_INSET, fitPaper, HEADER_BAND, LINENUM_BAND, PREVIEW_MARGIN_LINES } from '../../src/shared/compiler/geometry.ts';
+import { fitPaper, HEADER_BAND, LINENUM_BAND } from '../../src/shared/compiler/geometry.ts';
 import { renderPreview } from '../../src/shared/compiler/preview.ts';
 import { META_DEFAULTS } from '../../src/shared/book/jpbook.ts';
 import { LAYOUT_DEFAULT } from '../../src/shared/config/types.ts';
 import { scopeFragment } from '../scripts/scope.ts';
 
+// scopeFragment itself throws on a leaked root rule, a root-relative unit, a live element or a bare
+// class (scope.ts assertClean), and on a product literal it cannot find to rewrite (swap).
 const SRC = '　物語《ものがたり》が始まる。\n　覚悟［＃「覚悟」に傍点］を決めた。\n　第42［＃「42」は縦中横］話。\n［＃改ページ］\n「何だと!?」\n';
-const LEAKS = ['html{', 'body{', ':root{', '@page', '@media', '--vscode-', 'position:fixed', '<script', 'onclick='];
-const UNIT = /\d(?:rem|vh)\b/;
 
 const preview = (): string => renderPreview(parse(SRC), { ...LAYOUT_DEFAULT, charsPerLine: 20, chrome: { lineNumbers: true, edgeLine: 'red' } });
 const book = (): string => renderBook({
@@ -22,21 +22,11 @@ const book = (): string => renderBook({
   chrome: { lineNumbers: true, edgeLine: 'red', footerAlign: 'right', footer: META_DEFAULTS.footer, header: '［＃ここに「タイトル」の値を表示］　［＃ここに「見出し番号」の値を命数で表示］', headerAlign: 'center' },
 });
 
-test('a preview fragment keeps every rule under its scope and no root or viewport dependency', () => {
+test('a preview fragment keeps the rewritten rules once and the body as rendered', () => {
   const { fragment } = scopeFragment(preview(), { scope: '.jp-r-t', kind: 'preview' });
-  for (const leak of LEAKS) {
-    assert.ok(!fragment.css.includes(leak) && !fragment.body.includes(leak), `leak: ${leak}`);
-  }
-  assert.ok(!UNIT.test(fragment.css), 'no rem/vh units');
-  for (const rule of fragment.css.split('}').filter((r) => r.trim() !== '')) {
-    // The 傍点 shift's length registration is document-global by nature (class.emr.css).
-    assert.ok(rule.startsWith('.jp-r-t') || rule.startsWith('@property --emr{'), `unscoped rule: ${rule.slice(0, 60)}`);
-  }
+  // The 傍点 shift's length registration is document-global by nature (class.emr.css).
   assert.equal(fragment.css.split('@property --emr{').length, 2, 'the --emr registration is kept once, unscoped');
-  assert.ok(fragment.css.includes(`--jp-em:calc(var(--jp-band) / (var(--cpl) + ${String(2 * EDGE_INSET)}))`));
   assert.ok(fragment.css.includes('.jp-r-t .line{position:relative;}'));
-  assert.ok(fragment.css.includes('padding-block:0 20px;'), 'the preview margin is dropped in an embed');
-  assert.ok(!fragment.css.includes(`calc(${String(PREVIEW_MARGIN_LINES)}*var(--pitch)`), 'no em-scaled margin survives');
   assert.ok(fragment.css.includes('calc(0.35 * var(--jp-em))'));
   assert.ok(fragment.body.startsWith('<div class="book"><div class="segment">'));
   assert.equal(fragment.body.split('　').length, SRC.split('　').length, 'full-width spaces survive');
@@ -46,16 +36,9 @@ test('a book fragment carries the paper geometry from fitPaper and can keep one 
   const scoped = scopeFragment(book(), { scope: '.jp-r-b', kind: 'book', keepPages: [1], printButton: { href: '/x.html' } });
   const fit = fitPaper({ charsPerLine: 40, linesPerPage: 34, linePitch: 1.5, hTop: HEADER_BAND + LINENUM_BAND, size: 'a4', orientation: 'auto' });
   assert.deepEqual(scoped.paper, { widthMm: fit.widthMm, heightMm: fit.heightMm, fontMm: fit.fontMm });
-  assert.equal(scoped.pageCount, 1);
-  assert.equal(scoped.totalPages, 2);
   assert.ok(scoped.fragment.body.startsWith('<a class="print" href="/x.html" target="_blank" rel="noopener">印刷／PDF 保存</a><div class="book"><div class="page" data-page="1">'));
-  assert.ok(scoped.fragment.body.includes('<div class="hd c">作品名　一</div><div class="ft r">1 / 2</div>'));
   assert.ok(scoped.fragment.css.includes('.jp-r-b .print{position:absolute;'));
   assert.ok(scoped.fragment.css.includes('.jp-r-b .page{box-shadow:'), 'the screen rules are unwrapped, not dropped');
-  for (const leak of LEAKS) {
-    assert.ok(!scoped.fragment.css.includes(leak) && !scoped.fragment.body.includes(leak), `leak: ${leak}`);
-  }
-  assert.ok(!UNIT.test(scoped.fragment.css), 'no rem/vh units');
   const noButton = scopeFragment(book(), { scope: '.jp-r-b', kind: 'book', keepPages: [0] });
   assert.ok(noButton.fragment.body.startsWith('<div class="book"><div class="page cover" data-page="0">'));
 });

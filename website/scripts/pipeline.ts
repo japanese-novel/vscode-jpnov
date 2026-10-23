@@ -5,9 +5,12 @@
  */
 import { readdir } from 'node:fs/promises';
 
+import { SPECIMENS } from '../../scripts/specimens.ts';
+import type { SpecimenName } from '../../scripts/specimens.ts';
 import type { CountsVM } from '../../src/client/protocol.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
-import { checkJpbook, composeBookChrome, entryPathOf, META_DEFAULTS, parseDividerValue, parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { COVER_TEMPLATE } from '../../src/shared/book/create.ts';
+import { checkJpbook, composeBookChrome, composeBookInput, entryPaths, META_DEFAULTS, parseJpbook } from '../../src/shared/book/jpbook.ts';
 import { EDGE_INSET } from '../../src/shared/compiler/geometry.ts';
 import { bookCounts, renderBook } from '../../src/shared/compiler/document.ts';
 import type { BookInput } from '../../src/shared/compiler/document.ts';
@@ -21,11 +24,14 @@ import { colourLines } from './editor.ts';
 import { annotationHover } from './hover.ts';
 import { lintSource } from './lint.ts';
 import { readRootText, readSiteText, sitePath } from './root.ts';
-import { SAMPLES, SPECIMENS } from './samples.ts';
-import type { BookSample, PreviewSample, SpecimenName } from './samples.ts';
+import { SAMPLES } from './samples.ts';
+import type { BookSample, PreviewSample } from './samples.ts';
 import { scopeFragment } from './scope.ts';
 
 const STAGE_SCOPE = '.jp-r-stage';
+
+/** The cover `book.jpbook` lists: the product's own template, not a file in src/samples/. */
+const COVER_FILE = 'cover.jpnov';
 
 /** Every text the samples draw on, read once: src/samples/ by file name, docs/specimens/ by name. */
 interface Texts {
@@ -35,7 +41,13 @@ interface Texts {
 
 async function loadTexts(): Promise<Texts> {
   const files = await readdir(sitePath('src/samples'));
-  const samples = new Map(await Promise.all(files.map(async (file) => [file, await readSiteText(`src/samples/${file}`)] as const)));
+  if (files.includes(COVER_FILE)) {
+    throw new Error(`render: src/samples/${COVER_FILE} shadows the product's cover template; delete the file`);
+  }
+  const samples = new Map<string, string>([
+    [COVER_FILE, COVER_TEMPLATE],
+    ...(await Promise.all(files.map(async (file) => [file, await readSiteText(`src/samples/${file}`)] as const))),
+  ]);
   const specimens = new Map(await Promise.all(SPECIMENS.map(async (name) => [name, await readRootText(`docs/specimens/${name}.jpnov`)] as const)));
   const get = (map: ReadonlyMap<string, string>, key: string, what: string): string => {
     const text = map.get(key);
@@ -54,20 +66,8 @@ function bookFromJpbook(texts: Texts, name: string, chrome: BookSample['chrome']
   if (!verdict.ok) {
     throw new Error(`render: ${name} does not build: ${verdict.error.code}`);
   }
-  const files = parsed.lines.filter((pl) => pl.kind === 'ok').map((pl) => ({ name: pl.value, src: texts.sample(pl.value) }));
-  const covers = parsed.lines
-    .filter((pl) => pl.kind === 'coverEntry')
-    .map((pl) => entryPathOf(pl))
-    .filter((entry) => entry !== null)
-    .map((entry) => ({ name: entry.value, src: texts.sample(entry.value) }));
-  const input: BookInput = {
-    files,
-    divider: parseDividerValue(verdict.meta.divider),
-    title: verdict.meta.title,
-    author: verdict.meta.author,
-    ...(covers.length > 0 ? { cover: { files: covers } } : {}),
-  };
-  return { input, chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...chrome }, verdict.meta) };
+  const read = (kind: 'ok' | 'coverEntry'): BookInput['files'] => entryPaths(parsed.lines, kind).map((file) => ({ name: file, src: texts.sample(file) }));
+  return { input: composeBookInput(verdict.meta, read('ok'), read('coverEntry')), chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...chrome }, verdict.meta) };
 }
 
 function renderBookSample(texts: Texts, sample: BookSample): { render: BookRender; html: string } {
@@ -103,7 +103,6 @@ interface StageSources {
   readonly typing: string;
   readonly emphasised: string;
   readonly fixed: string;
-  readonly fixAllTitle: { readonly en: string; readonly ja: string };
 }
 
 /** The three stage states, derived from the clean chapter file; `fixed` must equal the file. */
@@ -114,19 +113,11 @@ function stageSources(texts: Texts): StageSources {
   if (lint.diagnostics.length !== 1 || lint.diagnostics[0]?.code !== 'lint.narration.indent') {
     throw new Error(`render: the emphasised state must carry exactly one indent finding, got ${JSON.stringify(lint.diagnostics.map((d) => d.code))}`);
   }
-  if (lint.fixAll?.src !== clean) {
+  if (lint.fixAll !== clean) {
     throw new Error('render: fix-all on the emphasised state does not reproduce chapter1.jpnov');
   }
-  return { typing: stateTyping(clean), emphasised, fixed: clean, fixAllTitle: lint.fixAll.title };
+  return { typing: stateTyping(clean), emphasised, fixed: clean };
 }
-
-type StageState = Extract<PreviewSample['source'], { state: string }>['state'];
-
-/** What a stage state carries beyond the common render: the fix-all's title, the annotation hover. */
-const STAGE_EXTRAS: Readonly<Partial<Record<StageState, (src: string, stage: StageSources) => Partial<PreviewRender>>>> = {
-  emphasised: (src) => ({ annotation: annotationHover(src, EMPH_LINE, EMPH_ANNOTATION) }),
-  fixed: (_src, stage) => ({ fixAll: { title: stage.fixAllTitle } }),
-};
 
 function renderPreviewSample(texts: Texts, sample: PreviewSample, stage: StageSources): PreviewRender {
   const src = 'specimen' in sample.source ? texts.specimen(sample.source.specimen) : stage[sample.source.state];
@@ -137,12 +128,13 @@ function renderPreviewSample(texts: Texts, sample: PreviewSample, stage: StageSo
   const out: PreviewRender = {
     kind: 'preview',
     src,
-    options: { charsPerLine: layout.charsPerLine, bandCells: layout.charsPerLine + 2 * EDGE_INSET },
+    bandCells: layout.charsPerLine + 2 * EDGE_INSET,
     editorLines: sample.vocabulary === undefined ? [] : colourLines(src, parseJpbook(texts.sample(sample.vocabulary)).names),
     diagnostics: sample.vocabulary === undefined ? [] : lintSource(src).diagnostics,
     preview: fragment,
   };
-  return isStage ? { ...out, ...STAGE_EXTRAS[sample.source.state]?.(src, stage) } : out;
+  // The emphasised state carries the product's hover over the annotation it types (beat 2 shows it).
+  return isStage && sample.source.state === 'emphasised' ? { ...out, annotation: annotationHover(src, EMPH_LINE, EMPH_ANNOTATION) } : out;
 }
 
 export async function buildRenders(): Promise<Renders> {
@@ -164,7 +156,7 @@ export async function buildRenders(): Promise<Renders> {
   if (book === undefined) {
     throw new Error('render: no stageBook artifact');
   }
-  return { generatedBy: 'website/scripts/render.ts', samples: samples as Readonly<Record<SampleName, SampleRender>>, artifacts: { book } };
+  return { samples: samples as Readonly<Record<SampleName, SampleRender>>, artifacts: { book } };
 }
 
 export function serialize(renders: Renders): string {

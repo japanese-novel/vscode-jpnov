@@ -59,7 +59,7 @@ test('every UI label the copy types is a string the extension ships', () => {
 });
 
 test('every 「…」 in the copy is a product label or a known name', async () => {
-  const allowed = new Set([...Object.values(UI), ...PRODUCT_STRINGS, ...QUOTED_NAMES, ...Object.values(VALUE_NAMES)]);
+  const allowed = new Set([...PRODUCT_STRINGS, ...QUOTED_NAMES, ...Object.values(VALUE_NAMES)]);
   const bad: string[] = [];
   const copy = [...await files(sitePath('src/components/sections'), /\.astro$/), ...await files(sitePath('src/pages'), /\.astro$/), sitePath('src/stage/beats.ts')];
   for (const { path, text } of await texts(copy)) {

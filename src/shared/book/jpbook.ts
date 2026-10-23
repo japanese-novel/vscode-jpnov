@@ -18,6 +18,7 @@
  */
 import type { BuildChrome, FurnitureAlign } from '../compiler/chrome.ts';
 import { FURNITURE_ALIGNS } from '../compiler/chrome.ts';
+import type { TitledBook } from '../compiler/document.ts';
 import { VALUE_NAMES, valueAnnotation, type DividerValue } from '../ast/notation.ts';
 import { scan } from '../ast/scan.ts';
 import { displayText } from '../chars.ts';
@@ -695,6 +696,32 @@ export function composeBookChrome(
     headerAlign: meta.headerAlign,
     footer: meta.footer,
     footerAlign: meta.footerAlign,
+  };
+}
+
+/**
+ * The entries of one `kind` (`'ok'` chapters or `'coverEntry'` covers) in manifest order;
+ * duplicates and muted lines are skipped, an Error line has already failed the book.
+ */
+export function entryPaths(lines: readonly ParsedLine[], kind: 'ok' | 'coverEntry'): readonly string[] {
+  return lines.flatMap((pl) => {
+    const entry = pl.kind === kind ? entryPathOf(pl) : null;
+    return entry === null ? [] : [entry.value];
+  });
+}
+
+/**
+ * The compiler's input for one book: the chapters read, with the divider and the タイトル／
+ * ペンネーム values, which are BODY-side inputs ({@link composeBookChrome} carries only the page
+ * furniture). Covers are html-only, so a book built without reading them carries no `cover`.
+ */
+export function composeBookInput(meta: JpbookMeta, files: TitledBook['files'], coverFiles: TitledBook['files']): TitledBook {
+  return {
+    files,
+    divider: parseDividerValue(meta.divider),
+    title: meta.title,
+    author: meta.author,
+    ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
   };
 }
 

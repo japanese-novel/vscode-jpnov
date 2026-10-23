@@ -131,3 +131,19 @@ export function diagCode(rule: RuleMeta): LintCode {
 export function allSettingKeys(): string[] {
   return RULES.map(settingKey);
 }
+
+/** The package.json default of a rule: `false`, `null` (off) or the first value unless the row says otherwise. */
+export function ruleDefault(rule: RuleMeta): boolean | string | null {
+  if (rule.kind === 'boolean') {
+    return rule.default === true;
+  }
+  if (rule.kind === 'threshold') {
+    return null;
+  }
+  return typeof rule.default === 'string' ? rule.default : (rule.values?.[0] ?? null);
+}
+
+/** Every setting at its shipped default: the wire map the client sends for untouched settings. */
+export function shippedLintConfig(): Readonly<Record<string, boolean | string | null>> {
+  return Object.fromEntries(RULES.map((rule) => [settingKey(rule), ruleDefault(rule)]));
+}

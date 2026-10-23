@@ -7,9 +7,8 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 import { pinEmrShift } from '../../../src/client/webview/probe/emrShift.ts';
+import { MOTION_QUERY } from '../styles/tokens.ts';
 import { buildTimeline } from './timeline.ts';
-
-const MOTION_QUERY = '(prefers-reduced-motion: no-preference) and (min-width: 56.25rem)';
 
 export function mountStage(): void {
   const root = document.querySelector<HTMLElement>('[data-motion]');

@@ -12,8 +12,8 @@ import { sitePath } from './root.ts';
 
 const CODICONS = [
   'files', 'search', 'source-control', 'debug-alt', 'extensions', 'account', 'settings-gear', 'refresh',
-  'chevron-left', 'chevron-right', 'chevron-down', 'chevron-up', 'close', 'gripper', 'checklist', 'new-file',
-  'edit', 'open-preview', 'split-horizontal', 'ellipsis', 'lightbulb', 'lightbulb-autofix', 'warning', 'error',
+  'chevron-left', 'chevron-right', 'chevron-down', 'chevron-up', 'close', 'gripper', 'new-file',
+  'open-preview', 'split-horizontal', 'ellipsis', 'lightbulb', 'lightbulb-autofix', 'warning', 'error',
   'check', 'bell', 'remote',
 ] as const;
 

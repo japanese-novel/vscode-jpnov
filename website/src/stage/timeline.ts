@@ -6,6 +6,7 @@
  */
 import { gsap } from 'gsap';
 
+import { SPLIT_EDITOR_WIDTH } from '../styles/tokens.ts';
 import { BEATS } from './beats.ts';
 import type { BeatId } from './beats.ts';
 import { around, camera, region, rowsRegion } from './lens.ts';
@@ -85,9 +86,6 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
       scrub: 0.5,
       invalidateOnRefresh: true,
       snap: { snapTo: (value, self) => snap(value, self?.progress ?? value), duration: { min: 0.15, max: 0.5 }, delay: 0.05, ease: 'power1.out' },
-      onUpdate: (self) => {
-        root.dataset.progress = self.progress.toFixed(3);
-      },
     },
   });
   for (const l of labels) {
@@ -109,7 +107,7 @@ export function buildTimeline(root: HTMLElement): gsap.core.Timeline {
   const tip = q(root, 'tip-preview');
   tl.to(tip, { autoAlpha: 1, duration: 0.15 }, t);
   tl.to(tip, { autoAlpha: 0, duration: 0.1 }, t + 0.35);
-  tl.set(editor, { width: '58%', flex: '0 0 58%' }, t + 0.35);
+  tl.set(editor, { width: SPLIT_EDITOR_WIDTH, flex: `0 0 ${SPLIT_EDITOR_WIDTH}` }, t + 0.35);
   tl.fromTo(preview, { xPercent: 100, autoAlpha: 0 }, { xPercent: 0, autoAlpha: 1, duration: 0.45, ease: 'power2.out' }, t + 0.35);
   cam.to(lines(EMPH_LINE, EMPH_LINE + 2), t + 0.9, 0.3);
   tl.set(code, { '--cur': EMPH_LINE }, t + 1.0);

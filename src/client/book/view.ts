@@ -58,6 +58,8 @@ import type {
   StateMessage,
 } from '../protocol.ts';
 
+import { formatCounts } from './counts.ts';
+
 import { BROWSER_NAMES, isBrowser, openInBrowser, PRINT_BROWSER_DEFAULT, PRINT_BROWSER_SETTINGS, printCandidates } from './browser.ts';
 import { addEntries, applyBookEdits, editEntry, editMeta, metaLabel, metaValueParts, moveEntry, removeEntryRow, type EntryNode } from './manage.ts';
 import { booksHtml } from './webviewHtml.ts';
@@ -755,15 +757,11 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     } catch {
       return null;
     }
-    if (result.counts === null) {
+    const { counts } = result;
+    if (counts === null) {
       return null;
     }
-    const n = (value: number): string => value.toLocaleString(vscode.env.language);
-    return {
-      pages: { text: vscode.l10n.t('{0} page(s)', n(result.counts.pages)), title: vscode.l10n.t('Body pages') },
-      sheets: { text: vscode.l10n.t('{0} sheet(s)', n(result.counts.sheets)), title: vscode.l10n.t('Manuscript sheets (400-character 原稿用紙)') },
-      chars: { text: vscode.l10n.t('{0} character(s)', n(result.counts.chars)), title: vscode.l10n.t('Character count') },
-    };
+    return formatCounts(counts, (key, ...args) => vscode.l10n.t(key, ...args), (value) => value.toLocaleString(vscode.env.language));
   }
 
   /** One list's rows: the listed path (the row's identity, split into name/folder for display), file

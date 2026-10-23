@@ -1,5 +1,13 @@
 ---
+import book from '../../../../resources/book.svg?raw';
 import Icon from './Icon.astro';
+
+/** The product's own view icon, inlined like the codicons: the XML comment goes, the class sizes it. */
+const SVG_TAG = '<svg ';
+if (!book.includes(SVG_TAG)) {
+  throw new Error(`ActivityBar: resources/book.svg has no "${SVG_TAG}" to class`);
+}
+const BOOK = book.replace(/<!--[\s\S]*?-->\s*/, '').replace(SVG_TAG, `${SVG_TAG}class="jp-cd" aria-hidden="true" `);
 ---
 
 <div class="jp-activity">
@@ -8,7 +16,7 @@ import Icon from './Icon.astro';
   <span class="jp-act"><Icon name="source-control" /></span>
   <span class="jp-act"><Icon name="debug-alt" /></span>
   <span class="jp-act"><Icon name="extensions" /></span>
-  <span class="jp-act jp-on"><svg class="jp-cd jp-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g stroke-width="2"><path d="M18 6.5v14"></path><path d="M12 9.5v11"></path><path d="M6 6.5v9"></path></g><path d="M9.5 4h5v3" stroke-width="1.5"></path><rect x="4.6" y="18" width="3" height="3" rx="0.6" fill="currentColor" stroke="none"></rect></svg></span>
+  <span class="jp-act jp-on" set:html={BOOK}></span>
   <span class="jp-act jp-bottom"><Icon name="account" /></span>
   <span class="jp-act"><Icon name="settings-gear" /></span>
 </div>

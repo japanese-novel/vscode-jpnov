@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import {
   completeEntryLine,
   checkJpbook,
+  completeMeta,
   completeMetaLine,
   composeBookChrome,
+  composeBookInput,
+  entryPaths,
   ITEM_MARKS,
   entryIdentity,
   inlineKeyOf,
@@ -803,4 +806,19 @@ test('completeMetaLine offers the preset marks after "divider:"', () => {
   const first = complete('divider: ')[0];
   assert.ok(first);
   assert.equal(first.kind, 'value');
+});
+
+// --- entryPaths / composeBookInput: the build's inputs ---------------------------
+
+test('entryPaths lists the entries of one kind in manifest order, duplicates skipped', () => {
+  const parsed = parseJpbook(`${metaWith('cover:\n  - c.jpnov')}a.jpnov\nb.jpnov\na.jpnov\n`);
+  assert.deepEqual(entryPaths(parsed.lines, 'ok'), ['a.jpnov', 'b.jpnov']);
+  assert.deepEqual(entryPaths(parsed.lines, 'coverEntry'), ['c.jpnov']);
+});
+
+test('composeBookInput carries the body-side values and a cover only when one was read', () => {
+  const bookMeta = completeMeta(parseJpbook(meta({ divider: '［＃３字下げ］＊' })));
+  const files = [{ name: 'a.jpnov', src: '' }];
+  assert.deepEqual(composeBookInput(bookMeta, files, []), { files, divider: { mark: '＊', indent: 3 }, title: '作品名', author: bookMeta.author });
+  assert.deepEqual(composeBookInput(bookMeta, files, files).cover, { files });
 });

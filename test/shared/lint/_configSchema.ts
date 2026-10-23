@@ -24,7 +24,7 @@ import {
 } from '../../../src/shared/config/types.ts';
 import { TXT_ENCODINGS, TXT_ENCODING_DEFAULT } from '../../../src/shared/encoding.ts';
 import { PRINT_BROWSER_DEFAULT, PRINT_BROWSER_SETTINGS } from '../../../src/client/book/browser.ts';
-import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
+import { RULES, ruleDefault, settingKey } from '../../../src/shared/lint/catalog.ts';
 import type { RuleMeta, Scope } from '../../../src/shared/lint/catalog.ts';
 
 /**
@@ -51,29 +51,20 @@ export function enumDescriptionKey(rule: RuleMeta, value: string): string {
 
 /** The JSON-schema property for one rule (boolean / nullable-integer threshold / string enum). */
 function propertyFor(rule: RuleMeta, order: number): Record<string, unknown> {
-  const markdownDescription = `%${ruleDescriptionKey(rule)}%`;
+  const base = { default: ruleDefault(rule), order, markdownDescription: `%${ruleDescriptionKey(rule)}%` };
   if (rule.kind === 'boolean') {
-    return { type: 'boolean', default: rule.default === true, order, markdownDescription };
+    return { type: 'boolean', ...base };
   }
   if (rule.kind === 'threshold') {
-    return {
-      type: ['integer', 'null'],
-      default: null,
-      minimum: rule.min,
-      maximum: rule.max,
-      order,
-      markdownDescription,
-    };
+    return { type: ['integer', 'null'], minimum: rule.min, maximum: rule.max, ...base };
   }
   const values = rule.values ?? [];
   return {
     type: 'string',
     enum: values,
-    default: typeof rule.default === 'string' ? rule.default : values[0],
     enumItemLabels: values.map((v) => `%${enumLabelKey(rule, v)}%`),
     enumDescriptions: values.map((v) => `%${enumDescriptionKey(rule, v)}%`),
-    order,
-    markdownDescription,
+    ...base,
   };
 }
 

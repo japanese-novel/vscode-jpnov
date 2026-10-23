@@ -12,11 +12,14 @@ import Sprite from './Sprite.astro';
 import Window from './Window.astro';
 
 const stage = sampleOf('stageEmphasised', 'preview');
+const book = sampleOf('stageBook', 'book');
 ---
 
 <section class="jp-stage" aria-labelledby="stage-h">
   <Sprite />
+  {/* The fragments' stylesheets once each: PageLayer is placed twice below. */}
   <style is:inline set:html={stage.preview.css}></style>
+  <style is:inline set:html={book.fragment.css}></style>
   <h2 id="stage-h" class="jp-sr-only">{STAGE_HEADING}</h2>
 
   <div class="jp-stage-motion" data-motion>

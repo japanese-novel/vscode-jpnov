@@ -3,7 +3,7 @@
  * so the reconstructed editor paints what VS Code paints for the same source and cast.
  */
 import { createRecognizer } from '../../src/server/highlight/recognizer.ts';
-import { buildSemanticTokens, SEMANTIC_LEGEND } from '../../src/server/semanticTokens.ts';
+import { buildSemanticTokens, HIGHLIGHTS, SEMANTIC_LEGEND } from '../../src/server/semanticTokens.ts';
 import { parse } from '../../src/shared/ast/parse.ts';
 import type { ParsedJpbook } from '../../src/shared/book/jpbook.ts';
 import { keywordSurface, nameSurfaces } from '../../src/shared/book/names.ts';
@@ -12,13 +12,12 @@ import type { EditorLine, EditorToken, TokenKind } from './contract.ts';
 /** A book's `characters:` / `keywords:` lists, as the product parses them. */
 export type Vocabulary = ParsedJpbook['names'];
 
-/** LSP token type → contract kind (the legend is the product's; see semanticTokens.ts HIGHLIGHTS). */
-const KIND_OF: Readonly<Record<string, TokenKind>> = {
-  comment: 'marker',
-  keyword: 'directive',
-  variable: 'character',
-  operator: 'keyword',
-};
+/** LSP token type → contract kind, from the product's table; `direction` shares `comment` with `marker` and paints as it. Any other shared type is a new row the site has to place. */
+const PAINTED = HIGHLIGHTS.filter((h) => h.kind !== 'direction');
+const KIND_OF: Readonly<Record<string, TokenKind>> = Object.fromEntries(PAINTED.map((h) => [h.lsp, h.kind]));
+if (Object.keys(KIND_OF).length !== PAINTED.length) {
+  throw new Error('editor: two highlight kinds share one LSP token type');
+}
 
 interface Span {
   readonly line: number;

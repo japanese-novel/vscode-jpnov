@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { CancellationToken } from 'vscode-languageserver/node';
 
-import { checkJpbook, completeMeta, composeBookChrome, entryPathOf, jpbookStem, parseDividerValue, parseJpbook } from '#/shared/book/jpbook.ts';
+import { checkJpbook, completeMeta, composeBookChrome, composeBookInput, entryPaths, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
 import { bookCounts, concatBookText, renderBook } from '#/shared/compiler/document.ts';
 import type { TitledBook } from '#/shared/compiler/document.ts';
@@ -243,11 +243,8 @@ async function readEntries(
   token?: CancellationToken,
 ): Promise<{ name: string; src: string }[]> {
   const files: { name: string; src: string }[] = [];
-  for (const pl of lines) {
-    const entry = pl.kind === kind ? entryPathOf(pl) : null;
-    if (entry !== null) {
-      files.push({ name: entry.value, src: await readEntry(ctx, dirUri, entry.value, token) });
-    }
+  for (const name of entryPaths(lines, kind)) {
+    files.push({ name, src: await readEntry(ctx, dirUri, name, token) });
   }
   return files;
 }
@@ -345,20 +342,12 @@ async function buildBook(
     if (!verdict.ok) {
       return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...verdict.error } };
     }
-    // The divider and the タイトル／ペンネーム values are BODY-side inputs and ride the
-    // BookInput; composeBookChrome carries only the page furniture. Covers are html-only, so a
-    // missing cover file cannot fail a txt/epub build; chapters read first, so a book missing
-    // both reports the same error whichever format is built.
+    // Covers are html-only, so a missing cover file cannot fail a txt/epub build; chapters read
+    // first, so a book missing both reports the same error whichever format is built.
     const { meta } = verdict;
     const files = await readEntries(ctx, dirUri, parsed.lines, 'ok', token);
     const coverFiles = selection.format === 'html' ? await readEntries(ctx, dirUri, parsed.lines, 'coverEntry', token) : [];
-    const input: TitledBook = {
-      files,
-      divider: parseDividerValue(meta.divider),
-      title: meta.title,
-      author: meta.author,
-      ...(coverFiles.length > 0 ? { cover: { files: coverFiles } } : {}),
-    };
+    const input = composeBookInput(meta, files, coverFiles);
     return { kind: 'artifact', outDir: book.outDirUri, artifact: emitArtifact(book.outDirUri, selection, book.stem, input, meta) };
   } catch (cause) {
     return { kind: 'error', error: { book: book.fileRel, uri: book.uri, ...toBuildMessage(cause) } };
@@ -420,8 +409,7 @@ export async function handleBookCounts(ctx: ServerContext, params: BookCountsPar
     const files = await readEntries(ctx, parentUri(params.uri), parsed.lines, 'ok', token);
     // The chapters take the book's タイトル／ペンネーム completed as a build completes them, so the
     // figures count the same text the cover's 総ページ数 reports.
-    const { title, author, divider } = completeMeta(parsed);
-    return { counts: bookCounts({ files, divider: parseDividerValue(divider), title, author }, resolveHtmlSettings(params.settings)) };
+    return { counts: bookCounts(composeBookInput(completeMeta(parsed), files, []), resolveHtmlSettings(params.settings)) };
   } catch {
     return { counts: null };
   }
