@@ -6,9 +6,9 @@
  * a per-piece rule sees one contiguous piece, and a `raw` rule sees the document source, so its
  * spans already ARE source offsets.
  */
-import { isHiragana, isKatakana } from '../../shared/chars.ts';
+import { codePoints, isHiragana, isKatakana } from '../../shared/chars.ts';
 import { isDashMode } from '../../shared/config/types.ts';
-import { DASH_BY_MODE, DASH_CHARS } from '../../shared/dash.ts';
+import { DASH_BY_MODE, DASH_CODES } from '../../shared/dash.ts';
 import { unencodableChars } from '../../shared/encoding.ts';
 import { modeOf } from '../../shared/lint/select.ts';
 import type { ActiveRule } from '../../shared/lint/select.ts';
@@ -69,7 +69,7 @@ const DASH_LOOKALIKES = new Set(['－', '–']);
 
 /** What a dash run is made of, as UTF-16 units: every dash glyph and look-alike is one unit, and a
  *  numeric lookup spares the per-character string a `charAt` on kana or kanji would allocate. */
-const DASH_RUN = new Set([...DASH_CHARS, ...DASH_LOOKALIKES].map((ch) => ch.charCodeAt(0)));
+const DASH_RUN = new Set([...DASH_CODES, ...codePoints(DASH_LOOKALIKES)]);
 
 /** Flags a maximal run of dash characters (mixed spellings and look-alikes included) unless it is
  *  an even-length run of the chosen glyph; the fix rewrites the run in that glyph, rounding an odd

@@ -389,6 +389,7 @@ test('a render that failed while the server was down is repainted once it runs (
 
   client.crash();
   client.renderError = new Error('Pending response rejected since connection got disposed');
+  state.config['jpnov.layout.charsPerLine'] = 30;
   configChanged('jpnov.layout.charsPerLine');
   await tick();
   assert.equal(client.renders.length, 2);

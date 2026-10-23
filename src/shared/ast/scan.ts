@@ -23,6 +23,14 @@ import type { Eol, RubyReadingNode, ScanIssue, Span, Syntax, SyntaxLine, SyntaxN
 import { ANNOTATION_CLOSE, ANNOTATION_OPEN, BASE_MARK, GAIJI_MARK, RUBY_CLOSE, RUBY_OPEN, gaijiChar } from './notation.ts';
 import { Cutter } from './parts.ts';
 
+// The delimiters as UTF-16 units: the loop compares numbers, so a kana or a kanji allocates no string.
+// Each is one unit, which the search for a closer counts on.
+const ANNOTATION_OPEN_UNIT = ANNOTATION_OPEN.charCodeAt(0);
+const ANNOTATION_CLOSE_UNIT = ANNOTATION_CLOSE.charCodeAt(0);
+const BASE_MARK_UNIT = BASE_MARK.charCodeAt(0);
+const RUBY_OPEN_UNIT = RUBY_OPEN.charCodeAt(0);
+const RUBY_CLOSE_UNIT = RUBY_CLOSE.charCodeAt(0);
+
 // Implicit ruby-base detection
 
 type CharClass = 'kanji' | 'hiragana' | 'katakana' | 'alnum' | null;
@@ -130,11 +138,14 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
   let runStart = from; // the pending text run is [runStart, i)
   let held: OpenBase | null = null;
 
-  // Every delimiter search stays inside the line.
-  const line = src.slice(from, to);
-  const find = (needle: string, at: number): number => {
-    const k = line.indexOf(needle, at - from);
-    return k === -1 ? -1 : k + from;
+  /** Where the one-unit closer `unit` first occurs in `[at, to)`, or -1: every delimiter search stays inside the line. */
+  const find = (unit: number, at: number): number => {
+    for (let k = at; k < to; k += 1) {
+      if (src.charCodeAt(k) === unit) {
+        return k;
+      }
+    }
+    return -1;
   };
 
   const text = (start: number, end: number): TextNode => ({ kind: 'text', span: { start, end }, text: src.slice(start, end) });
@@ -169,10 +180,10 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
   let tcyOpen = false; // a 縦中横 span closes with its line, so the scanner can follow it
   let i = from;
   while (i < to) {
-    const ch = src.charAt(i);
+    const unit = src.charCodeAt(i);
 
-    if (src.startsWith(ANNOTATION_OPEN, i)) {
-      const close = find(ANNOTATION_CLOSE, i + ANNOTATION_OPEN.length);
+    if (unit === ANNOTATION_OPEN_UNIT && src.startsWith(ANNOTATION_OPEN, i)) {
+      const close = find(ANNOTATION_CLOSE_UNIT, i + ANNOTATION_OPEN.length);
       if (close === -1) {
         release();
         flush(nodes, i);
@@ -202,7 +213,7 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
       continue;
     }
 
-    if (ch === BASE_MARK) {
+    if (unit === BASE_MARK_UNIT) {
       release(); // the last ｜ before a 《 wins
       held = { beforeStart: runStart, at: i, nodes: [] };
       runStart = i + BASE_MARK.length;
@@ -210,8 +221,8 @@ function scanLine(src: string, from: number, to: number, issues: ScanIssue[]): S
       continue;
     }
 
-    if (ch === RUBY_OPEN && !readingsEnded) {
-      const close = find(RUBY_CLOSE, i + RUBY_OPEN.length);
+    if (unit === RUBY_OPEN_UNIT && !readingsEnded) {
+      const close = find(RUBY_CLOSE_UNIT, i + RUBY_OPEN.length);
       if (close === -1) {
         readingsEnded = true;
         i += RUBY_OPEN.length; // no 》 on this line: text

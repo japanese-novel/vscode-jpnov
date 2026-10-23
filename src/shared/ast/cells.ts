@@ -104,8 +104,8 @@ export class LineCells {
   private readonly cells: Cell[] = [];
   /** `ends[i]`: the text length of `cells[0..i]`; a zero-width cell repeats the one before. */
   private readonly ends: number[] = [];
-  /** Per target: the text length searched, and the last occurrence found below it (-1: none). */
-  private readonly searched = new Map<string, { upTo: number; pos: number }>();
+  /** Per target: the text length searched, and the last occurrence found below it (-1: none). Made by the first search: most lines bind no postfix. */
+  private searched: Map<string, { upTo: number; pos: number }> | undefined;
 
   get items(): readonly Cell[] {
     return this.cells;
@@ -149,7 +149,8 @@ export class LineCells {
 
   /** The start of the last occurrence of `target` in the concatenated text, or -1. */
   private find(target: string): number {
-    const entry = this.searched.get(target);
+    const searched = (this.searched ??= new Map<string, { upTo: number; pos: number }>());
+    const entry = searched.get(target);
     // Read back from the end, each stretch as long as all read before it: the last occurrence is
     // met first, long before the head of a long line. Text searched for this target before is
     // read again only as far as an occurrence could straddle its edge.
@@ -176,7 +177,7 @@ export class LineCells {
     if (pos === -1 && entry !== undefined) {
       pos = entry.pos;
     }
-    this.searched.set(target, { upTo: this.textLength, pos });
+    searched.set(target, { upTo: this.textLength, pos });
     return pos;
   }
 

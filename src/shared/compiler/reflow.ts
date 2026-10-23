@@ -25,6 +25,7 @@ import {
   type Row,
   type RubyText,
   type Unit,
+  UnitPatcher,
 } from './layout.ts';
 
 /** `text`, or null when it is empty or all whitespace. */
@@ -48,54 +49,44 @@ export interface ReflowSegment {
  */
 function reflowRubyHtml(r: RubyText): string {
   if (r.left === undefined) {
-    return `<ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right ?? '')}</rt></ruby>`;
+    return `<ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right?.text ?? '')}</rt></ruby>`;
   }
-  const left = `<rt>${escapeHtml(r.left)}</rt>`;
+  const left = `<rt>${escapeHtml(r.left.text)}</rt>`;
   if (r.right === undefined) {
     return `<ruby class="ru">${escapeHtml(r.base)}${left}</ruby>`;
   }
-  return `<ruby class="ru"><ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right)}</rt></ruby>${left}</ruby>`;
+  return `<ruby class="ru"><ruby>${escapeHtml(r.base)}<rt>${escapeHtml(r.right.text)}</rt></ruby>${left}</ruby>`;
 }
 
 /**
- * Rewrites one unit for the reflow output: ruby markup is regenerated (native in every form;
- * `ru` marks a left/both-side unit for class.ruby-u.css).
- */
-function reflowUnit(u: Unit): Unit {
-  if (u.ruby !== undefined) {
-    return { ...u, html: reflowRubyHtml(u.ruby), cssClass: u.ruby.left === undefined ? undefined : 'ru' };
-  }
-  return u;
-}
-
-/**
- * Binds each maximal same-class, same-channel 分離禁止 run (length ≥ 2) into ONE `.insep`
- * nowrap unit. The engine's atomic-unit binding is a wrap-time concern; here the reading
- * system wraps, and CSS `line-break` does not reliably bind these pairs. Held regardless of
+ * A row's units for the reflow output, in one pass: each maximal same-class, same-channel 分離禁止
+ * run (length ≥ 2) bound into ONE `.insep` nowrap unit, each ruby unit's markup regenerated (native
+ * in every form; `ru` marks a left/both-side unit for class.ruby-u.css). Returns `units` itself when
+ * nothing changes — most rows. The engine's atomic-unit binding is a wrap-time concern; here the
+ * reading system wraps, and CSS `line-break` does not reliably bind these pairs. Held regardless of
  * the kinsoku mode — a split —— is broken ink, not a looser tier.
  */
-function bindInsepRuns(units: readonly Unit[]): Unit[] {
-  const out: Unit[] = [];
-  let i = 0;
-  while (i < units.length) {
+function reflowUnits(units: readonly Unit[]): readonly Unit[] {
+  const patch = new UnitPatcher(units);
+  for (let i = 0; i < units.length;) {
     const head = units[i];
     if (head === undefined) {
       i += 1;
       continue;
     }
-    const cls = insepClass(head, { bang: false });
+    const cls = insepClass(head, false);
     const end = cls === undefined ? i + 1 : insepRunEnd(units, head, i, cls, false);
     if (end - i >= 2) {
       // The run html joins member html (each one escaped glyph; a dash unit's is the translated
       // em dash) — rebuilding it from `text` would smuggle the source glyphs back in.
       const merged = mergeRun(units, head, i, end);
-      out.push({ ...merged, html: `<span class="insep">${merged.html}</span>`, cssClass: 'insep' });
-    } else {
-      out.push(head);
+      patch.replace(i, end, { ...merged, html: `<span class="insep">${merged.html}</span>`, cssClass: 'insep' });
+    } else if (head.ruby !== undefined) {
+      patch.replace(i, end, { ...head, html: reflowRubyHtml(head.ruby), cssClass: head.ruby.left === undefined ? undefined : 'ru' });
     }
     i = end;
   }
-  return out;
+  return patch.done();
 }
 
 /**
@@ -138,7 +129,7 @@ export function reflowSegments(
     if (indent > 0) {
       used.add(`indent-${String(indent)}`);
     }
-    const inner = emitUnits(bindInsepRuns(row.units.map(reflowUnit)), used);
+    const inner = emitUnits(reflowUnits(row.units), used).html;
     if (row.heading !== undefined && heading === null) {
       // The label is a nav entry, where the spaces of a ［＃○字下げ］ or a typed indent have no
       // place: the row's text trimmed. The <hN> keeps them, as the paginated page shows them.

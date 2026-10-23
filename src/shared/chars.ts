@@ -100,18 +100,60 @@ export function clustersOf(text: string): Intl.Segments {
 
 /**
  * The blocks a manuscript is made of, less every code point that joins a cluster
- * (Grapheme_Cluster_Break=Other, https://www.unicode.org/reports/tr29/): a text of these alone is one
- * cluster per code point. The holes (U+302A-302F, U+3099-309A, U+FF9E-FF9F, U+200C-200D, the astral
- * planes) are what the segmenter must still see.
+ * (Grapheme_Cluster_Break=Other, https://www.unicode.org/reports/tr29/), as inclusive ranges of
+ * UTF-16 units in ascending order: a text of these alone is one cluster per code point. The holes
+ * (U+302A-302F, U+3099-309A, U+FF9E-FF9F, U+200C-200D, the astral planes) are what the segmenter
+ * must still see. The one table behind {@link SINGLETONS} and {@link isSingletonUnit}.
  */
-export const SINGLETONS = /^[\u0020-\u007E\u00A1-\u00AC\u00AE-\u00FF\u2010-\u2027\u2030-\u205E\u2460-\u2BFF\u3000-\u3029\u3030-\u3098\u309B-\u30FF\u3200-\u33FF\u3400-\u9FFF\uF900-\uFAFF\uFF01-\uFF5E\uFF61-\uFF9D]*$/;
+const SINGLETON_RANGES: readonly (readonly [number, number])[] = [
+  [0x0020, 0x007e],
+  [0x00a1, 0x00ac],
+  [0x00ae, 0x00ff],
+  [0x2010, 0x2027],
+  [0x2030, 0x205e],
+  [0x2460, 0x2bff],
+  [0x3000, 0x3029],
+  [0x3030, 0x3098],
+  [0x309b, 0x30ff],
+  [0x3200, 0x33ff],
+  [0x3400, 0x9fff],
+  [0xf900, 0xfaff],
+  [0xff01, 0xff5e],
+  [0xff61, 0xff9d],
+];
+
+/** Matches a text made of {@link SINGLETON_RANGES} alone: one cluster per code point, no segmenter needed. */
+export const SINGLETONS = new RegExp(
+  `^[${SINGLETON_RANGES.map(([lo, hi]) => `\\u${lo.toString(16).padStart(4, '0')}-\\u${hi.toString(16).padStart(4, '0')}`).join('')}]*$`,
+);
+
+/** {@link SINGLETON_RANGES} as one byte per UTF-16 unit: a lookup, for a walk over code units. */
+const SINGLETON_UNITS = new Uint8Array(0x10000);
+for (const [lo, hi] of SINGLETON_RANGES) {
+  SINGLETON_UNITS.fill(1, lo, hi + 1);
+}
+
+/** Whether the UTF-16 unit `unit` is in {@link SINGLETON_RANGES}: a character that joins no cluster, so the unit before it ends its cluster there. */
+export function isSingletonUnit(unit: number): boolean {
+  return SINGLETON_UNITS[unit] === 1;
+}
+
+/** The code points of `chars` as a Set: the table a walk over code units reads by number, allocating no string per unit. */
+export function codePoints(chars: Iterable<string>): Set<number> {
+  return new Set(Array.from(chars, (c) => c.codePointAt(0) ?? 0));
+}
 
 /**
  * The grapheme clusters of `text` (UAX #29): what one square of the page grid holds. A kanji and
  * its variation selector, an emoji sequence, a kana and a mark that composes nothing are one each.
  */
 export function graphemes(text: string): string[] {
-  return SINGLETONS.test(text) ? Array.from(text) : Array.from(GRAPHEMES.segment(text), (s) => s.segment);
+  return Array.from(clusterStrings(text));
+}
+
+/** The clusters of `text` as an iterable: the string itself when it is singletons alone (each code point one cluster), else the segmenter's. */
+export function clusterStrings(text: string): Iterable<string> {
+  return SINGLETONS.test(text) ? text : Iterator.from(GRAPHEMES.segment(text)).map((s) => s.segment);
 }
 
 /** How many clusters `text` holds: the squares it takes on the grid, without listing them. */
@@ -131,7 +173,7 @@ export function isClusterBoundary(text: string, at: number): boolean {
   if (at <= 0 || at >= text.length) {
     return false;
   }
-  return SINGLETONS.test(text.slice(at - 1, at + 1)) || clustersOf(text).containing(at)?.index === at;
+  return (isSingletonUnit(text.charCodeAt(at - 1)) && isSingletonUnit(text.charCodeAt(at))) || clustersOf(text).containing(at)?.index === at;
 }
 
 /**

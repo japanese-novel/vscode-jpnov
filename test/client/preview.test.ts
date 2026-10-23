@@ -30,6 +30,7 @@ import {
   tick,
   Uri,
   ViewColumn,
+  type FakeTextDocument,
   type FakeWebviewPanel,
 } from './_vscodeMock.ts';
 
@@ -53,6 +54,12 @@ function fakeClient(html: string): { sendRequest: () => Promise<{ html: string }
 /** Waits out the render debounce that edits and widget changes share. */
 function settle(): Promise<void> {
   return new Promise((r) => setTimeout(r, 150));
+}
+
+/** An edit to `document`: a new version, then the change event, as VS Code reports one. */
+function edit(document: FakeTextDocument): void {
+  document.version += 1;
+  state.onDidChangeDoc.fire({ document });
 }
 
 const SERVER_HTML =
@@ -275,11 +282,11 @@ test('the 傍点 probe <script> at the body\'s end gets the nonce; escaped tags 
 test('a debounced render that fires while one is in flight waits, and goes out once after that one lands (#183)', async () => {
   const client = gatedClient(SERVER_HTML); // the opening render resolves at once; the rest wait
   const { panel, document } = await openWith(client);
-  state.onDidChangeDoc.fire({ document });
+  edit(document);
   await settle(); // render 2 is in flight
-  state.onDidChangeDoc.fire({ document });
+  edit(document);
   await settle();
-  state.onDidChangeDoc.fire({ document });
+  edit(document);
   await settle();
   assert.equal(client.params.length, 2, 'the edits made meanwhile wait behind the render in flight');
   client.release();
@@ -335,7 +342,7 @@ test('an edit re-render while the editor is momentarily invisible keeps the last
   // visibleTextEditors together, and an edit lands; the followed editor still has its cursor.
   state.activeEditor = undefined;
   state.visibleEditors.length = 0;
-  state.onDidChangeDoc.fire({ document: d });
+  edit(d);
   await settle();
   assert.deepEqual(bakedCursor(firstPanel()), [6, 0]);
 });
@@ -346,7 +353,7 @@ test('a re-render while the panel has focus bakes the followed editor\'s cursor'
   state.onDidChangeSelection.fire({ textEditor: editor, selections: editor.selections });
 
   state.activeEditor = undefined; // the panel took focus; the edit comes from elsewhere
-  state.onDidChangeDoc.fire({ document: editor.document });
+  edit(editor.document);
   await settle();
   assert.deepEqual(bakedCursor(panel), [9, 5]);
 });
@@ -370,7 +377,7 @@ test('a render follows the editor being typed in, not the first visible one, on 
   second.selections = [{ active: { line: 30, character: 5 } }];
   state.onDidChangeSelection.fire({ textEditor: second, selections: second.selections });
   assert.deepEqual(findReveal(firstPanel()), { type: 'reveal', uri: 'file:///proj/src/a.jpnov', line: 30, character: 5 });
-  state.onDidChangeDoc.fire({ document: d });
+  edit(d);
   await settle();
   assert.deepEqual(bakedCursor(firstPanel()), [30, 5], 'the re-render stays with the editor being typed in');
 });
@@ -546,7 +553,8 @@ test('a re-render of a restored document keeps the restored cursor while no edit
   await tick();
   assert.equal(client.renders, 1);
 
-  preview.refresh(); // a setting changed while the server started, or the server came back
+  state.config['jpnov.layout.charsPerLine'] = 30;
+  preview.refresh(); // a setting changed while the server started
   await tick();
   assert.equal(client.renders, 2);
   assert.deepEqual(bakedCursor(panel), [5, 3]);
@@ -731,7 +739,7 @@ test('adoption wires the live-update listeners (edit re-render + cursor reveal)'
   assert.equal(client.renders, 1);
 
   // An edit to the shown document re-renders — after the 120ms typing debounce settles.
-  state.onDidChangeDoc.fire({ document: d });
+  edit(d);
   await settle();
   assert.equal(client.renders, 2);
 
@@ -805,14 +813,19 @@ test('renderDocument ships the settings snapshot on the renderFile request', asy
   });
 });
 
-test('refresh() re-renders the shown document with fresh settings', async () => {
+test('refresh() re-renders the shown document with fresh settings, and not with the same ones', async () => {
   const client = countingClient(SERVER_HTML);
   const { preview } = await openWith(client);
   assert.equal(client.renders, 1);
 
+  state.config['jpnov.layout.charsPerLine'] = 30;
   preview.refresh();
   await tick();
   assert.equal(client.renders, 2);
+
+  preview.refresh();
+  await tick();
+  assert.equal(client.renders, 2, 'the webview holds this render already');
 });
 
 test('refresh() with nothing shown is a no-op', async () => {
@@ -890,7 +903,7 @@ test('a widget change re-renders with the override, re-focuses its input once, a
   assert.equal(lastAdjustedContext(), true);
 
   // An edit-driven render keeps the override but must not pull focus into the widget.
-  state.onDidChangeDoc.fire({ document });
+  edit(document);
   await settle();
   assert.equal(client.params.length, 3);
   assert.equal(client.params[2]?.settings.charsPerLine, 42);
@@ -1182,4 +1195,157 @@ test('closing the panel drops the overrides: the next panel renders from the set
   assert.ok(second, 'a fresh panel');
   assert.equal(client.params.at(-1)?.settings.charsPerLine, 40);
   assert.equal(readInit(second).layout.adjusted, false);
+});
+
+test('an editor switch to the shown document at the same version and settings posts the cursor and renders nothing (#260)', async () => {
+  const client = countingClient(SERVER_HTML);
+  const { panel, document } = await openWith(client);
+  assert.equal(client.renders, 1);
+
+  // The same document in a second group: the webview already holds this version at these settings.
+  state.onDidChangeActiveEditor.fire(editorAt(document, 5, 2, 2));
+  await tick();
+
+  assert.equal(client.renders, 1, 'nothing new to paint');
+  assert.deepEqual(findReveal(panel), { type: 'reveal', uri: 'file:///proj/src/a.jpnov', line: 5, character: 2 }, 'the new editor\'s cursor is followed');
+});
+
+test('an editor switch renders when the buffer version or the settings moved since the render (#260)', async () => {
+  const client = countingClient(SERVER_HTML);
+  const { document, editor } = await openWith(client);
+
+  document.version += 1;
+  state.onDidChangeActiveEditor.fire(editorAt(document, 1, 0, 2));
+  await tick();
+  assert.equal(client.renders, 2, 'the buffer changed since the render');
+
+  state.config['jpnov.layout.charsPerLine'] = 30;
+  state.onDidChangeActiveEditor.fire(editor);
+  await tick();
+  assert.equal(client.renders, 3, 'the settings changed since the render');
+
+  state.onDidChangeActiveEditor.fire(editorAt(document, 0, 0, 2));
+  await tick();
+  assert.equal(client.renders, 3, 'nothing moved since');
+});
+
+test('an editor switch back to a document renders when another document was shown meanwhile (#260)', async () => {
+  const client = countingClient(SERVER_HTML);
+  const { editor } = await openWith(client);
+  const b = doc('file:///proj/src/b.jpnov', 'jpnov', 'y');
+  state.textDocuments.push(b);
+
+  state.onDidChangeActiveEditor.fire(editorAt(b));
+  await tick();
+  assert.equal(client.renders, 2);
+  state.onDidChangeActiveEditor.fire(editor);
+  await tick();
+  assert.equal(client.renders, 3, 'the webview holds b.jpnov, not a.jpnov');
+});
+
+test('a failed render leaves nothing to skip: the next editor switch renders (#260)', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { document } = await openWith(client);
+  client.fail = new Error('Pending response rejected since connection got disposed');
+  edit(document);
+  await settle();
+  assert.equal(client.params.length, 2);
+
+  client.fail = undefined;
+  state.onDidChangeActiveEditor.fire(editorAt(document, 0, 0, 2));
+  await tick();
+  assert.equal(client.params.length, 3, 'the webview shows the failure shell, not the document');
+});
+
+test('edits while the panel is hidden render nothing, and the panel paints once when it shows (#260)', async () => {
+  const client = countingClient(SERVER_HTML);
+  const { panel, document } = await openWith(client);
+
+  panel.setVisible(false);
+  edit(document);
+  await settle();
+  edit(document);
+  await settle();
+  assert.equal(client.renders, 1, 'nobody sees a hidden panel');
+
+  panel.setVisible(true);
+  await tick();
+  assert.equal(client.renders, 2, 'one render for the edits made while hidden');
+
+  panel.setVisible(false);
+  panel.setVisible(true);
+  await tick();
+  assert.equal(client.renders, 2, 'nothing was skipped: nothing to paint');
+});
+
+test('an editor switch while the panel is hidden shows that document when the panel shows (#260)', async () => {
+  const client = capturingClient(SERVER_HTML);
+  const { panel } = await openWith(client);
+  const b = doc('file:///proj/src/b.jpnov', 'jpnov', 'y');
+  state.textDocuments.push(b);
+
+  panel.setVisible(false);
+  state.onDidChangeActiveEditor.fire(editorAt(b));
+  await tick();
+  assert.equal(client.params.length, 1, 'hidden: no render');
+
+  panel.setVisible(true);
+  await tick();
+  assert.deepEqual(client.params.map((p) => p.uri), ['file:///proj/src/a.jpnov', 'file:///proj/src/b.jpnov']);
+  assert.equal(panel.title, 'b.jpnov — Preview');
+});
+
+test('a skipped editor switch drops a render still in flight for another document (#260)', async () => {
+  const client = gatedClient(SERVER_HTML); // the opening render resolves at once; the rest wait
+  const { panel, document, editor } = await openWith(client);
+  const b = doc('file:///proj/src/b.jpnov', 'jpnov', 'y');
+  state.textDocuments.push(b);
+
+  state.onDidChangeActiveEditor.fire(editorAt(b));
+  await tick(); // b.jpnov's render is in flight
+  state.onDidChangeActiveEditor.fire(editor); // back to a.jpnov, which the webview still holds
+  await tick();
+  client.release({ html: SERVER_HTML.replace('本文', '別の本文') });
+  await tick();
+
+  assert.equal(client.params.length, 2, 'the switch back rendered nothing');
+  assert.match(panel.webview.html, /<p>本文<\/p>/, 'b.jpnov\'s late render did not land');
+  assert.equal(panel.title, 'a.jpnov — Preview');
+  edit(document);
+  await settle();
+  assert.equal(client.params.length, 3, 'the panel is live on a.jpnov');
+});
+
+test('closing the shown document forgets what the webview holds: a reopened one at version 1 renders (#260)', async () => {
+  const client = countingClient(SERVER_HTML);
+  const { document } = await openWith(client);
+
+  state.onDidCloseDoc.fire(document);
+  const reopened = doc('file:///proj/src/a.jpnov', 'jpnov', 'changed on disk meanwhile');
+  state.textDocuments.push(reopened);
+  state.onDidChangeActiveEditor.fire(editorAt(reopened));
+  await tick();
+  assert.equal(client.renders, 2, 'version 1 again, but not the same document');
+});
+
+test('switches while hidden paint nothing on show when the document is still what the webview holds (#260)', async () => {
+  const client = countingClient(SERVER_HTML);
+  const { panel, document, editor } = await openWith(client);
+  const b = doc('file:///proj/src/b.jpnov', 'jpnov', 'y');
+  state.textDocuments.push(b);
+
+  panel.setVisible(false);
+  state.onDidChangeActiveEditor.fire(editorAt(b));
+  state.onDidChangeActiveEditor.fire(editor);
+  await tick();
+  panel.setVisible(true);
+  await tick();
+  assert.equal(client.renders, 1, 'a.jpnov at the same version: nothing to paint');
+
+  panel.setVisible(false);
+  edit(document);
+  await settle();
+  panel.setVisible(true);
+  await tick();
+  assert.equal(client.renders, 2, 'an edit while hidden paints once on show');
 });
