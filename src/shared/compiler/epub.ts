@@ -73,7 +73,7 @@ export function epubMembers(opts: {
   /** Its `title` and `author` are the package's dc:title and dc:creator. A blank title takes the
    *  first nav label; a blank author leaves dc:creator out. */
   readonly book: TitledBook;
-  /** The book's output stem (the `.jpbook` basename, no extension) — identity for dc:identifier. */
+  /** The book's output stem: its path from the folder `outDir` counts from, `/` written `-`, no extension — identity for dc:identifier. */
   readonly outRel: string;
   readonly kinsoku: KinsokuMode;
   readonly dash: DashMode;

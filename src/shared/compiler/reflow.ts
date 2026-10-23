@@ -91,7 +91,7 @@ function reflowUnits(units: readonly Unit[]): readonly Unit[] {
 
 /**
  * Emits the segments of one chapter. Splits at `pagebreak` rows; leading/trailing/consecutive
- * breaks collapse (no empty segment — mirroring flowToHtml's lazily-opened segments). A line
+ * breaks collapse (no empty segment — as the preview's cutPages makes no empty page). A line
  * row becomes `<p>` — or `<hN>` for a 見出し row (大=1→h1; one hN PER ROW: a block-form
  * heading spans rows, but Row carries no form, and merging could fuse two adjacent independent
  * headings). A row with no real cells (blank or comment-only line) gets a `<br/>` inside its

@@ -1,8 +1,8 @@
 /**
  * Narration recognizer: highlights the author's cast and coined keywords in plain body-text runs.
  *
- * Built from a root's cast surfaces (every form a listed name is recognised by: `nameSurfaces` in
- * `src/shared/book/names.ts`) and keywords — pure and synchronous, with no dictionary and no async
+ * Built from the cast surfaces of the books listing a page (every form a listed name is recognised
+ * by: `nameSurfaces` in `src/shared/book/names.ts`) and their keywords — pure and synchronous, with no dictionary and no async
  * load. A character is highlighted ONLY where it reads as a SUBJECT: a name (a surname/given alone
  * is fine, optionally followed by ONE honorific) immediately followed by は or が. The particle marks
  * the subject and is coloured together with the name. Keywords match exactly and only where no

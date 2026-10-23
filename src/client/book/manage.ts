@@ -1,5 +1,5 @@
 /**
- * The Books panel's management commands — form-style editing over the `.jpbook` TEXT.
+ * The Books panel's verbs — form-style editing over the `.jpbook` TEXT (and the one command, `jpbook.createFile`).
  * Every action plans precise range edits via the pure `#/shared/book/edits.ts`, applies
  * them as one `WorkspaceEdit`, and SAVES immediately (settings-UI semantics: a panel
  * action persists on the spot; the saved file then re-enters through the panel's own

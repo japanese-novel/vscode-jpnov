@@ -319,10 +319,11 @@ is an icon button):
   at ［＃改ページ］. The table of contents lists each chapter by its first 見出し; a
   chapter without one is listed by its 見出し番号 in kanji (一, 二, …).
 
-Outputs land in `<outDir>/<name>.{html,epub,txt}`, `<name>` being the
-`.jpbook`'s file name without the extension and `outDir` defaulting to
-`${workspaceFolder}/dist` (a value without the token counts from the
-`.jpbook`'s own folder). Two book files built together that resolve to the same
+Outputs land in `<outDir>/<name>.{html,epub,txt}`. Under the default
+`${workspaceFolder}/dist`, `<name>` is the book's path from the workspace folder
+with `-` for `/` (`books/volume1.jpbook` → `books-volume1`); under any other
+value, which counts from the `.jpbook`'s own folder, it is the file name without
+the extension. Two book files built together that resolve to the same
 output file fail the build with a diagnostic, and neither is written. A `.jpbook` with
 an error (no title, a missing
 closing `---`, a backslash in a path, an entry that is not a `.jpnov` file) fails that
@@ -500,8 +501,8 @@ prints as itself: `［＃ここに「13」の値を表示］` renders `13`. A bo
 too: タイトル, ペンネーム and 見出し番号 are filled there. 総ページ数, 原稿用紙換算枚数 and ページ番号
 are known only once the layout is done, so in a chapter they stay `0`; 見出し番号 is `0` on a
 cover page. In the header and footer it is the number of the page's chapter; where chapters
-change on one page, the last chapter that begins on it. On a line that carries a value
-annotation, a 対象文字列 that fails to match is not reported.
+change on one page, the last chapter that begins on it. A 対象文字列 that fails to match is not
+reported when it follows a value annotation on its line.
 
 To print a value in kanji numerals, write `の値を位取りで表示` or `の値を命数で表示` in place of
 `の値を表示`. 位取り writes the digits one by one, 命数 with the powers of ten (十・百・千 and
@@ -579,7 +580,7 @@ under `editor.semanticTokenColorCustomizations` if you like.
 ## Proofreading (lint)
 
 Japanese Novel runs prose checks as you write, surfaced as editor diagnostics
-with quick fixes (and a **Fix all auto-fixable problems** source action).
+with quick fixes (and a **Fix all auto-fixable problems (Japanese Novel)** source action).
 Everything is a plain `jpnov.lint.*` setting under **Japanese Novel — Lint**.
 
 Every check knows what it is looking at: narration, dialogue (`「…」`), a
@@ -699,6 +700,8 @@ All under the **Japanese Novel** category.
 | Open Preview | Command Palette |
 | Reset Preview Layout to Settings, Save Preview Layout to Settings… | Buttons on the preview's layout chip, Command Palette (both only while the values differ from the settings) |
 | Create a Book… | Books view title bar (`+`), Command Palette |
+| Fix Problems in the Book… | Books view title bar while a book is open, Command Palette |
+| Choose Body Font… | The font button on the preview's layout chip, Command Palette |
 | Open the Books View | Command Palette |
 | Refresh Books | Books view title bar |
 | Open the Getting Started Guide | Command Palette |

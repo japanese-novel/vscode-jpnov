@@ -130,7 +130,7 @@ interface OpenCarrier extends Carrier {
  * The units of a view, {@link STRIDE} numbers each in one flat array: where it was written, its
  * depth, its piece and its carrier (indices into the line's lists, -1 for none). A plain array of
  * small integers, filled in order: a manuscript has many more lines than a line has characters,
- * and a typed array costs more to make than a short line's worth of numbers (measured on #261).
+ * and a typed array costs more to make than a short line's worth of numbers.
  */
 const SRC = 0;
 const END = 1;

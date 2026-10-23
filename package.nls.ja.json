@@ -62,7 +62,7 @@
   "jpnov.lint.common.noNfd.description": "濁点・半濁点が別の文字（U+3099／U+309A）に分かれた仮名を警告します（合成済みの形を推奨）。本文に加えて注記やルビも対象です。合成できるものは自動修正可。",
   "jpnov.lint.common.noZeroWidth.description": "ゼロ幅スペース（U+200B）を警告します。自動修正可。",
   "jpnov.lint.common.noControlChar.description": "不正な制御文字を警告します。本文に加えて注記やルビも対象です。自動修正可。",
-  "jpnov.lint.common.shiftJisSafe.description": "Shift JIS にない文字を警告します。どのエンコードで出力しても確認するので、Shift JIS 指定の投稿サイトにそのまま出せます。本文に加えて注記やルビも対象です。PDF や EPUB にしか出力しないならオフにしてかまいません。",
+  "jpnov.lint.common.shiftJisSafe.description": "Shift JIS にない文字を警告します。出力のエンコードにかかわらず確認するので、いつでも Shift JIS のテキストとしてそのまま出せます。本文に加えて注記やルビも対象です。PDF や EPUB にしか出力しないならオフにしてかまいません。",
   "jpnov.lint.common.noHalfWidthSpace.description": "全角文字どうしの間、または半角の ! や ? が 2 つ以上続いた直後にある半角スペースを警告します。自動修正可。",
   "jpnov.lint.common.noStrayLetter.description": "日本語の文字の間に紛れ込んだアルファベット 1 文字（「見るr」のような変換漏れ）を警告します。半角・全角とも対象で、母音・n・大文字は対象外です。",
   "jpnov.lint.common.minusPosition.description": "数字の直前にないマイナス記号を警告します。欧文のハイフン（Wi-Fi など）は対象外です。",

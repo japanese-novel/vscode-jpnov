@@ -53,9 +53,8 @@ export interface RuleMeta {
  * and セリフ; `narration`/`dialogue` rules are form-specific; the single `ruby` rule is a 3-way
  * drop-down.
  *
- * The rule set is deliberately DICTIONARY-FREE: no kuromoji (morphological) rules and no
- * prh/word-list rules — every implementation is a character-class scanner or a small state
- * machine over the walker's lines (`src/server/lint/`).
+ * Every rule is a character-class scanner or a small state machine over the walker's lines
+ * (`src/server/lint/`); none reads a dictionary or a word list.
  *
  * `as const satisfies …` keeps the literal `id`/`scope` types (so {@link LintCode} can derive the
  * exact code union) while still type-checking each row against {@link RuleMeta}.
