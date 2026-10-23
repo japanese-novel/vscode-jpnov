@@ -194,6 +194,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private defaultTitle: string | undefined;
   /** Serializes the row verbs (remove / move / drop), see `runEntryVerb`. */
   private entryChain: Promise<void> = Promise.resolve();
+  /** How many times the watcher saw each chapter file change: part of its stamp, so a rewrite that keeps the size and the mtime still reads anew. */
+  private readonly diskChanges = new Map<string, number>();
 
   constructor(client: LanguageClient, extensionUri: vscode.Uri) {
     this.client = client;
@@ -208,21 +210,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     // Chapter existence backs the detail's missing flags, and chapter text its figures, so a
     // `.jpnov` appearing, disappearing or changing on disk re-posts the open detail.
     const chapterWatcher = vscode.workspace.createFileSystemWatcher('**/*.jpnov');
-    // Debounced: a bulk operation (branch switch, folder paste) fires one event per file,
-    // and each re-post stats every listed chapter and lays the book out — one run per burst.
-    const schedule = (delay: number): void => {
-      if (this.openDetailUri === undefined) {
-        return;
-      }
-      clearTimeout(this.repostTimer);
-      this.repostTimer = setTimeout(() => {
-        if (this.openDetailUri !== undefined) {
-          void this.postDetail(this.openDetailUri);
-        }
-      }, delay);
-    };
     const repostDetail = (): void => {
-      schedule(REPOST_DEBOUNCE_MS);
+      this.schedule(REPOST_DEBOUNCE_MS);
     };
     /** A chapter of the open detail that no editor holds: only the disk can change it. */
     const closedChapter = (uri: vscode.Uri): boolean =>
@@ -240,6 +229,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       chapterWatcher.onDidDelete(repostDetail),
       // An open chapter's save changes nothing the buffer path has not counted already.
       chapterWatcher.onDidChange((uri) => {
+        this.diskChanges.set(uri.toString(), (this.diskChanges.get(uri.toString()) ?? 0) + 1);
         if (closedChapter(uri)) {
           repostDetail();
         }
@@ -256,7 +246,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (uri === this.openDetailUri) {
           repostDetail();
         } else if (this.detailChapters.rows.has(uri)) {
-          schedule(COUNTS_DEBOUNCE_MS);
+          this.schedule(COUNTS_DEBOUNCE_MS);
         }
       }),
       // The figures are laid out on the render settings, so a change to them re-counts.
@@ -271,6 +261,23 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       vscode.workspace.onDidCloseTextDocument((d) => isOpenBook(d) && void this.refresh()),
       vscode.workspace.onDidSaveTextDocument((d) => isOpenBook(d) && void this.refresh()),
     );
+  }
+
+  /**
+   * Re-posts the open detail once `delay` ms pass without another call. Debounced: a bulk
+   * operation (branch switch, folder paste) fires one event per file, and each re-post stats
+   * every listed chapter and lays the book out — one run per burst.
+   */
+  private schedule(delay: number): void {
+    if (this.openDetailUri === undefined) {
+      return;
+    }
+    clearTimeout(this.repostTimer);
+    this.repostTimer = setTimeout(() => {
+      if (this.openDetailUri !== undefined) {
+        void this.postDetail(this.openDetailUri);
+      }
+    }, delay);
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -377,9 +384,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
     this.applyDetailChrome(); // also refreshes the title after a title edit
     this.postState();
-    if (this.openDetailUri !== undefined) {
-      void this.postDetail(this.openDetailUri);
-    }
+    // Scheduled, not direct: the re-list after a row verb's save lands beside the verb's own re-push.
+    this.schedule(REPOST_DEBOUNCE_MS);
   }
 
   /** Shows the view and focuses it; the built-in `<viewId>.focus` command exists once the view is contributed. */
@@ -679,6 +685,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (view === undefined || entry === undefined) {
       return;
     }
+    // A direct post counts everything a scheduled one would: the pending one is dropped.
+    clearTimeout(this.repostTimer);
     let text: string;
     let version: number;
     try {
@@ -695,12 +703,15 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return; // the user navigated away while the document loaded
     }
     const parsed = parseJpbook(text);
+    // The count waits for the chapters' stat alone: it sends the server their stamps.
+    const stamps = new Map<string, string>();
+    const chapterRows = this.entryVMs(entry, parsed.lines, 'chapters', stamps);
     const [chapters, covers, characters, keywords, counts] = await Promise.all([
-      this.entryVMs(entry, parsed.lines, 'chapters'),
+      chapterRows,
       this.entryVMs(entry, parsed.lines, 'covers'),
       this.entryVMs(entry, parsed.lines, 'characters'),
       this.entryVMs(entry, parsed.lines, 'keywords'),
-      this.countsOf(uri),
+      chapterRows.then(() => this.countsOf(uri, stamps)),
     ]);
     const meta: MetaVM[] = metaRows(parsed.meta).map((row) => {
       const parts = metaValueParts(row.key, row.value);
@@ -743,11 +754,17 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   /**
    * The book's body figures from the server, laid out on the build's settings snapshot and
-   * worded here for the detail's status bar (the webview prints what it gets). Null when a chapter could not be read, the
-   * server did not answer in time, or it is not running: the detail then shows no figures.
+   * worded here for the detail's status bar (the webview prints what it gets); `stamps` are the
+   * chapters' files as just stat'ed, what lets the server keep a closed chapter's text. Null when
+   * a chapter could not be read, the server did not answer in time, or it is not running: the
+   * detail then shows no figures.
    */
-  private async countsOf(uri: string): Promise<CountsVM | null> {
-    const params: BookCountsParams = { uri, settings: buildHtmlSettings() };
+  private async countsOf(uri: string, stamps: ReadonlyMap<string, string>): Promise<CountsVM | null> {
+    const params: BookCountsParams = {
+      uri,
+      settings: buildHtmlSettings(),
+      stamps: [...stamps].map(([fileUri, stamp]) => ({ uri: fileUri, stamp })),
+    };
     let result: BookCountsResult;
     try {
       result = await cappedRequest(
@@ -765,8 +782,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /** One list's rows: the listed path (the row's identity, split into name/folder for display), file
-   *  URI, fs.stat-backed missing flag; a name row is its text alone, nothing to stat. */
-  private async entryVMs(entry: BookEntry, lines: readonly ParsedLine[], list: EntryList): Promise<EntryVM[]> {
+   *  URI, fs.stat-backed missing flag; a name row is its text alone, nothing to stat. `stamps`, when
+   *  given, receives each present file's stamp (`${mtime}/${size}/${changes seen}`) by URI, for `jpnov/bookCounts`. */
+  private async entryVMs(entry: BookEntry, lines: readonly ParsedLine[], list: EntryList, stamps?: Map<string, string>): Promise<EntryVM[]> {
     return Promise.all(
       entryLines(lines, list).map(async (line): Promise<EntryVM> => {
         const pl = lines[line];
@@ -780,6 +798,10 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         try {
           const st = await vscode.workspace.fs.stat(target);
           missing = (st.type & vscode.FileType.File) === 0;
+          if (!missing) {
+            const key = target.toString();
+            stamps?.set(key, `${String(st.mtime)}/${String(st.size)}/${String(this.diskChanges.get(key) ?? 0)}`);
+          }
         } catch {
           missing = true;
         }

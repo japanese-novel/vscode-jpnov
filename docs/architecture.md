@@ -98,7 +98,14 @@ sees it (`src/server/shown.ts`), and lands its fixes on the nodes: what was
 typed is edited in place, what an annotation shows is not, and an insert at its
 edge goes outside the annotation. The builds parse on their
 own, from the files they read through `jpnov/readText`; a cover page, and the
-page furniture, also get the book's values.
+page furniture, also get the book's values. The server keeps the last book's
+chapters parsed and laid out (`ChapterCache` in `document.ts`), each under the
+text and values it was made from, with the columns its rows wrapped into: the
+Books view counts a book on every pause in a chapter, so a count parses and
+lays out the edited chapter alone, and the build that follows reuses the rest.
+The text of a chapter the editor holds open comes from the server's synced copy;
+a closed chapter's is kept from one count to the next under the stamp
+(`mtime`/`size`) the client stats its file with.
 
 The outputs:
 
@@ -261,7 +268,8 @@ from the directory of its `.jpbook`.
   `src/shared/utils/` imports nothing, its own files included. The AST cannot see the
   settings types, so it cannot take a setting by accident. In `src/server/`,
   only the preview (`server.ts`) and the builds (`build.ts`) may import
-  `src/shared/compiler/`: the editor side reads the nodes and the AST.
+  `src/shared/compiler/`, its types aside: the editor side reads the nodes and
+  the AST.
   `src/shared/compiler/` may not import the manifest (`src/shared/book/`), the
   wire shapes (`protocol.ts`) or a program (`src/server/`, `src/client/`). A
   webview may import only its own folder, `src/shared/utils/` and the types of

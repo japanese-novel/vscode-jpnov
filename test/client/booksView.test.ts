@@ -103,14 +103,14 @@ function fakeClient(books: unknown[], buildResult?: unknown, server: ChapterServ
     buildToken: unknown;
     problems: { uri: string; text: string }[];
     fixAll: { uri: string; text: string; only?: unknown }[];
-    counts: { uri: string; settings: unknown }[];
+    counts: { uri: string; settings: unknown; stamps: unknown }[];
   } = { build: null, buildToken: undefined, problems: [], fixAll: [], counts: [] };
   const client = {
     calls,
     countsReply: { counts: COUNTS } as unknown,
     sendRequest(type: string, params: unknown, token?: unknown): Promise<unknown> {
       if (type === BookCountsRequest) {
-        calls.counts.push(params as { uri: string; settings: unknown });
+        calls.counts.push(params as { uri: string; settings: unknown; stamps: unknown });
         return client.countsReply instanceof Error ? Promise.reject(client.countsReply) : Promise.resolve(client.countsReply);
       }
       if (type === ListBooksRequest) {
@@ -1436,6 +1436,43 @@ test('openDetail asks the server for the body\'s figures on the build settings a
   assert.ok(typeof request.settings === 'object', 'the build settings snapshot rides the request');
 });
 
+test('the count request carries each present chapter\'s stamp from the stat, none for a missing one', async () => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\ngone.jpnov\n`));
+  state.fsEntries.set(`${root}/src/ch1.jpnov`, FileType.File);
+  state.fsStamps.set(`${root}/src/ch1.jpnov`, { mtime: 5, size: 7 });
+  const { view, client } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  assert.deepEqual(client.calls.counts.map((c) => c.stamps), [[{ uri: `${root}/src/ch1.jpnov`, stamp: '5/7/0' }]]);
+});
+
+test('a refresh re-posts the open detail after the pause; a direct post in between stands in for it', async (t) => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\n`));
+  const { provider, view } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  const base = detailCount(view);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await provider.refresh();
+  assert.equal(detailCount(view), base); // scheduled, not posted yet
+  t.mock.timers.runAll();
+  t.mock.timers.reset();
+  await tick();
+  assert.equal(detailCount(view), base + 1);
+  // The direct post of an openDetail drops the pending one: one post, not two.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await provider.refresh();
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  t.mock.timers.runAll();
+  t.mock.timers.reset();
+  await tick();
+  assert.equal(detailCount(view), base + 2);
+});
+
 test('the detail shows no figures when the server cannot count or does not answer', async () => {
   const root = 'file:///ws';
   const bookUri = `${root}/src/a.jpbook`;
@@ -1526,4 +1563,29 @@ test('openDetail posts the characters and keywords as rows with no file; editEnt
   const add = calls.find((c) => c.verb === 'addEntries');
   assert.equal((add?.args[0] as { list: string }).list, 'keywords');
   assert.equal(detailCount(view), before + 1, 'the row verb re-pushes the detail; the list verb does not');
+});
+
+test('a change the watcher saw moves the chapter\'s stamp, so the server reads the file again even if its size and mtime held', async (t) => {
+  const root = 'file:///ws';
+  const bookUri = `${root}/src/a.jpbook`;
+  state.textDocuments.push(doc(bookUri, 'jpbook', `${HEAD}---\nch1.jpnov\nch2.jpnov\n`));
+  for (const ch of ['ch1', 'ch2']) {
+    state.fsEntries.set(`${root}/src/${ch}.jpnov`, FileType.File);
+    state.fsStamps.set(`${root}/src/${ch}.jpnov`, { mtime: 1, size: 1 });
+  }
+  const { view, client } = await setup([entry(root, 'a')]);
+  view.webview.receive({ type: 'openDetail', uri: bookUri });
+  await tick();
+  await afterPause(t, () => {
+    state.watchers.get('**/*.jpnov')?.change.fire(Uri.parse(`${root}/src/ch1.jpnov`));
+  });
+  await afterPause(t, () => {
+    state.watchers.get('**/*.jpnov')?.change.fire(Uri.parse(`${root}/src/ch2.jpnov`));
+  });
+  const stamps = client.calls.counts.map((c) => (c.stamps as { uri: string; stamp: string }[]).map((s) => `${s.uri.slice(s.uri.lastIndexOf('/') + 1)}=${s.stamp}`));
+  assert.deepEqual(stamps, [
+    ['ch1.jpnov=1/1/0', 'ch2.jpnov=1/1/0'],
+    ['ch1.jpnov=1/1/1', 'ch2.jpnov=1/1/0'],
+    ['ch1.jpnov=1/1/1', 'ch2.jpnov=1/1/1'],
+  ]);
 });

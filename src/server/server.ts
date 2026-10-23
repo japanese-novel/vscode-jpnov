@@ -36,6 +36,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Ast } from '#/shared/ast/nodes.ts';
 import { parse } from '#/shared/ast/parse.ts';
+import { createChapterCache } from '#/shared/compiler/document.ts';
 import { renderPreview } from '#/shared/compiler/preview.ts';
 import { resolvePreviewSettings } from '#/shared/config/settings.ts';
 import { selectRules } from '#/shared/lint/select.ts';
@@ -106,16 +107,19 @@ async function readTextOverWire(uri: string, token?: CancellationToken): Promise
   return isReadTextResult(reply) ? reply : { ok: false, reason: 'noReply', why: 'the reply to jpnov/readText has no ok flag' };
 }
 
-const context: ServerContext = {
-  connection,
-  readText: readTextOverWire,
-  lintSelection: selectRules({}), // all rules off until the client's snapshot arrives at initialize
-  highlight: createHighlightStore(), // empty until the client's first jpnov/listBooks
-};
-
 // Open-document tracker: every editor feature reads its buffers.
 const documents = new TextDocuments(TextDocument);
 documents.listen(connection);
+
+const context: ServerContext = {
+  connection,
+  readText: readTextOverWire,
+  openDocument: (uri) => documents.get(uri),
+  chapterTexts: new Map(),
+  chapters: createChapterCache(),
+  lintSelection: selectRules({}), // all rules off until the client's snapshot arrives at initialize
+  highlight: createHighlightStore(), // empty until the client's first jpnov/listBooks
+};
 
 // One parse per open manuscript and version, shared by the editor features and the preview below.
 const parsed = createParseCache();

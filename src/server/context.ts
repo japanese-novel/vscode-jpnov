@@ -7,7 +7,9 @@
  * `Connection` is injected by server.ts.
  */
 import type { CancellationToken, Connection } from 'vscode-languageserver/node';
+import type { TextDocument } from 'vscode-languageserver-textdocument';
 
+import type { ChapterCache } from '#/shared/compiler/document.ts';
 import type { RuleSelection } from '#/shared/lint/select.ts';
 import type { ReadTextResult } from '#/shared/protocol.ts';
 
@@ -25,6 +27,12 @@ export interface ServerContext {
   readonly connection: Connection;
   /** The only way server code obtains manuscript text: the client answers with the text the editor shows. */
   readonly readText: ReadText;
+  /** The open documents the editor syncs, by uri: their text is never older than a request that follows their edits, so a count takes it as is. */
+  readonly openDocument: (uri: string) => TextDocument | undefined;
+  /** The text of the closed chapters of the last counted book, by uri, with the stamp (`BookCountsParams.stamps`) it was read under. */
+  readonly chapterTexts: Map<string, { readonly stamp: string; readonly text: string }>;
+  /** The last book's chapters parsed and laid out: a count on every pause, and the build that follows, share them. */
+  readonly chapters: ChapterCache;
   /** Enabled prose-lint rules, resolved from the client's `jpnov.lint.*` settings snapshot. Workspace-
    *  (not root-) scoped, so it lives on the context rather than per root. */
   lintSelection: RuleSelection;

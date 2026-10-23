@@ -17,9 +17,8 @@ import { VALUE_FORMATS, VALUE_NAMES, valueOf } from '../ast/notation.ts';
 import { displayText } from '../chars.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
 import { reflowStylesheet } from './css.ts';
-import { chapterAsts, type TitledBook } from './document.ts';
+import { laidChapters, type ChapterCache, type TitledBook } from './document.ts';
 import { escapeHtml } from '../utils/escape.ts';
-import { buildRows } from './layout.ts';
 import { nonBlank, reflowDocument, reflowSegments } from './reflow.ts';
 
 /** One text member of an EPUB container: its path inside the archive + full content. */
@@ -82,14 +81,15 @@ export function epubMembers(opts: {
   readonly charsPerLine: number;
   /** Build timestamp for `dcterms:modified`, CCYY-MM-DDThh:mm:ssZ — injected (the determinism seam). */
   readonly modified: string;
+  /** Keeps the chapters between runs (a count, then a build, of the same book). */
+  readonly cache?: ChapterCache | undefined;
 }): EpubMember[] {
   const used = new Set<string>();
   // One entry per non-empty chapter: its spine docs plus its one nav row (an empty chapter
   // source contributes neither). reflowSegments feeds the shared `used` class sink, so
   // chapters must be processed in file order. A chapter with no 見出し is labelled by its
   // 見出し番号 in 命数 (一, 二, …), the number its ［＃ここに「見出し番号」の値を表示］ shows.
-  const chapters = chapterAsts(opts.book).flatMap(({ ast, values }, index) => {
-    const rows = buildRows(ast, { dash: opts.dash });
+  const chapters = laidChapters(opts.book, opts.dash, opts.cache).flatMap(({ values, rows }, index) => {
     const segments = reflowSegments(rows, opts.charsPerLine, used, opts.dash);
     if (segments.length === 0) {
       return [];

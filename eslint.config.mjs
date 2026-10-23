@@ -99,7 +99,7 @@ export default tseslint.config(
   // second `no-restricted-imports` block would replace them.
   {
     // The preview (server.ts) and the builds (build.ts) alone reach the rows: the editor side
-    // reads the nodes and the AST.
+    // reads the nodes and the AST. A type of the compiler (the context's chapter cache) reads nothing.
     files: ['src/server/**/*.ts'],
     ignores: ['src/server/server.ts', 'src/server/build.ts'],
     rules: {
@@ -109,7 +109,8 @@ export default tseslint.config(
           patterns: [
             {
               regex: '/shared/compiler/',
-              message: 'in src/server only server.ts and build.ts may import src/shared/compiler',
+              message: 'in src/server only server.ts and build.ts may import src/shared/compiler (its types aside)',
+              allowTypeImports: true,
             },
           ],
         },

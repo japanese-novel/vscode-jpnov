@@ -33,7 +33,7 @@ export async function readText(params: ReadTextParams): Promise<ReadTextResult> 
   const uri = vscode.Uri.parse(params.uri);
   const open = openDocument(uri);
   if (open !== undefined) {
-    return { ok: true, text: open.getText() };
+    return { ok: true, text: open.getText(), live: true };
   }
   let bytes: Uint8Array;
   try {

@@ -38,11 +38,11 @@ test('a closed file decodes with the encoding VS Code picks for its uri', async 
   assert.deepEqual(state.decodeCalls, [{ uri: URI }]);
 });
 
-test('an open document answers with its live text, unsaved edits included, and never reads the disk', async () => {
+test('an open document answers with its live text, unsaved edits included and marked live, and never reads the disk', async () => {
   // Nothing on the mock disk: a disk read would come back `notFound`.
   state.textDocuments.push(doc(URI, 'jpnov', TEXT, 'shiftjis'));
 
-  assert.deepEqual(await readText({ uri: URI }), { ok: true, text: TEXT });
+  assert.deepEqual(await readText({ uri: URI }), { ok: true, text: TEXT, live: true });
   assert.deepEqual(state.decodeCalls, []);
 });
 
@@ -50,7 +50,7 @@ test('an open document is found across Unicode normalization of its path', async
   const nfc = 'file:///ws/src/ガイド.jpnov'; // the entry as typed into the .jpbook
   state.textDocuments.push(doc(nfc.normalize('NFD'), 'jpnov', TEXT)); // opened by its on-disk (NFD) name
 
-  assert.deepEqual(await readText({ uri: nfc }), { ok: true, text: TEXT });
+  assert.deepEqual(await readText({ uri: nfc }), { ok: true, text: TEXT, live: true });
 });
 
 const FAILURES: readonly [string, () => void, ReadTextFailure, string][] = [

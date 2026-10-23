@@ -9,14 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { CancellationToken, CancellationTokenSource } from 'vscode-languageserver/node';
 
 import { handleBookCounts, handleBuild, handleListBooks } from '../../src/server/build.ts';
-import {
-  makeContext,
-  makeFakeConnection,
-  makeTmpWorkspace,
-  nodeReader,
-  writeUnder,
-  type FakeConnection,
-} from './helpers.ts';
+import { logging, makeContext, makeFakeConnection, makeTmpWorkspace, nodeReader, openDoc, type FakeConnection, writeUnder } from './helpers.ts';
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT } from '../../src/shared/config/settings.ts';
 import { INDENT_MAX, indentAnnotation } from '../../src/shared/ast/notation.ts';
@@ -25,9 +18,10 @@ import { HEADER, JPBOOK_VERSION, META_KEYS, parseJpbook } from '../../src/shared
 import { FURNITURE_ALIGNS } from '../../src/shared/compiler/chrome.ts';
 import { CHARS_MIN, LAYOUT_DEFAULT, PROJECT_DEFAULT } from '../../src/shared/config/types.ts';
 import { outDirSubpath } from '../../src/shared/config/validate.ts';
-import { MANUSCRIPT_SHEET } from '../../src/shared/compiler/document.ts';
+import { chapterAsts, MANUSCRIPT_SHEET } from '../../src/shared/compiler/document.ts';
 import { encodeTxt } from '../../src/shared/encoding.ts';
 import type {
+  BookCountsParams,
   BuildFormat,
   BuildResult,
   HtmlSettings,
@@ -1257,7 +1251,7 @@ test('build: a chapter takes the book\'s title and its 見出し番号 in every 
   assert.ok(txt.content.includes('［＃ここに「見出し番号」の値を命数で表示］'));
 
   // The Books view counts the substituted text: 作品名（ペンネーム） (10) and 第二章 (3).
-  const counts = await handleBookCounts(ctx, { uri: `${ws.uri}/vol1.jpbook`, settings: SETTINGS });
+  const counts = await handleBookCounts(ctx, { uri: `${ws.uri}/vol1.jpbook`, settings: SETTINGS, stamps: [] });
   assert.deepEqual(counts, { counts: { pages: 1, sheets: 1, chars: 13 } });
 });
 
@@ -1413,11 +1407,17 @@ function sjis(text: string): Uint8Array {
   return encodeTxt(text, 'shiftJis').bytes;
 }
 
-/** A reader that fails `rel` with `reason` and reads everything else from disk as UTF-8. */
-function failing(rel: string, reason: ReadTextFailure): ReadText {
+/** A reader that fails `rel` with `reason` (after `delayMs`) and reads everything else from disk as UTF-8. */
+function failing(rel: string, reason: ReadTextFailure, delayMs = 0): ReadText {
   const disk = nodeReader();
   return (uri, token) =>
-    uri.endsWith(`/${rel}`) ? Promise.resolve({ ok: false, reason, why: 'EACCES: permission denied' }) : disk(uri, token);
+    uri.endsWith(`/${rel}`)
+      ? new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({ ok: false, reason, why: 'EACCES: permission denied' });
+          }, delayMs);
+        })
+      : disk(uri, token);
 }
 
 const CHAPTER = '　山田　太郎は王都へ向かった。';
@@ -1656,11 +1656,7 @@ test('build: a missing key fails the book before any chapter is read; the other 
   await using ws = await makeTmpWorkspace();
   const conn = makeFakeConnection();
   const reads: string[] = [];
-  const disk = nodeReader();
-  const ctx = makeContext(conn, (uri, token) => {
-    reads.push(uri.slice(ws.uri.length + 1));
-    return disk(uri, token);
-  });
+  const ctx = makeContext(conn, logging(ws, reads));
   await writeUnder(ws.dir, 'bad/bad.jpbook', meta({}, ['title']) + 'a.jpnov\nb.jpnov');
   await writeUnder(ws.dir, 'bad/a.jpnov', 'あ');
   await writeUnder(ws.dir, 'bad/b.jpnov', 'い');
@@ -1739,10 +1735,10 @@ test('build: the request token rides every readText call', async () => {
 
 // --- an open manifest (issue #82): its diagnostics sit on the lines the reader returns ---
 
-/** A reader that answers `rel` with `text`, the editor's unsaved buffer, and reads everything else from disk. */
+/** A reader that answers `rel` with `text`, the editor's unsaved buffer (marked live, as the client marks it), and reads everything else from disk. */
 function unsaved(rel: string, text: string): ReadText {
   const disk = nodeReader();
-  return (uri, token) => (uri.endsWith(`/${rel}`) ? Promise.resolve({ ok: true, text }) : disk(uri, token));
+  return (uri, token) => (uri.endsWith(`/${rel}`) ? Promise.resolve({ ok: true, text, live: true }) : disk(uri, token));
 }
 
 test('build: the manifest is diagnosed on the lines the reader returns, unsaved edits included', async () => {
@@ -1776,7 +1772,7 @@ test('bookCounts lays the body out like a build on the request settings; a title
   await writeUnder(ws.dir, 'vol1/b.jpnov', 'い');
   await writeUnder(ws.dir, 'vol1/c.jpnov', '表紙の文');
 
-  const result = await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/vol1.jpbook`, settings: SETTINGS });
+  const result = await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/vol1.jpbook`, settings: SETTINGS, stamps: [] });
   const lines = n + 2;
   assert.deepEqual(result, {
     counts: {
@@ -1793,6 +1789,95 @@ test('bookCounts is null when the book or one of its chapters cannot be read', a
   const { ctx } = boot();
   await writeUnder(ws.dir, 'vol1/vol1.jpbook', `${HEAD}---\na.jpnov\nmissing.jpnov`);
   await writeUnder(ws.dir, 'vol1/a.jpnov', 'あ');
-  assert.deepEqual(await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/vol1.jpbook`, settings: SETTINGS }), { counts: null });
-  assert.deepEqual(await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/none.jpbook`, settings: SETTINGS }), { counts: null });
+  assert.deepEqual(await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/vol1.jpbook`, settings: SETTINGS, stamps: [] }), { counts: null });
+  assert.deepEqual(await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/none.jpbook`, settings: SETTINGS, stamps: [] }), { counts: null });
+});
+
+// --- jpnov/bookCounts: what a count reads, and what it keeps for the next ---------------
+
+test('bookCounts takes a chapter the server holds open from that copy, whatever the client would read', async () => {
+  await using ws = await makeTmpWorkspace();
+  const reads: string[] = [];
+  const openUri = `${ws.uri}/vol1/a.jpnov`;
+  const ctx = makeContext(makeFakeConnection(), logging(ws, reads), (uri) => (uri === openUri ? openDoc('あいう', uri) : undefined));
+  await writeUnder(ws.dir, 'vol1/vol1.jpbook', `${HEAD}---\na.jpnov\nb.jpnov`);
+  await writeUnder(ws.dir, 'vol1/a.jpnov', 'あ');
+  await writeUnder(ws.dir, 'vol1/b.jpnov', 'い');
+
+  const result = await handleBookCounts(ctx, { uri: `${ws.uri}/vol1/vol1.jpbook`, settings: SETTINGS, stamps: [] });
+  assert.equal(result.counts?.chars, 4);
+  assert.deepEqual(reads, ['vol1/vol1.jpbook', 'vol1/b.jpnov']);
+});
+
+test('bookCounts keeps a closed chapter\'s text under the client\'s stamp, and reads it again when the stamp changes or goes', async () => {
+  await using ws = await makeTmpWorkspace();
+  const reads: string[] = [];
+  const ctx = makeContext(makeFakeConnection(), logging(ws, reads));
+  const bookUri = `${ws.uri}/vol1/vol1.jpbook`;
+  await writeUnder(ws.dir, 'vol1/vol1.jpbook', `${HEAD}---\na.jpnov\nb.jpnov`);
+  await writeUnder(ws.dir, 'vol1/a.jpnov', 'あ');
+  await writeUnder(ws.dir, 'vol1/b.jpnov', 'い');
+  const stamps = (b: string): BookCountsParams['stamps'] => [{ uri: `${ws.uri}/vol1/a.jpnov`, stamp: '1/2' }, { uri: `${ws.uri}/vol1/b.jpnov`, stamp: b }];
+
+  await handleBookCounts(ctx, { uri: bookUri, settings: SETTINGS, stamps: stamps('3/4') });
+  assert.deepEqual(reads, ['vol1/vol1.jpbook', 'vol1/a.jpnov', 'vol1/b.jpnov']);
+  reads.length = 0;
+  // The same stamps: the manifest alone (it carries no stamp) is read.
+  await writeUnder(ws.dir, 'vol1/b.jpnov', 'いい');
+  const kept = await handleBookCounts(ctx, { uri: bookUri, settings: SETTINGS, stamps: stamps('3/4') });
+  assert.deepEqual(reads, ['vol1/vol1.jpbook']);
+  assert.equal(kept.counts?.chars, 2);
+  reads.length = 0;
+  // b's stamp moved: b is read, a is still kept.
+  const moved = await handleBookCounts(ctx, { uri: bookUri, settings: SETTINGS, stamps: stamps('5/6') });
+  assert.deepEqual(reads, ['vol1/vol1.jpbook', 'vol1/b.jpnov']);
+  assert.equal(moved.counts?.chars, 3);
+  reads.length = 0;
+  // No stamps: nothing is kept, everything is read.
+  await handleBookCounts(ctx, { uri: bookUri, settings: SETTINGS, stamps: [] });
+  assert.deepEqual(reads, ['vol1/vol1.jpbook', 'vol1/a.jpnov', 'vol1/b.jpnov']);
+  assert.equal(ctx.chapterTexts.size, 0);
+});
+
+test('bookCounts never keeps a text the client answered from a buffer', async () => {
+  await using ws = await makeTmpWorkspace();
+  const reads: string[] = [];
+  const ctx = makeContext(makeFakeConnection(), logging(ws, reads, unsaved('a.jpnov', 'あ')));
+  const bookUri = `${ws.uri}/vol1/vol1.jpbook`;
+  await writeUnder(ws.dir, 'vol1/vol1.jpbook', `${HEAD}---\na.jpnov`);
+  await writeUnder(ws.dir, 'vol1/a.jpnov', 'あ');
+  const params = { uri: bookUri, settings: SETTINGS, stamps: [{ uri: `${ws.uri}/vol1/a.jpnov`, stamp: '1/2' }] };
+
+  await handleBookCounts(ctx, params);
+  await handleBookCounts(ctx, params);
+  assert.deepEqual(reads, ['vol1/vol1.jpbook', 'vol1/a.jpnov', 'vol1/vol1.jpbook', 'vol1/a.jpnov']);
+  assert.equal(ctx.chapterTexts.size, 0);
+});
+
+test('build: the chapters are read at once in manifest order, and the first unreadable one in that order is the error', async () => {
+  await using ws = await makeTmpWorkspace();
+  const reads: string[] = [];
+  // a.jpnov answers last though asked first; both are missing.
+  const ctx = makeContext(makeFakeConnection(), logging(ws, reads, failing('a.jpnov', 'notFound', 10)));
+  await writeUnder(ws.dir, 'vol1.jpbook', meta() + 'src/a.jpnov\nsrc/b.jpnov\nsrc/c.jpnov');
+  await writeUnder(ws.dir, 'src/c.jpnov', 'う');
+
+  const result = await handleBuild(ctx, { format: 'txt', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+  assert.deepEqual(reads, ['vol1.jpbook', 'src/a.jpnov', 'src/b.jpnov', 'src/c.jpnov']);
+  assert.deepEqual(result.errors.map((e) => [e.code, e.args]), [['book.entryFileNotFound', ['src/a.jpnov']]]);
+});
+
+test('build: a build of the book just counted reuses the count\'s AST', async () => {
+  await using ws = await makeTmpWorkspace();
+  const { ctx } = boot();
+  await writeUnder(ws.dir, 'vol1.jpbook', meta() + 'src/a.jpnov');
+  await writeUnder(ws.dir, 'src/a.jpnov', '一\n二');
+
+  await handleBookCounts(ctx, { uri: `${ws.uri}/vol1.jpbook`, settings: SETTINGS, stamps: [] });
+  const counted = { files: [{ name: 'src/a.jpnov', src: '一\n二' }], title: '作品名', author: '' };
+  const [before] = chapterAsts(counted, ctx.chapters);
+  const result = await handleBuild(ctx, { format: 'html', settings: SETTINGS, projectDirs: projectsFor(ws.uri) });
+  assert.equal(result.ok, true);
+  const [after] = chapterAsts(counted, ctx.chapters);
+  assert.ok(before !== undefined && before.ast === after?.ast, 'the count\'s AST served the build');
 });
