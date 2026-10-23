@@ -22,6 +22,7 @@ import { mergedEdits } from '../../src/server/targets.ts';
 import type { RawLintConfigWire } from '../../src/shared/protocol.ts';
 import { bookNamesOf, createHighlightStore, type BookNames, type ListedBook } from '../../src/server/highlight/vocabulary.ts';
 import { parseJpbook } from '../../src/shared/book/jpbook.ts';
+import { createChapterCache } from '../../src/shared/compiler/document.ts';
 import type { ReadText, ServerContext } from '../../src/server/context.ts';
 import { errorText } from '../../src/shared/utils/errors.ts';
 
@@ -112,10 +113,17 @@ export function bookNames(rootUri: string, fileRel: string, text: string): BookN
   return bookNamesOf(listedBook(rootUri, fileRel, text));
 }
 
-export function makeContext(conn: FakeConnection, readText: ReadText = nodeReader()): ServerContext {
+export function makeContext(
+  conn: FakeConnection,
+  readText: ReadText = nodeReader(),
+  openDocument: ServerContext['openDocument'] = () => undefined,
+): ServerContext {
   return {
     connection: conn.asConnection(),
     readText,
+    openDocument,
+    chapterTexts: new Map(),
+    chapters: createChapterCache(),
     lintSelection: selectRules({}),
     highlight: createHighlightStore(),
   };
@@ -145,8 +153,16 @@ export async function writeUnder(dir: string, rel: string, content: string | Uin
 }
 
 /** `src` as an open `.jpnov` document. */
-export function openDoc(src: string): TextDocument {
-  return TextDocument.create('mem://x.jpnov', 'jpnov', 1, src);
+export function openDoc(src: string, uri = 'mem://x.jpnov'): TextDocument {
+  return TextDocument.create(uri, 'jpnov', 1, src);
+}
+
+/** A reader over `disk` that logs every uri it is asked for into `reads`, as the path under `ws`. */
+export function logging(ws: { readonly uri: string }, reads: string[], disk: ReadText = nodeReader()): ReadText {
+  return (uri, token) => {
+    reads.push(uri.slice(ws.uri.length + 1));
+    return disk(uri, token);
+  };
 }
 
 /** One lint-fix edit in absolute source offsets (`s === e` is an insert). */

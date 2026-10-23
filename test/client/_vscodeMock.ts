@@ -300,6 +300,10 @@ export interface MockState {
   unopenableDocs: Set<string>;
   /** In-memory filesystem the init guard probes: uri string → FileType. */
   fsEntries: Map<string, number>;
+  /** The file system watchers created so far, by glob: a test fires their events. */
+  watchers: Map<string, { create: EventEmitter<Uri>; delete: EventEmitter<Uri>; change: EventEmitter<Uri> }>;
+  /** `fs.stat`'s `mtime`/`size` by uri string; an entry without one stats as 0/0. */
+  fsStamps: Map<string, { mtime: number; size: number }>;
   /** File contents for readFile (uri string → utf8 text). */
   fsContent: Map<string, string>;
   /** Raw bytes for readFile (uri string → bytes), consulted before `fsContent`. */
@@ -378,6 +382,8 @@ export function createMockState(): MockState {
     workspaceFolderPickResult: undefined,
     unopenableDocs: new Set<string>(),
     fsEntries: new Map<string, number>(),
+    watchers: new Map(),
+    fsStamps: new Map<string, { mtime: number; size: number }>(),
     fsContent: new Map<string, string>(),
     fsBytes: new Map<string, Uint8Array>(),
     fsReadErrors: new Map<string, string>(),
@@ -439,6 +445,8 @@ export function resetMockState(s: MockState): void {
   s.workspaceFolderPickResult = undefined;
   s.unopenableDocs.clear();
   s.fsEntries.clear();
+  s.watchers.clear();
+  s.fsStamps.clear();
   s.fsContent.clear();
   s.fsBytes.clear();
   s.fsReadErrors.clear();
@@ -586,12 +594,12 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       }
       return Promise.resolve(state.fsBytes.get(key) ?? Buffer.from(state.fsContent.get(key) ?? '', 'utf8'));
     },
-    stat(uri: Uri): Promise<{ type: number }> {
+    stat(uri: Uri): Promise<{ type: number; mtime: number; size: number }> {
       const type = state.fsEntries.get(uri.toString());
       if (type === undefined) {
         return Promise.reject(FileSystemError.FileNotFound(uri));
       }
-      return Promise.resolve({ type });
+      return Promise.resolve({ type, ...(state.fsStamps.get(uri.toString()) ?? { mtime: 0, size: 0 }) });
     },
     createDirectory(uri: Uri): Promise<void> {
       state.createdDirs.push(uri.toString());
@@ -636,18 +644,16 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       }
       return Promise.resolve(new TextDecoder(DECODER_LABELS[label] ?? label).decode(content));
     },
-    createFileSystemWatcher(): {
+    createFileSystemWatcher(glob: string): {
       onDidCreate: (l: Listener<Uri>) => Disposable;
       onDidDelete: (l: Listener<Uri>) => Disposable;
       onDidChange: (l: Listener<Uri>) => Disposable;
       dispose(): void;
     } {
-      // The Books provider only needs a disposable-returning watcher; tests drive refresh() directly.
-      const on = (listener: Listener<Uri>): Disposable => {
-        void listener;
-        return new Disposable(() => { /* no-op */ });
-      };
-      return { onDidCreate: on, onDidDelete: on, onDidChange: on, dispose() { /* no-op */ } };
+      // A test fires a watcher's events through `state.watchers` by glob; most drive refresh() directly.
+      const w = { create: new EventEmitter<Uri>(), delete: new EventEmitter<Uri>(), change: new EventEmitter<Uri>() };
+      state.watchers.set(glob, w);
+      return { onDidCreate: w.create.event, onDidDelete: w.delete.event, onDidChange: w.change.event, dispose() { /* no-op */ } };
     },
     onDidChangeTextDocument: state.onDidChangeDoc.event,
     onDidChangeConfiguration: state.onDidChangeConfig.event,

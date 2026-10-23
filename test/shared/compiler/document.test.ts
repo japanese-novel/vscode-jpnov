@@ -2,13 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BuildChrome, FurnitureAlign } from '../../../src/shared/compiler/chrome.ts';
 import { FURNITURE_ALIGNS } from '../../../src/shared/compiler/chrome.ts';
-import { bookCounts, chapterGlue, concatBookText, MANUSCRIPT_SHEET, renderBook, type BookInput } from '../../../src/shared/compiler/document.ts';
+import { bookCounts, chapterAsts, chapterGlue, concatBookText, createChapterCache, laidChapters, MANUSCRIPT_SHEET, renderBook, type BookInput, type ChapterCache } from '../../../src/shared/compiler/document.ts';
+import { epubMembers } from '../../../src/shared/compiler/epub.ts';
+import { paginate, type Row } from '../../../src/shared/compiler/layout.ts';
 import { FOOTER_BAND, HEADER_BAND, SIDE_PAD } from '../../../src/shared/compiler/geometry.ts';
 import { INDENT_MAX, VALUE_DEFAULTS, VALUE_FORMATS, VALUE_NAMES, indentAnnotation, valueAnnotation, type DividerValue } from '../../../src/shared/ast/notation.ts';
 import { parseDividerValue } from '../../../src/shared/book/jpbook.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { blockIndent } from '../ast/_shape.ts';
 import { D, UNSHOWN } from '../_kana.ts';
+import type { KinsokuMode } from '../../../src/shared/config/types.ts';
 
 /** {@link chapterGlue} between two chapter sources. */
 const glue = (prev: string, next: string, divider: string, charsPerLine: number | null): string =>
@@ -604,17 +607,19 @@ const BODY_LAYOUT = { charsPerLine: 40, linesPerPage: 34, kinsoku: 'none', dash:
 /** Render `books` with the shared option baseline; `chrome` overrides ride on top. */
 const renderBooks = (
   books: readonly BookInput[],
-  opts: { linesPerPage?: number; chrome?: Partial<BuildChrome> } = {},
+  opts: { linesPerPage?: number; kinsoku?: KinsokuMode; chrome?: Partial<BuildChrome>; cache?: ChapterCache } = {},
 ): string =>
   renderBook({
     books,
     ...BODY_LAYOUT,
     linesPerPage: opts.linesPerPage ?? BODY_LAYOUT.linesPerPage,
+    kinsoku: opts.kinsoku ?? BODY_LAYOUT.kinsoku,
     linePitch: 2,
     paperSize: 'a4',
     paperOrientation: 'auto',
     fontFamily: '',
     chrome: { ...OFF, ...opts.chrome },
+    cache: opts.cache,
   });
 
 const withCover = (
@@ -1063,4 +1068,62 @@ test('bookCounts: the chapter divider counts, the cover never does', () => {
   assert.equal(bookCounts({ files: two }, BODY_LAYOUT).chars, 2);
   assert.equal(bookCounts({ files: two, divider: div('＊') }, BODY_LAYOUT).chars, 3);
   assert.deepEqual(bookCounts(counted(two), BODY_LAYOUT), bookCounts({ files: two }, BODY_LAYOUT));
+});
+
+// --- ChapterCache (the chapters kept between a count and the next) -----------------------
+
+/** Two chapters with a divider, a heading and a ［＃改ページ］ at the seams: every kind of glue. */
+const CACHED_FILES = [
+  { name: 'a.jpnov', src: `一\n${repeat(5, 'あ')}\n［＃改ページ］\n二` },
+  { name: 'b.jpnov', src: `${repeat(MANUSCRIPT_SHEET.linesPerPage, 'い')}\n三` },
+  { name: 'c.jpnov', src: '題［＃「題」は中見出し］\n四「五、」六' },
+] as const;
+
+test('ChapterCache: every output equals its uncached twin, on the second run too', () => {
+  const cache = createChapterCache();
+  const book: BookInput = { files: CACHED_FILES, divider: div('＊'), title: '作品名', author: 'ペンネーム' };
+  const settings = { ...BODY_LAYOUT, kinsoku: 'strict' as const, linesPerPage: 3 };
+  const epubOpts = { book: { ...book, title: '作品名' }, outRel: 'b', kinsoku: 'strict', dash: 'horizontalBar', charsPerLine: 40, modified: '2026-01-01T00:00:00Z' } as const;
+  for (let run = 0; run < 2; run += 1) {
+    assert.deepEqual(bookCounts(book, settings, cache), bookCounts(book, settings));
+    assert.equal(renderBooks([book], { ...settings, cache }), renderBooks([book], settings));
+    assert.deepEqual(epubMembers({ ...epubOpts, cache }), epubMembers(epubOpts));
+    assert.equal(concatBookText(book, 40, cache), concatBookText(book, 40));
+  }
+});
+
+test('ChapterCache: a chapter is parsed and laid out again only when its text, its values or the dash change', () => {
+  const cache = createChapterCache();
+  const book: BookInput = { files: CACHED_FILES, title: '作品名' };
+  const first = laidChapters(book, 'horizontalBar', cache);
+  const again = laidChapters(book, 'horizontalBar', cache);
+  assert.deepEqual(again.map((c, i) => [c.ast === first[i]?.ast, c.rows === first[i]?.rows]), [[true, true], [true, true], [true, true]]);
+
+  // The edited chapter alone is new.
+  const editedBook = { ...book, files: [CACHED_FILES[0], { name: 'b.jpnov', src: 'い' }, CACHED_FILES[2]] };
+  const edited = laidChapters(editedBook, 'horizontalBar', cache);
+  assert.deepEqual(edited.map((c, i) => c.ast === again[i]?.ast), [true, false, true]);
+  // A dash change keeps the AST and rebuilds the rows.
+  const dashed = laidChapters(editedBook, 'emDash', cache);
+  assert.deepEqual(dashed.map((c, i) => [c.ast === edited[i]?.ast, c.rows === edited[i]?.rows]), [[true, false], [true, false], [true, false]]);
+  // A title change re-parses every chapter (a value of the AST); so does a move (the 見出し番号).
+  const titled = chapterAsts({ ...book, title: '作品名　二' }, cache);
+  assert.deepEqual(titled.map((c, i) => c.ast === first[i]?.ast), [false, false, false]);
+  const moved = chapterAsts({ ...book, title: '作品名　二', files: [CACHED_FILES[1], CACHED_FILES[0], CACHED_FILES[2]] }, cache);
+  assert.deepEqual(moved.map((c, i) => c.ast === titled[i]?.ast), [false, false, true]);
+  // Two chapters of one text keep their own entries.
+  const twins = chapterAsts({ files: [CACHED_FILES[0], CACHED_FILES[0]] }, cache);
+  assert.deepEqual(chapterAsts({ files: [CACHED_FILES[0], CACHED_FILES[0]] }, cache).map((c, i) => c.ast === twins[i]?.ast), [true, true]);
+});
+
+test('ChapterCache: a count keeps the wrapped columns, so the same rows paginate to the same objects', () => {
+  const cache = createChapterCache();
+  const book: BookInput = { files: CACHED_FILES };
+  const rowsOf = (): Row[] => laidChapters(book, 'horizontalBar', cache).flatMap((c) => c.rows);
+  const a = paginate(rowsOf(), 3, 2, 'strict', cache.wraps);
+  const b = paginate(rowsOf(), 3, 2, 'strict', cache.wraps);
+  assert.ok(a.flat().length > 0 && a.flat().every((line, i) => line === b.flat()[i]), 'the columns are the kept objects');
+  // Another width wraps anew and keeps its own columns.
+  assert.deepEqual(paginate(rowsOf(), 40, 34, 'strict', cache.wraps), paginate(rowsOf(), 40, 34, 'strict'));
+  assert.equal([...cache.wraps.keys()].length, 2);
 });

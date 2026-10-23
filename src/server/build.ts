@@ -27,7 +27,7 @@ import type { CancellationToken } from 'vscode-languageserver/node';
 import { checkJpbook, completeMeta, composeBookChrome, composeBookInput, entryPaths, jpbookStem, parseJpbook } from '#/shared/book/jpbook.ts';
 import type { JpbookMeta, ParsedJpbook, ParsedLine } from '#/shared/book/jpbook.ts';
 import { bookCounts, concatBookText, renderBook } from '#/shared/compiler/document.ts';
-import type { TitledBook } from '#/shared/compiler/document.ts';
+import type { ChapterCache, TitledBook } from '#/shared/compiler/document.ts';
 import { epubMembers } from '#/shared/compiler/epub.ts';
 import { errorText } from '#/shared/utils/errors.ts';
 import { LocalizedError } from '#/shared/messages.ts';
@@ -52,7 +52,7 @@ import type {
 import { fileLevelError } from './diagnostics.ts';
 import { diagnoseJpbook } from './jpbook.ts';
 import { baseName, childUri, isFileScheme, normalizeRootUri, parentUri, resolveUri } from './fsUri.ts';
-import type { ServerContext } from './context.ts';
+import type { ReadText, ServerContext } from './context.ts';
 import type { ListedBook } from './highlight/vocabulary.ts';
 
 /** One targeted root, always `file:`: its normalized URI and the validated `outDir`. */
@@ -80,6 +80,8 @@ interface BuildSelection {
   readonly format: BuildFormat;
   /** The re-resolved render settings; every format reads its slice, the paper/chrome fields are html-only. */
   readonly settings: HtmlSettings;
+  /** The chapters kept from the last count, for a build of that one book; a build of several would only evict them. */
+  readonly cache: ChapterCache | undefined;
 }
 
 /**
@@ -220,33 +222,28 @@ function textOf(reply: ReadTextResult, rel: string): string {
   }
 }
 
-/** Reads one entry, resolved from the book's directory, through the client; throws a {@link LocalizedError} per failure mode. */
-async function readEntry(ctx: ServerContext, dirUri: string, rel: string, token?: CancellationToken): Promise<string> {
+/** Reads one entry, resolved from the book's directory, with `read`; a path that cannot be resolved reads as not found. */
+function readEntry(read: ReadText, dirUri: string, rel: string, token?: CancellationToken): Promise<ReadTextResult> {
   const uri = resolveUri(dirUri, rel);
-  if (uri === null) {
-    throw new LocalizedError({ code: 'book.entryFileNotFound', args: [rel] });
-  }
-  return textOf(await ctx.readText(uri, token), rel);
+  return uri === null ? Promise.resolve({ ok: false, reason: 'notFound', why: rel }) : read(uri, token);
 }
 
 /**
  * Reads the built entries of one `kind` (`'ok'` chapters or `'coverEntry'` covers; duplicates
- * and muted lines are skipped, an Error line has already failed the book) in manifest order,
- * each resolved from the book's directory. Throws on the first unreadable/missing entry so the
- * caller can convert it into a per-book build error (the diagnostic is published separately).
+ * and muted lines are skipped, an Error line has already failed the book), each resolved from
+ * the book's directory. The reads are issued at once, in manifest order; the first entry in that
+ * order that cannot be read throws ({@link textOf}), so the caller can convert it into a per-book
+ * build error (the diagnostic is published separately).
  */
 async function readEntries(
-  ctx: ServerContext,
+  read: ReadText,
   dirUri: string,
   lines: readonly ParsedLine[],
   kind: 'ok' | 'coverEntry',
   token?: CancellationToken,
 ): Promise<{ name: string; src: string }[]> {
-  const files: { name: string; src: string }[] = [];
-  for (const name of entryPaths(lines, kind)) {
-    files.push({ name, src: await readEntry(ctx, dirUri, name, token) });
-  }
-  return files;
+  const replies = await Promise.all(entryPaths(lines, kind).map(async (name) => ({ name, reply: await readEntry(read, dirUri, name, token) })));
+  return replies.map(({ name, reply }) => ({ name, src: textOf(reply, name) }));
 }
 
 /** A thrown cause as a {@link LocalizableMessage}: a carried code, else raw text under `build.failed`. */
@@ -279,7 +276,7 @@ function emitArtifact(
       return {
         kind: 'txt',
         path: childUri(outDirUri, `${stem}.txt`),
-        content: concatBookText(input, selection.settings.charsPerLine),
+        content: concatBookText(input, selection.settings.charsPerLine, selection.cache),
       };
     case 'html':
       // Grid geometry and 禁則 come from the request's settings snapshot; the page furniture
@@ -288,7 +285,7 @@ function emitArtifact(
       return {
         kind: 'html',
         path: childUri(outDirUri, `${stem}.html`),
-        content: renderBook({ books: [input], ...selection.settings, chrome: composeBookChrome(selection.settings, meta) }),
+        content: renderBook({ books: [input], ...selection.settings, chrome: composeBookChrome(selection.settings, meta), cache: selection.cache }),
       };
     case 'epub':
       return {
@@ -300,6 +297,7 @@ function emitArtifact(
           ...selection.settings,
           // dcterms:modified wants CCYY-MM-DDThh:mm:ssZ — second precision, no milliseconds.
           modified: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+          cache: selection.cache,
         }),
       };
     default: {
@@ -345,8 +343,8 @@ async function buildBook(
     // Covers are html-only, so a missing cover file cannot fail a txt/epub build; chapters read
     // first, so a book missing both reports the same error whichever format is built.
     const { meta } = verdict;
-    const files = await readEntries(ctx, dirUri, parsed.lines, 'ok', token);
-    const coverFiles = selection.format === 'html' ? await readEntries(ctx, dirUri, parsed.lines, 'coverEntry', token) : [];
+    const files = await readEntries(ctx.readText, dirUri, parsed.lines, 'ok', token);
+    const coverFiles = selection.format === 'html' ? await readEntries(ctx.readText, dirUri, parsed.lines, 'coverEntry', token) : [];
     const input = composeBookInput(meta, files, coverFiles);
     return { kind: 'artifact', outDir: book.outDirUri, artifact: emitArtifact(book.outDirUri, selection, book.stem, input, meta) };
   } catch (cause) {
@@ -372,7 +370,11 @@ export async function handleBuild(ctx: ServerContext, params: BuildParams, token
   // and shared by every book in this build.
   const requested = params.books ? new Set(params.books) : undefined;
   const built = requested === undefined ? books : books.filter((b) => requested.has(b.uri));
-  const selection: BuildSelection = { format: params.format, settings: resolveHtmlSettings(params.settings) };
+  const selection: BuildSelection = {
+    format: params.format,
+    settings: resolveHtmlSettings(params.settings),
+    cache: built.length === 1 ? ctx.chapters : undefined,
+  };
   const collisions = collisionsOf(built);
 
   for (const book of built) {
@@ -393,23 +395,58 @@ export async function handleBuild(ctx: ServerContext, params: BuildParams, token
 }
 
 /**
+ * The reader of one `jpnov/bookCounts`. A document the server holds open is its synced text (the
+ * request follows the edits on the same channel, so that copy is never older than what the client
+ * would answer). A closed chapter is the text kept from the last request while the client's stamp
+ * of its file holds. Anything else is read through the client and kept under its stamp, unless
+ * it came from a buffer (`live`): a buffer the server does not sync changes without a stamp change.
+ */
+function countsReader(ctx: ServerContext, params: BookCountsParams): ReadText {
+  const stamps = new Map(params.stamps.map((s) => [s.uri, s.stamp]));
+  // The store follows the book: an entry outside its chapters goes now (a stale one could not be served anyway).
+  for (const uri of ctx.chapterTexts.keys()) {
+    if (!stamps.has(uri)) {
+      ctx.chapterTexts.delete(uri);
+    }
+  }
+  return async (uri, token) => {
+    const doc = ctx.openDocument(uri);
+    if (doc !== undefined) {
+      return { ok: true, text: doc.getText() };
+    }
+    const stamp = stamps.get(uri);
+    const kept = ctx.chapterTexts.get(uri);
+    if (kept !== undefined && kept.stamp === stamp) {
+      return { ok: true, text: kept.text };
+    }
+    const reply = await ctx.readText(uri, token);
+    if (reply.ok && reply.live === undefined && stamp !== undefined) {
+      ctx.chapterTexts.set(uri, { stamp, text: reply.text });
+    }
+    return reply;
+  };
+}
+
+/**
  * Handles `jpnov/bookCounts`: one book's body figures for the Books view, read like a build
- * (the manifest and its chapters through the client) and laid out on the request's settings.
+ * (the manifest and its chapters through the client, see {@link countsReader}) and laid out on
+ * the request's settings, the chapters kept from the last count ({@link ServerContext.chapters}).
  * No diagnostics and no `checkJpbook`: the figures are information, not an output, so a book
  * still missing its title counts, and an Error line only drops that entry. A manifest or a
  * chapter that cannot be read leaves the figures null.
  */
 export async function handleBookCounts(ctx: ServerContext, params: BookCountsParams, token?: CancellationToken): Promise<BookCountsResult> {
-  const manifest = await ctx.readText(params.uri, token);
+  const read = countsReader(ctx, params);
+  const manifest = await read(params.uri, token);
   if (!manifest.ok) {
     return { counts: null };
   }
   try {
     const parsed = parseJpbook(manifest.text);
-    const files = await readEntries(ctx, parentUri(params.uri), parsed.lines, 'ok', token);
+    const files = await readEntries(read, parentUri(params.uri), parsed.lines, 'ok', token);
     // The chapters take the book's タイトル／ペンネーム completed as a build completes them, so the
     // figures count the same text the cover's 総ページ数 reports.
-    return { counts: bookCounts(composeBookInput(completeMeta(parsed), files, []), resolveHtmlSettings(params.settings)) };
+    return { counts: bookCounts(composeBookInput(completeMeta(parsed), files, []), resolveHtmlSettings(params.settings), ctx.chapters) };
   } catch {
     return { counts: null };
   }

@@ -8,7 +8,7 @@ import type { DashMode, KinsokuMode, LayoutSettings, LinePitch } from '../config
 import type { BuildChrome } from './chrome.ts';
 import { emrProbe, stylesheet } from './css.ts';
 import type { PaperOrientation, PaperSize } from './geometry.ts';
-import { buildRows, paginate, pagesToHtml, type DisplayLine, type RenderPage, type Row, type Unit } from './layout.ts';
+import { buildRows, paginate, pagesToHtml, type DisplayLine, type RenderPage, type Row, type Unit, type WrapMemo } from './layout.ts';
 
 /** 400字詰め原稿用紙 (20 字 × 20 行): the grid ［＃ここに「原稿用紙換算枚数」の値を表示］
  *  re-flows the body on. Tests derive from this, never write 20. */
@@ -205,37 +205,104 @@ export interface Chapter {
   readonly values: ValueLookup;
 }
 
-/** The chapters of `book`, each parsed with its own values: the one place a chapter is parsed. */
-export function chapterAsts(book: BookInput): Chapter[] {
-  return book.files.map((file, index) => {
-    const values: ValueLookup = new Map([...bookPairs(book), [VALUE_NAMES.heading, String(index + 1)]]);
-    return { ast: parse(file.src, values), values };
-  });
+/** A chapter laid into rows: its rows, each stamped with the chapter's index, and its 文字数 ({@link BookCounts.chars}). */
+export interface LaidChapter extends Chapter {
+  readonly rows: Row[];
+  readonly chars: number;
+}
+
+/** The chapter at `index` of `book` parsed with its own values: the one place a chapter is parsed. */
+function parseChapter(book: BookInput, src: string, index: number): Chapter {
+  const values: ValueLookup = new Map([...bookPairs(book), [VALUE_NAMES.heading, String(index + 1)]]);
+  return { ast: parse(src, values), values };
+}
+
+/** `chapter` laid into rows for `dash`; the one place a chapter's rows are built. */
+function layChapter(chapter: Chapter, index: number, dash: DashMode): LaidChapter {
+  const rows = stampLines(buildRows(chapter.ast, { dash }), { chapter: index });
+  return { ...chapter, rows, chars: sumUnits(rows, (u) => graphemeCount(u.text)) };
+}
+
+/** A kept chapter: the one at its position, with the text and values it was parsed from, and its rows for one dash. */
+export interface ChapterEntry {
+  readonly src: string;
+  readonly title: string;
+  readonly author: string;
+  readonly chapter: Chapter;
+  laid: { readonly dash: DashMode; readonly chapter: LaidChapter } | undefined;
 }
 
 /**
- * One book's body flow: each chapter laid into rows ONCE, joined by {@link chapterGlue}. The
- * returned function gives the rows for one line width; a flow differs only in the glue, whose
- * divider centres on the flow's own line width (`null` = the divider stays at the line head, as
- * 原稿用紙換算枚数 counts it).
+ * The last book's chapters parsed and laid out, kept between two runs over the same text: the
+ * Books view counts a book on every pause in a chapter and a build follows the count, so a chapter
+ * whose text and values have not changed is neither parsed nor laid out again. Holds one book:
+ * {@link chapterAsts} keeps the entries of its own book only. {@link createChapterCache} makes one.
  */
-function bodyFlow(book: BookInput, dash: DashMode): (charsPerLine: number | null) => Row[] {
-  const chapters = chapterAsts(book).map(({ ast }, ci) => ({ ast, rows: stampLines(buildRows(ast, { dash }), { chapter: ci }) }));
-  return (charsPerLine) => {
-    const divider = book.divider;
-    return chapters.flatMap(({ ast, rows }, ci, all): Row[] => {
-      const prev = all[ci - 1];
-      const glue = prev === undefined
-        ? []
-        : glueRows(chapterGlue(prev.ast, ast, divider, charsPerLine), dash, ci - 1);
-      return [...glue, ...rows];
-    });
-  };
+export interface ChapterCache {
+  /** By position: the index is a value of the AST (見出し番号), so a chapter that moves is parsed again, and two chapters of one text keep their own entries. */
+  entries: ChapterEntry[];
+  /** The columns the kept rows have already been wrapped into, by width and 禁則. */
+  readonly wraps: WrapMemo;
+}
+
+export function createChapterCache(): ChapterCache {
+  return { entries: [], wraps: new Map() };
+}
+
+/** The entries of `book` in `cache`, each kept from the last run where its text and values agree, else parsed anew. */
+function chapterEntries(book: BookInput, cache: ChapterCache): ChapterEntry[] {
+  const title = book.title ?? '';
+  const author = book.author ?? '';
+  cache.entries = book.files.map(({ src }, index): ChapterEntry => {
+    const kept = cache.entries[index];
+    return kept?.src === src && kept.title === title && kept.author === author
+      ? kept
+      : { src, title, author, chapter: parseChapter(book, src, index), laid: undefined };
+  });
+  return cache.entries;
+}
+
+/** The chapters of `book`, each parsed with its own values; `cache` keeps them between runs (none given = parsed now). */
+export function chapterAsts(book: BookInput, cache = createChapterCache()): Chapter[] {
+  return chapterEntries(book, cache).map((entry) => entry.chapter);
+}
+
+/** The chapters of `book` laid into rows for `dash`; `cache` keeps them between runs (none given = laid now). */
+export function laidChapters(book: BookInput, dash: DashMode, cache = createChapterCache()): LaidChapter[] {
+  return chapterEntries(book, cache).map((entry, index) => {
+    if (entry.laid?.dash !== dash) {
+      entry.laid = { dash, chapter: layChapter(entry.chapter, index, dash) };
+    }
+    return entry.laid.chapter;
+  });
+}
+
+/** A chapter of a body flow with the glue before it ({@link chapterGlue}); the first has none. */
+interface FlowPart {
+  readonly seam: Row[];
+  readonly chapter: LaidChapter;
+}
+
+/**
+ * One book's body flow on one line width: its laid chapters, each with the glue before it. A flow
+ * differs only in the glue, whose divider centres on the flow's own line width (`null` = the
+ * divider stays at the line head, as 原稿用紙換算枚数 counts it).
+ */
+function bodyFlow(book: BookInput, chapters: readonly LaidChapter[], dash: DashMode, charsPerLine: number | null): FlowPart[] {
+  return chapters.map((chapter, ci): FlowPart => {
+    const prev = chapters[ci - 1];
+    return { seam: prev === undefined ? [] : glueRows(chapterGlue(prev.ast, chapter.ast, book.divider, charsPerLine), dash, ci - 1), chapter };
+  });
+}
+
+/** The rows of one body flow, in order. */
+function flowRows(parts: readonly FlowPart[]): Row[] {
+  return parts.flatMap(({ seam, chapter }) => [...seam, ...chapter.rows]);
 }
 
 /** 原稿用紙換算枚数 of one body flow: its rows re-flowed on {@link MANUSCRIPT_SHEET}. */
-function sheetCount(rows: readonly Row[], kinsoku: KinsokuMode): number {
-  return paginate(rows, MANUSCRIPT_SHEET.charsPerLine, MANUSCRIPT_SHEET.linesPerPage, kinsoku).length;
+function sheetCount(rows: readonly Row[], kinsoku: KinsokuMode, memo?: WrapMemo): number {
+  return paginate(rows, MANUSCRIPT_SHEET.charsPerLine, MANUSCRIPT_SHEET.linesPerPage, kinsoku, memo).length;
 }
 
 /** The three figures of a book's body the Books view shows beside the title. */
@@ -252,18 +319,22 @@ export interface BookCounts {
 /**
  * The body of one book counted as {@link renderBook} lays it out: same rows, same glue, same
  * 禁則, so the figures agree with the cover's values. The cover files are never read — they are
- * not the body. Pure + vscode-free.
+ * not the body. `cache` keeps the chapters and their wrapped columns between two counts. Pure +
+ * vscode-free.
  */
 export function bookCounts(
   book: BookInput,
   opts: Pick<LayoutSettings, 'charsPerLine' | 'linesPerPage' | 'kinsoku' | 'dash'>,
+  cache?: ChapterCache,
 ): BookCounts {
-  const flow = bodyFlow(book, opts.dash);
-  const plain = flow(null);
+  const chapters = laidChapters(book, opts.dash, cache);
+  // The null-width flow serves both the sheets and the characters: a divider mark counts, its
+  // centring spaces (absent at this width) do not.
+  const plain = bodyFlow(book, chapters, opts.dash, null);
   return {
-    pages: paginate(flow(opts.charsPerLine), opts.charsPerLine, opts.linesPerPage, opts.kinsoku).length,
-    sheets: sheetCount(plain, opts.kinsoku),
-    chars: sumUnits(plain, (u) => graphemeCount(u.text)),
+    pages: paginate(flowRows(bodyFlow(book, chapters, opts.dash, opts.charsPerLine)), opts.charsPerLine, opts.linesPerPage, opts.kinsoku, cache?.wraps).length,
+    sheets: sheetCount(flowRows(plain), opts.kinsoku, cache?.wraps),
+    chars: plain.reduce((n, { seam, chapter }) => n + chapter.chars + sumUnits(seam, (u) => graphemeCount(u.text)), 0),
   };
 }
 
@@ -295,12 +366,15 @@ export function renderBook(opts: {
   /** Resolved `jpnov.layout.fontFamily`; '' = the built-in stack (css.ts DEFAULT_FONT_STACK). */
   fontFamily: string;
   chrome: BuildChrome;
+  /** Keeps the chapters between runs (a count, then a build, of the same book). */
+  cache?: ChapterCache | undefined;
 }): string {
   // Bodies paginate FIRST — covers need the count. Per book is output-identical to one run
   // with a pagebreak row at each seam: paginate flushes only non-empty pages.
   const bodies = opts.books.map((book) => {
-    const flow = bodyFlow(book, opts.dash);
-    return { book, flow, pages: paginate(flow(opts.charsPerLine), opts.charsPerLine, opts.linesPerPage, opts.kinsoku) };
+    const chapters = laidChapters(book, opts.dash, opts.cache);
+    const flow = (charsPerLine: number | null): Row[] => flowRows(bodyFlow(book, chapters, opts.dash, charsPerLine));
+    return { book, flow, pages: paginate(flow(opts.charsPerLine), opts.charsPerLine, opts.linesPerPage, opts.kinsoku, opts.cache?.wraps) };
   });
   const totalBody = bodies.reduce((n, b) => n + b.pages.length, 0);
 
@@ -308,7 +382,7 @@ export function renderBook(opts: {
   // on the first cover (or the furniture) that asks, once per render.
   let sheets: number | undefined;
   const totalSheets = (): number => {
-    sheets ??= bodies.reduce((n, b) => n + sheetCount(b.flow(null), opts.kinsoku), 0);
+    sheets ??= bodies.reduce((n, b) => n + sheetCount(b.flow(null), opts.kinsoku, opts.cache?.wraps), 0);
     return sheets;
   };
 
@@ -390,10 +464,10 @@ function chapterText(ast: Ast): string {
  * in that choice. An empty book -> ""; a divider that itself opens a span (`［＃太字］＊`) leaks
  * into the next chapter. Pure + vscode-free.
  */
-export function concatBookText(book: BookInput, charsPerLine: number): string {
+export function concatBookText(book: BookInput, charsPerLine: number, cache?: ChapterCache): string {
   // The same AST as the HTML build's: the seam reads the chapter edges from it, and a value may
   // be what shows there. The text printed is the nodes, so no value reaches it.
-  const chapters = chapterAsts(book).map(({ ast }) => ({ ast, text: chapterText(ast) }));
+  const chapters = chapterAsts(book, cache).map(({ ast }) => ({ ast, text: chapterText(ast) }));
   const eol = chapters.some(({ ast }) => ast.lines.some((line) => line.eol === '\r\n')) ? '\r\n' : '\n';
   const divider = book.divider === undefined ? undefined : { ...book.divider, mark: dropUnshown(book.divider.mark) };
   const joined = chapters.reduce((acc, { ast, text }, i) => {

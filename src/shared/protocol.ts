@@ -353,6 +353,13 @@ export const BookCountsRequest = 'jpnov/bookCounts';
 export interface BookCountsParams {
   readonly uri: string;
   readonly settings: HtmlSettings;
+  /**
+   * The chapters' files as the client last saw them (`${mtime}/${size}` of fs.stat, and how many
+   * changes its watcher reported): the server keeps a closed chapter's text from one request to
+   * the next while its stamp holds. A missing file has no entry; a chapter the server holds open
+   * is taken from that copy whatever its stamp.
+   */
+  readonly stamps: readonly { readonly uri: string; readonly stamp: string }[];
 }
 
 /** The body's figures; null when the book or one of its chapters could not be read. */
@@ -439,5 +446,10 @@ export type ReadTextFailure = 'notFound' | 'notText' | 'noReply' | 'other';
  * message (untranslatable); only `other` surfaces it.
  */
 export type ReadTextResult =
-  | { readonly ok: true; readonly text: string }
+  | {
+    readonly ok: true;
+    readonly text: string;
+    /** The text is an open document's buffer, not the file: a store keyed by the file must not keep it. */
+    readonly live?: true;
+  }
   | { readonly ok: false; readonly reason: ReadTextFailure; readonly why: string };

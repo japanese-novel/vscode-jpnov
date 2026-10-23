@@ -84,7 +84,7 @@ export type Row =
     readonly kind: 'line';
     readonly srcLine: number;
     readonly chapter?: number;
-    readonly units: Unit[];
+    readonly units: readonly Unit[];
     readonly indent?: number;
     readonly heading?: HeadingLevel;
   }
@@ -694,6 +694,24 @@ function wrapRow(
   return lines;
 }
 
+/**
+ * The columns of rows already wrapped on a width under a 禁則 mode, kept by a chapter cache beside
+ * the rows it keeps: a row met again on the same width is not wrapped again. Keyed
+ * `${charsPerLine}/${kinsoku}` (the inputs of {@link wrapRow} besides the row); an entry dies with its row.
+ */
+export type WrapMemo = Map<string, WeakMap<Row, readonly DisplayLine[]>>;
+
+/** The memo's entry for one width and 禁則 mode, made on first use; none without a memo. */
+function wrapsFor(memo: WrapMemo | undefined, charsPerLine: number, kinsoku: KinsokuMode): WeakMap<Row, readonly DisplayLine[]> | undefined {
+  if (memo === undefined) {
+    return undefined;
+  }
+  const key = `${String(charsPerLine)}/${kinsoku}`;
+  const wraps = memo.get(key) ?? new WeakMap<Row, readonly DisplayLine[]>();
+  memo.set(key, wraps);
+  return wraps;
+}
+
 /** One cut page: its columns, and whether it opens after an authored ［＃改ページ］ (else the page before merely ran out of lines). */
 interface CutPage {
   readonly lines: DisplayLine[];
@@ -711,7 +729,9 @@ function cutPages(
   charsPerLine: number,
   linesPerPage: number,
   kinsoku: KinsokuMode,
+  memo?: WrapMemo,
 ): CutPage[] {
+  const wraps = wrapsFor(memo, charsPerLine, kinsoku);
   const pages: CutPage[] = [];
   let lines: DisplayLine[] = [];
   let forced = false; // how the page being built opened
@@ -727,7 +747,12 @@ function cutPages(
       forced = true;
       continue;
     }
-    for (const line of wrapRow(row, charsPerLine, kinsoku)) {
+    let columns = wraps?.get(row);
+    if (columns === undefined) {
+      columns = wrapRow(row, charsPerLine, kinsoku);
+      wraps?.set(row, columns);
+    }
+    for (const line of columns) {
       if (lines.length >= linesPerPage) {
         flush();
         forced = false;
@@ -739,14 +764,15 @@ function cutPages(
   return pages;
 }
 
-/** Flows rows into pages of at most `linesPerPage` lines; a pagebreak forces a new page. */
+/** Flows rows into pages of at most `linesPerPage` lines; a pagebreak forces a new page. `memo` keeps the wrapped columns (see {@link WrapMemo}). */
 export function paginate(
   rows: readonly Row[],
   charsPerLine: number,
   linesPerPage: number,
   kinsoku: KinsokuMode,
+  memo?: WrapMemo,
 ): DisplayLine[][] {
-  return cutPages(rows, charsPerLine, linesPerPage, kinsoku).map((page) => page.lines);
+  return cutPages(rows, charsPerLine, linesPerPage, kinsoku, memo).map((page) => page.lines);
 }
 
 /**
