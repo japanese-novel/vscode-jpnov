@@ -1,6 +1,6 @@
 /**
- * The startup probe: settings-presence (workspace/folder level only — NEVER user level),
- * root-level filename matching, and a capped deep search, per workspace folder.
+ * The startup probe: settings-presence (workspace/folder level only — NEVER user level) and
+ * root-level filename matching, per workspace folder; nothing walks the folder.
  *
  * Runs in CI via `npm run test:integration`; for direct runs see test/client/README.md.
  */
@@ -77,32 +77,10 @@ test('an unreadable root is skipped, not fatal', async () => {
   assert.equal(await folderIsNovelProject(folder() as never), false);
 });
 
-test('a nested *.jpbook (subfolders only) is found by the deep search', async () => {
-  state.readDirectoryResults.set(FOLDER_URI, [['chapters', 2]]);
-  state.findFilesResults.set(FOLDER_URI, [Uri.parse(`${FOLDER_URI}/books/volume1.jpbook`)]);
-  assert.equal(await folderIsNovelProject(folder() as never), true);
-  const call = state.findFilesCalls[0];
-  assert.ok(call);
-  assert.equal(call.include.pattern, '**/*.jpbook');
-  assert.equal(call.maxResults, 1);
-});
-
-test('a root shallow hit answers without the deep search', async () => {
-  state.readDirectoryResults.set(FOLDER_URI, [['volume1.jpbook', 1]]);
-  state.findFilesResults.set(FOLDER_URI, 'error'); // would answer false if consulted
-  assert.equal(await folderIsNovelProject(folder() as never), true);
+test('a *.jpbook only in a subfolder is no startup signal, and the folder is never searched', async () => {
+  // The Books view, an opened novel document or a created `.jpbook` start the server there instead.
+  state.readDirectoryResults.set(FOLDER_URI, [['books', 2]]);
+  state.findFilesResults.set(FOLDER_URI, [Uri.parse(`${FOLDER_URI}/books/volume1.jpbook`)]); // would answer true if consulted
+  assert.equal(await folderIsNovelProject(folder() as never), false);
   assert.equal(state.findFilesCalls.length, 0);
-});
-
-test('an empty deep search is no signal', async () => {
-  state.readDirectoryResults.set(FOLDER_URI, []);
-  state.findFilesResults.set(FOLDER_URI, []);
-  assert.equal(await folderIsNovelProject(folder() as never), false);
-  assert.equal(state.findFilesCalls.length, 1);
-});
-
-test('a failing deep search (no search provider) is not fatal', async () => {
-  state.readDirectoryResults.set(FOLDER_URI, []);
-  state.findFilesResults.set(FOLDER_URI, 'error');
-  assert.equal(await folderIsNovelProject(folder() as never), false);
 });

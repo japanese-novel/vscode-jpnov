@@ -72,7 +72,7 @@ import { readText } from './readText.ts';
 import { affectsRenderSettings, buildHtmlSettings } from '../renderConfig.ts';
 import { cappedRequest, raceRequest } from '../requests.ts';
 
-/** Trailing-edge delay for chapter-file event bursts (matches the preview's render debounce). */
+/** Trailing-edge delay for file-event bursts, the detail's re-post and the list's re-list alike (matches the preview's render debounce). */
 const REPOST_DEBOUNCE_MS = 120;
 
 /** Trailing-edge delay after a keystroke in a chapter of the open detail: its figures follow the typing, one layout per pause. */
@@ -187,6 +187,17 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private openDetailUri: string | undefined;
   /** Trailing-edge timer coalescing chapter-file events into one detail re-post per burst. */
   private repostTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Trailing-edge timer coalescing `.jpbook` events into one re-list per burst. */
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Re-lists once `REPOST_DEBOUNCE_MS` pass without another event. Fire-and-forget: refresh()
+   * self-catches its sendRequest and is refreshSeq-serialized, so a dropped result is safe.
+   */
+  private readonly scheduleRefresh = (): void => {
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => void this.refresh(), REPOST_DEBOUNCE_MS);
+  };
+
   /** The chapters of the last posted detail by file URI (each file once, in the book's order), under
    *  the book they belong to: the documents whose edits re-count it, and the files the problems screen works on. */
   private detailChapters: { readonly book: string; readonly rows: ReadonlyMap<string, ChapterRow> } = { book: '', rows: new Map() };
@@ -203,10 +214,16 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     // A `.jpbook` appearing/disappearing changes the book SET, and a SAVE can change its
     // title (a book label), chapters (the open detail, and which pages the server's vocabulary
-    // colours) or names (the vocabulary itself), so
-    // create/delete/change all re-list. The watcher only fires onDidChange for on-disk writes —
-    // not per keystroke.
+    // colours) or names (the vocabulary itself), so create/delete/change all re-list, one list
+    // per burst (a branch switch fires one event per book). The watcher only fires onDidChange
+    // for on-disk writes — not per keystroke.
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.jpbook');
+    /** A book outside every folder opened, closed or saved: the list changes, the glob watcher below never sees it. */
+    const outsideBook = (d: vscode.TextDocument): void => {
+      if (isOpenBook(d)) {
+        this.scheduleRefresh();
+      }
+    };
     // Chapter existence backs the detail's missing flags, and chapter text its figures, so a
     // `.jpnov` appearing, disappearing or changing on disk re-posts the open detail.
     const chapterWatcher = vscode.workspace.createFileSystemWatcher('**/*.jpnov');
@@ -219,11 +236,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     this.disposables.push(
       watcher,
-      // Fire-and-forget re-list: refresh() self-catches its sendRequest and is refreshSeq-serialized,
-      // so a dropped result is safe.
-      watcher.onDidCreate(() => void this.refresh()),
-      watcher.onDidDelete(() => void this.refresh()),
-      watcher.onDidChange(() => void this.refresh()),
+      watcher.onDidCreate(this.scheduleRefresh),
+      watcher.onDidDelete(this.scheduleRefresh),
+      watcher.onDidChange(this.scheduleRefresh),
       chapterWatcher,
       chapterWatcher.onDidCreate(repostDetail),
       chapterWatcher.onDidDelete(repostDetail),
@@ -255,11 +270,9 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           repostDetail();
         }
       }),
-      // A book outside every folder is listed while its document is open, and the glob watcher
-      // above never sees it: its open, close and save re-list instead.
-      vscode.workspace.onDidOpenTextDocument((d) => isOpenBook(d) && void this.refresh()),
-      vscode.workspace.onDidCloseTextDocument((d) => isOpenBook(d) && void this.refresh()),
-      vscode.workspace.onDidSaveTextDocument((d) => isOpenBook(d) && void this.refresh()),
+      vscode.workspace.onDidOpenTextDocument(outsideBook),
+      vscode.workspace.onDidCloseTextDocument(outsideBook),
+      vscode.workspace.onDidSaveTextDocument(outsideBook),
     );
   }
 
@@ -345,6 +358,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
    * server that will not start.
    */
   async refresh(report = false): Promise<void> {
+    // A direct refresh lists everything a scheduled one would: the pending one is dropped.
+    clearTimeout(this.refreshTimer);
     const seq = ++this.refreshSeq;
     const params: ListBooksParams = bookTargets();
     let result: ListBooksResult;
@@ -433,6 +448,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   dispose(): void {
     clearTimeout(this.repostTimer);
+    clearTimeout(this.refreshTimer);
     this.messageSub?.dispose();
     this.messageSub = undefined;
     for (const d of this.disposables) {
