@@ -16,10 +16,10 @@ const { bodies, fragment, hidden = false } = Astro.props;
 
 <div class:list={['jp-group', 'jp-preview', { 'jp-st-hide': hidden }]} data-t="preview">
   <div class="jp-tabs">
-    <div class="jp-tab jp-active"><Icon name="open-preview" class="jp-ficon" /><span class="jp-lbl">{PRODUCT.previewTab(NAMES.chapter1)}</span><Icon name="close" class="jp-tclose" /></div>
+    <div class="jp-tab jp-active"><Icon name="open-preview" class="jp-ficon" /><span>{PRODUCT.previewTab(NAMES.chapter1)}</span><Icon name="close" class="jp-tclose" /></div>
     <div class="jp-actions"><span class="jp-iconbtn"><Icon name="ellipsis" /></span></div>
   </div>
-  <div class="jp-pane" data-t="pane">
+  <div class="jp-pane">
     {bodies.map((b) => (
       <div class:list={['jp-scope', fragment.scope.slice(1), { 'jp-st-hide': !b.shown }]} data-t={`pv-${b.id}`} set:html={b.body}></div>
     ))}

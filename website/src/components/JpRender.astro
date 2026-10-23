@@ -22,7 +22,7 @@ let sizing = '';
 if (sample.kind === 'book') {
   sizing = `--jp-em:calc(var(--jp-paper-width) * ${String(sample.paper.fontMm)} / ${String(sample.paper.widthMm)});`;
 } else if (em !== undefined) {
-  sizing = `--jp-vh:calc(var(--jp-embed-em, ${String(em)}px) * ${String(sample.options.bandCells)} + 32px);`;
+  sizing = `--jp-vh:calc(var(--jp-embed-em, ${String(em)}px) * ${String(sample.bandCells)} + 32px);`;
 }
 ---
 

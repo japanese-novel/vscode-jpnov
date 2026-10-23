@@ -16,7 +16,7 @@ import type { LocalizableMessage, Problem } from '../shared/protocol.ts';
 import type { SyncedEdit } from './targets.ts';
 
 /** The `source` field stamped on every diagnostic this server emits. */
-const DIAGNOSTIC_SOURCE = 'jpnov';
+export const DIAGNOSTIC_SOURCE = 'jpnov';
 
 /** A zero-width range at the document start; file-level diagnostics aren't line-specific. */
 const FILE_START_RANGE = {

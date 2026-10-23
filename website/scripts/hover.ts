@@ -29,7 +29,7 @@ export function annotationHover(src: string, lineIndex: number, annotation: stri
   return {
     line: lineIndex,
     column: column(line, start),
-    lines: hover.lines.map((message) => localize(message).ja),
+    lines: hover.lines.map((message) => localize(message)),
     highlights: highlights.map((h) => ({ from: column(line, h.range.start.character), to: column(line, h.range.end.character) })),
   };
 }

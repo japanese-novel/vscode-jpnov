@@ -10,9 +10,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from '../src/shared/ast/parse.ts';
+import { composeBookChrome, META_DEFAULTS } from '../src/shared/book/jpbook.ts';
 import { renderBook } from '../src/shared/compiler/document.ts';
 import { renderPreview } from '../src/shared/compiler/preview.ts';
-import { META_DEFAULTS } from '../src/shared/book/jpbook.ts';
+import { BUILD_CHROME_DEFAULT, BUILD_PAPER_DEFAULT, PREVIEW_CHROME_DEFAULT } from '../src/shared/config/settings.ts';
+import { LAYOUT_DEFAULT } from '../src/shared/config/types.ts';
+import { SPECIMEN_BOOKS, SPECIMEN_PREVIEWS } from './specimens.ts';
+import type { SpecimenBook, SpecimenBookName, SpecimenName, SpecimenPreview, SpecimenPreviewName } from './specimens.ts';
 
 const OUT = fileURLToPath(new URL('../.scratch/shots/', import.meta.url));
 const IMAGES = fileURLToPath(new URL('../docs/images/', import.meta.url));
@@ -23,13 +27,11 @@ const FFMPEG = '/opt/homebrew/bin/ffmpeg';
 // サンプルテキスト
 
 // docs/specimens/ (shared with the website); the credit for the 青空文庫 text is in
-// docs/specimens/README.md and in both READMEs' captions.
-function specimen(name: string): string {
+// docs/specimens/README.md and in both READMEs' captions. The settings of each render are the
+// table in scripts/specimens.ts, shared with the website too.
+function specimen(name: SpecimenName): string {
   return readFileSync(new URL(`../docs/specimens/${name}.jpnov`, import.meta.url), 'utf8');
 }
-const NEKO = specimen('neko');
-const NOTATION = specimen('notation');
-const KINSOKU = specimen('kinsoku');
 
 // ショット定義
 
@@ -38,35 +40,21 @@ const KINSOKU = specimen('kinsoku');
 // padding-block は vertical-rl では左右の余白（プレビュー自身は横方向フラッシュ）。
 const PAPER = 'html{background:#fff;color:#1a1a1a}body{padding-block:24px}';
 
-const bookOpts = {
-  charsPerLine: 40,
-  linesPerPage: 34,
-  linePitch: 1.5, // 既定値のまま撮る
-  fontFamily: '',
-  kinsoku: 'strict',
-  dash: 'horizontalBar',
-  paperSize: 'a4',
-  paperOrientation: 'auto',
-} as const;
-const furniture = {
-  footerAlign: META_DEFAULTS.footerAlign,
-  footer: META_DEFAULTS.footer,
-  header: '吾輩は猫である',
-  headerAlign: META_DEFAULTS.headerAlign,
-} as const;
-
-type PreviewOpts = Parameters<typeof renderPreview>[1];
-/** 特写ショットのプレビュー設定。既定値を土台に、各ショットは差分だけ渡す。 */
-const previewOpts = (overrides: Partial<PreviewOpts> = {}): PreviewOpts => ({
-  charsPerLine: 20,
-  linesPerPage: 34,
-  linePitch: 1.5,
-  fontFamily: '',
-  kinsoku: 'strict',
-  dash: 'horizontalBar',
-  chrome: { lineNumbers: false, edgeLine: 'none' },
-  ...overrides,
-});
+// 標本の描画。製品の既定値を土台に、表の差分だけ渡す。
+function bookHtml(name: SpecimenBookName): string {
+  const r: SpecimenBook = SPECIMEN_BOOKS[name];
+  return renderBook({
+    books: [{ files: [{ name: `${r.specimen}.jpnov`, src: specimen(r.specimen) }] }],
+    ...LAYOUT_DEFAULT,
+    ...r.layout,
+    ...BUILD_PAPER_DEFAULT,
+    chrome: composeBookChrome({ ...BUILD_CHROME_DEFAULT, ...r.chrome }, { ...META_DEFAULTS, header: r.header }),
+  });
+}
+function previewHtml(name: SpecimenPreviewName): string {
+  const r: SpecimenPreview = SPECIMEN_PREVIEWS[name];
+  return renderPreview(parse(specimen(r.specimen)), { ...LAYOUT_DEFAULT, ...r.layout, chrome: { ...PREVIEW_CHROME_DEFAULT, ...r.chrome } });
+}
 
 interface PdfShot {
   name: string;
@@ -101,31 +89,21 @@ const shots: Shot[] = [
   {
     name: 'hero-page',
     mode: 'pdf',
-    html: renderBook({
-      books: [{ files: [{ name: 'wagahai.jpnov', src: NEKO }] }],
-      ...bookOpts,
-      chrome: { lineNumbers: false, edgeLine: 'none', ...furniture },
-    }),
+    html: bookHtml('hero'),
     rasterSize: 2245,
     mat: 40,
   },
   {
     name: 'genkoyoshi',
     mode: 'pdf',
-    html: renderBook({
-      books: [{ files: [{ name: 'wagahai.jpnov', src: NEKO }] }],
-      ...bookOpts,
-      linePitch: 2, // 罫線あり — 既定 1.5 では罫線がルビを横切る
-      chrome: { lineNumbers: true, edgeLine: 'red', ...furniture },
-    }),
+    html: bookHtml('genkoyoshi'),
     rasterSize: 2245,
     mat: 40,
   },
   {
     name: 'notation',
     mode: 'screenshot',
-    // linePitch 2: 見本に左ルビがある — 既定 1.5 では隣の行に重なる
-    html: renderPreview(parse(NOTATION), previewOpts({ charsPerLine: 9, linePitch: 2 })),
+    html: previewHtml('notation'),
     style: PAPER,
     w: 1080,
     h: 620,
@@ -134,7 +112,7 @@ const shots: Shot[] = [
   {
     name: 'kinsoku-off',
     mode: 'screenshot',
-    html: renderPreview(parse(KINSOKU), previewOpts({ kinsoku: 'none' })),
+    html: previewHtml('kinsokuOff'),
     style: PAPER,
     w: 500, // 最小幅ちょうど。撮影後に左余白を crop
     h: 640,
@@ -143,7 +121,7 @@ const shots: Shot[] = [
   {
     name: 'kinsoku-on',
     mode: 'screenshot',
-    html: renderPreview(parse(KINSOKU), previewOpts()),
+    html: previewHtml('kinsokuOn'),
     style: PAPER,
     w: 500,
     h: 640,

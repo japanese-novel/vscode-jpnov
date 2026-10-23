@@ -7,7 +7,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
-const REVEAL_QUERY = '(prefers-reduced-motion: no-preference) and (min-width: 48rem)';
+import { REVEAL_QUERY } from '../styles/tokens.ts';
 
 interface Offset {
   readonly x: number;

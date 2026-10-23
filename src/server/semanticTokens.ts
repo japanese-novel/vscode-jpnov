@@ -33,7 +33,7 @@ import { shownLine } from './shown.ts';
  * The recognizer's span kinds ('character' / 'keyword') ARE rows here, so its output flows in with no
  * remapping; removing either row would make that assignment fail to type-check.
  */
-const HIGHLIGHTS = [
+export const HIGHLIGHTS = [
   { kind: 'marker', lsp: 'comment' }, // ｜ 《 》 ［＃ ］ + ここから・ここで・終わり scaffolding + 「」『』 dialogue delimiters (greyed)
   { kind: 'directive', lsp: 'keyword' }, // style variant names / 改ページ / ○字下げ (command word only; ここから・ここで・終わり demote to marker)
   { kind: 'direction', lsp: 'comment' }, // の?左に

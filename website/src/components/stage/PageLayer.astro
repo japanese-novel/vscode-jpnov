@@ -7,5 +7,4 @@ const book = sampleOf('stageBook', 'book');
 const { widthMm, heightMm, fontMm } = book.paper;
 ---
 
-<style is:inline set:html={book.fragment.css}></style>
-<div class={`jp-page jp-scope ${book.fragment.scope.slice(1)}`} data-t="page" style={`--fw:${String(fontMm / widthMm)};--fh:${String(fontMm / heightMm)}`} set:html={book.fragment.body}></div>
+<div class={`jp-page jp-scope ${book.fragment.scope.slice(1)}`} style={`--fw:${String(fontMm / widthMm)};--fh:${String(fontMm / heightMm)}`} set:html={book.fragment.body}></div>

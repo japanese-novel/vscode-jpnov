@@ -1,42 +1,17 @@
 /**
  * Locks the shipped lint experience: with no user overrides, exactly the data-hygiene rules, the
- * ダッシュ rule, and the five format rules run; every other rule is off. Reads the real
- * package.json `default`s and drives the real `selectRules`, so a flipped manifest default (or a
- * mis-scoped rule) fails here — the schema-shape lock in config-codegen.test.ts never exercises
- * this defaults-to-selection path.
+ * ダッシュ rule, and the five format rules run; every other rule is off. Drives the real `selectRules`
+ * with the catalog's shipped defaults (package.json carries the same values: config-codegen.test.ts
+ * holds it to the catalog), so a flipped default or a mis-scoped rule fails here.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
-import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';
+import { shippedLintConfig } from '../../../src/shared/lint/catalog.ts';
 import { selectRules } from '../../../src/shared/lint/select.ts';
-import type { RawLintConfigWire } from '../../../src/shared/protocol.ts';
-
-const ROOT = new URL('../../../', import.meta.url); // repo root, from test/shared/lint/
-
-/** Every jpnov.lint.* setting mapped to its shipped package.json `default`. null/false/'off' are kept
- *  in: `selectRules` treats them as off, the same outcome the client's snapshot filter produces. */
-function shippedLintDefaults(): RawLintConfigWire {
-  const pkg = JSON.parse(
-    readFileSync(fileURLToPath(new URL('package.json', ROOT)), 'utf8'),
-  ) as { contributes: { configuration: { properties?: Record<string, { default: unknown }> }[] } };
-  const raw: Record<string, boolean | number | string | null> = {};
-  for (const rule of RULES) {
-    const key = settingKey(rule);
-    for (const section of pkg.contributes.configuration) {
-      const prop = section.properties?.[key];
-      if (prop !== undefined) {
-        raw[key] = prop.default as boolean | number | string | null;
-      }
-    }
-  }
-  return raw;
-}
 
 test('shipped defaults enable exactly the hygiene rules, ダッシュ, and the format rules', () => {
-  const selection = selectRules(shippedLintDefaults());
+  const selection = selectRules(shippedLintConfig());
   // Alphabetically sorted; the format rules (ellipsis, exclamationSpace, questionExclamationMarks, indent,
   // endPeriod, closingPunct, noIndent), the bracket matcher and the full-width space rule ship ON — the
   // discrete successors of the retired general-novel-style bundle plus the 和文 conventions ruled

@@ -27,12 +27,8 @@ export interface PreviewScoped {
 }
 
 export interface BookScoped extends PreviewScoped {
-  /** From the build's `@page` size and root font size. */
+  /** From the build's `@page` size and root font size; lets an embed size the sheet to any width. */
   readonly paper: { readonly widthMm: number; readonly heightMm: number; readonly fontMm: number };
-  /** Pages kept in `fragment`. */
-  readonly pageCount: number;
-  /** Body pages of the whole book — the footer's 総ページ数. */
-  readonly totalPages: number;
 }
 
 /** Classes the emitters write that have no on-demand rule of their own (layout structure). */
@@ -157,7 +153,7 @@ function finishCss(css: string, scope: string, kind: 'preview' | 'book'): string
 }
 
 /** The artifact's button becomes a link (or goes), and only the kept pages stay in the body. */
-function keepBookPages(body: string, opts: BookScopeOptions): { body: string; pageCount: number; totalPages: number } {
+function keepBookPages(body: string, opts: BookScopeOptions): string {
   const href = opts.printButton?.href;
   if (href !== undefined && /["<>&]/.test(href)) {
     throw new Error(`scope: unsafe print href ${href}`);
@@ -172,11 +168,7 @@ function keepBookPages(body: string, opts: BookScopeOptions): { body: string; pa
     }
     return page;
   });
-  return {
-    body: `${linked.slice(0, bookStart)}${BOOK_OPEN}${kept.join('')}</div>`,
-    pageCount: kept.length,
-    totalPages: pages.filter((p) => !p.startsWith('<div class="page cover"')).length,
-  };
+  return `${linked.slice(0, bookStart)}${BOOK_OPEN}${kept.join('')}</div>`;
 }
 
 /** The post-conditions: nothing root-relative in the stylesheet, nothing live in the body, no bare class. */
@@ -220,7 +212,7 @@ export function scopeFragment(html: string, opts: PreviewScopeOptions | BookScop
     throw new Error('scope: the book stylesheet carries no @page size / root font size');
   }
   const css = finishCss(stripped.css, scope, 'book');
-  const pages = keepBookPages(body, opts);
-  assertClean(css, pages.body);
-  return { fragment: { scope, css, body: pages.body }, paper: { ...stripped.size, fontMm: stripped.fontMm }, pageCount: pages.pageCount, totalPages: pages.totalPages };
+  const kept = keepBookPages(body, opts);
+  assertClean(css, kept);
+  return { fragment: { scope, css, body: kept }, paper: { ...stripped.size, fontMm: stripped.fontMm } };
 }
