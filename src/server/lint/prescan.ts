@@ -1,12 +1,12 @@
 /**
- * Pure character scanners. Each takes some text (plus the rule's resolved options)
- * and returns half-open `[start, end)` UTF-16 spans into THAT text; no scanner computes a source
- * position itself. Which text it gets is the binding's call (`modules.ts` / `rules/adapt.ts`): a
+ * Pure character scanners, and the character predicates the lint shares. Each scanner takes
+ * some text (plus the rule's resolved options) and returns half-open `[start, end)` UTF-16
+ * spans into THAT text; no scanner computes a source position itself. Which text it gets is the binding's call (`modules.ts` / `rules/adapt.ts`): a
  * view-scanned rule sees one line view's prose and its spans are mapped through the view's units,
  * a per-piece rule sees one contiguous piece, and a `raw` rule sees the document source, so its
  * spans already ARE source offsets.
  */
-import { codePoints, isHiragana, isKatakana } from '../../shared/chars.ts';
+import { codePoints, isAsciiDigit, isAsciiLetter, isDigit, isHiragana, isKatakana, isUnshown } from '../../shared/chars.ts';
 import { isDashMode } from '../../shared/config/types.ts';
 import { DASH_BY_MODE, DASH_CODES } from '../../shared/dash.ts';
 import { unencodableChars } from '../../shared/encoding.ts';
@@ -29,18 +29,22 @@ export type PreScan = (
 /** The three minus glyphs (ASCII, full-width, true minus) the prose may use as a sign. */
 const MINUS = new Set(['-', '－', '−']);
 
-/** True for an ASCII or full-width digit. */
-function isDigit(ch: string | undefined): boolean {
-  if (ch === undefined) {
-    return false;
-  }
-  const cp = ch.codePointAt(0) ?? 0;
-  return (cp >= 0x30 && cp <= 0x39) || (cp >= 0xff10 && cp <= 0xff19);
+/** The space-like characters (either width, or a tab) — never a paragraph's first "real" character. */
+export const SPACES: ReadonlySet<string> = new Set([' ', '　', '\t']);
+
+export function isSpace(ch: string): boolean {
+  return SPACES.has(ch);
 }
 
-/** True for an ASCII letter or digit — the neighbours of a legitimate Western hyphen. */
-function isAsciiAlnum(ch: string | undefined): boolean {
-  return ch !== undefined && /[A-Za-z0-9]/.test(ch);
+/** What noControlChar reports, by UTF-16 unit: C0 except tab (the terminators never reach a
+ *  line), U+007F–009F, and the characters no output can carry ({@link isUnshown}). */
+export function isControlChar(unit: number): boolean {
+  return isUnshown(unit) || (unit >= 0x0a && unit <= 0x1f) || (unit >= 0x7f && unit <= 0x9f);
+}
+
+/** True for the code unit of an ASCII letter or digit — the neighbours of a legitimate Western hyphen. */
+function isAsciiAlnum(unit: number): boolean {
+  return isAsciiDigit(unit) || isAsciiLetter(unit);
 }
 
 /** Flags a minus sign that is not immediately followed by a digit (so it reads as a stray dash).
@@ -50,10 +54,10 @@ export const minusPositionScan: PreScan = (text) => {
   const out: { start: number; end: number }[] = [];
   for (let i = 0; i < text.length; i++) {
     const ch = text.charAt(i);
-    if (!MINUS.has(ch) || isDigit(text[i + 1])) {
+    if (!MINUS.has(ch) || isDigit(text.charCodeAt(i + 1))) {
       continue;
     }
-    if (ch === '-' && isAsciiAlnum(text[i - 1]) && isAsciiAlnum(text[i + 1])) {
+    if (ch === '-' && isAsciiAlnum(text.charCodeAt(i - 1)) && isAsciiAlnum(text.charCodeAt(i + 1))) {
       continue;
     }
     out.push({ start: i, end: i + 1 });

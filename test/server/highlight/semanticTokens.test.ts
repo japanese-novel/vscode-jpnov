@@ -11,7 +11,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { createRecognizer } from '../../../src/server/highlight/recognizer.ts';
-import { tokenTypeIndex } from '../../../src/server/semanticTokens.ts';
+import { buildSemanticTokens as tokensOf, createSemanticTokenStore, tokenTypeIndex } from '../../../src/server/semanticTokens.ts';
+import { parse } from '../../../src/shared/ast/parse.ts';
 import { INDENT_MAX, VALUE_NAMES, indentAnnotation, valueAnnotation } from '../../../src/shared/ast/notation.ts';
 import { blockOf, innerOf } from '../../shared/ast/_shape.ts';
 import { D } from '../../shared/_kana.ts';
@@ -427,4 +428,35 @@ test('a ｜ base holding an annotation: ｜, the annotation and 《》 are marke
   assert.equal(at(toks, 0, 9)?.len, 4);
   assert.equal(at(toks, 0, 13)?.type, MARKER); // 》
   assert.ok(!covers(toks, 10, CHARACTER)); // the reading is not recognised
+});
+
+// ----------------------------------------------------------------------- range and delta
+
+test('a range colours its lines alone, at their own positions, with the dialogue opened above it', () => {
+  const ast = parse('「あ\nい」太郎は\n聖剣');
+  const whole = decode(tokensOf(ast, rec).data);
+  const middle = decode(tokensOf(ast, rec, undefined, { from: 1, to: 2 }).data);
+  assert.deepEqual(middle, whole.filter((t) => t.line === 1));
+  assert.deepEqual(at(middle, 1, 1), { line: 1, char: 1, len: 1, type: MARKER }); // 」 closes the 「 of line 0
+  assert.ok(!covers(middle, 2, CHARACTER)); // …so 太郎は is inside dialogue, not a subject
+  assert.deepEqual(decode(tokensOf(ast, rec, undefined, { from: 5, to: 9 }).data), []);
+});
+
+test('the store answers a delta by the edits since its last result, and whole when it has none to compare', () => {
+  const store = createSemanticTokenStore();
+  const first = store.full('file:///a.jpnov', parse('太郎は\n聖剣'), rec);
+  assert.ok(first.resultId);
+  const edited = store.delta('file:///a.jpnov', first.resultId, parse('太郎は\n王都\n聖剣'), rec);
+  assert.ok('edits' in edited && edited.resultId);
+  assert.ok(edited.edits.length > 0);
+  // The edits, applied, are the whole tokens of the edited text.
+  const data = [...first.data];
+  for (const e of [...edited.edits].sort((a, b) => b.start - a.start)) {
+    data.splice(e.start, e.deleteCount, ...(e.data ?? []));
+  }
+  assert.deepEqual(data, tokensOf(parse('太郎は\n王都\n聖剣'), rec).data);
+  // A result the store never gave, or a document it forgot, gets the whole tokens.
+  assert.ok('data' in store.delta('file:///a.jpnov', 'stale', parse('聖剣'), rec));
+  store.drop('file:///a.jpnov');
+  assert.ok('data' in store.delta('file:///a.jpnov', edited.resultId, parse('聖剣'), rec));
 });

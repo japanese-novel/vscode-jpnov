@@ -27,49 +27,91 @@ export function maxOf(ctx: RuleContext): number {
 /** The source span of a non-empty view hit `[a, b)`: from where its first unit was written to
  *  where its last one ends, so a hit ending at elided markup never bleeds across the gap. */
 export function viewSpan(view: ProseView, a: number, b: number): Span {
-  const first = view.units[a];
-  const last = view.units[Math.max(a, b - 1)];
+  const first = view.unit(a);
+  const last = view.unit(Math.max(a, b - 1));
   const start = first?.src ?? 0;
   return { start, end: last?.end ?? start };
 }
 
+/** The units `[k, j)` of one carrier, as the one source span a deletion takes them in, or
+ *  undefined: a ［＃○字下げ］ goes whole or not at all, a ruby or a 縦中横 never whole (the stranded
+ *  markup would print literally), typed units in place and flush with each other. `whole` says
+ *  the view holds no other unit of the carrier. */
+function takes(view: ProseView, k: number, j: number, whole: boolean): Span | undefined {
+  const first = view.unit(k);
+  const carrier = first?.carrier ?? null;
+  if (first === undefined || carrier === null) {
+    return undefined;
+  }
+  if (carrier.kind === 'indent') {
+    return whole ? { start: carrier.src, end: carrier.end } : undefined;
+  }
+  if (carrier.kind === 'cell' && whole) {
+    return undefined;
+  }
+  let at = first.src;
+  for (let i = k; i < j; i += 1) {
+    const unit = view.unit(i);
+    if (unit?.piece == null || unit.src !== at) {
+      return undefined;
+    }
+    at = unit.end;
+  }
+  return { start: first.src, end: at };
+}
+
+/** The units of the carrier of unit `k` on either side of it, within `[a, b)`: `[from, to)`, and whether that is the carrier whole. */
+function carrierRun(view: ProseView, a: number, b: number, k: number): { from: number; to: number; whole: boolean } {
+  const carrier = view.unit(k)?.carrier;
+  let from = k;
+  while (from > a && view.unit(from - 1)?.carrier === carrier) {
+    from -= 1;
+  }
+  let to = k + 1;
+  while (to < b && view.unit(to)?.carrier === carrier) {
+    to += 1;
+  }
+  return { from, to, whole: view.unit(from - 1)?.carrier !== carrier && view.unit(to)?.carrier !== carrier };
+}
+
 /** A deletion of view hit `[a, b)` as one source span, or undefined (see the module header). */
 function erase(view: ProseView, a: number, b: number): FixSpec | undefined {
-  const first = view.units[a];
+  const first = view.unit(a);
   if (first === undefined) {
     return undefined;
   }
   let at = first.src;
   for (let k = a; k < b;) {
-    const carrier = view.units[k]?.carrier ?? null;
-    if (carrier === null) {
+    const { to, whole } = carrierRun(view, a, b, k);
+    const span = takes(view, k, to, whole);
+    if (span?.start !== at) {
       return undefined;
     }
-    let j = k; // past the hit's last unit of this carrier
-    while (j < b && view.units[j]?.carrier === carrier) {
-      j += 1;
-    }
-    // The hit holds the carrier whole: its first unit and its last.
-    const whole = view.units[k - 1]?.carrier !== carrier && view.units[j]?.carrier !== carrier;
-    if (carrier.kind === 'indent') {
-      if (!whole || carrier.src !== at) {
-        return undefined; // the annotation goes whole or not at all
-      }
-      at = carrier.end;
-    } else if (carrier.kind === 'cell' && whole) {
-      return undefined; // the stranded markup would print literally
-    } else {
-      for (; k < j; k += 1) {
-        const unit = view.units[k];
-        if (unit?.piece == null || unit.src !== at) {
-          return undefined;
-        }
-        at = unit.end;
-      }
-    }
-    k = j;
+    at = span.end;
+    k = to;
   }
   return { erase: { start: first.src, end: at } };
+}
+
+/** The smallest `j` in `[a, b]` such that the view hit `[j, b)` is one deletion as {@link erase}
+ *  allows it: back from `b` one carrier at a time, so a run that straddles markup yields its tail. */
+export function erasableFrom(view: ProseView, a: number, b: number): number {
+  const last = view.unit(b - 1);
+  if (last === undefined) {
+    return b;
+  }
+  let j = b;
+  let at = last.end;
+  while (j > a) {
+    const { from, whole } = carrierRun(view, a, b, j - 1);
+    const span = takes(view, from, j, whole);
+    if (span?.end !== at) {
+      break;
+    }
+    at = span.start;
+    j = from;
+  }
+  return j;
 }
 
 /** A fix for view hit `[a, b)`: a replacement iff every unit shares one piece; a deletion as {@link erase} allows it. */
@@ -77,14 +119,14 @@ export function viewFix(view: ProseView, a: number, b: number, text: string): Fi
   if (text === '') {
     return erase(view, a, b);
   }
-  const first = view.units[a];
-  const last = view.units[b - 1];
+  const first = view.unit(a);
+  const last = view.unit(b - 1);
   const piece = first?.piece ?? null;
   if (first === undefined || last === undefined || piece === null) {
     return undefined;
   }
   for (let k = a + 1; k < b; k += 1) {
-    if (view.units[k]?.piece !== piece) {
+    if (view.unit(k)?.piece !== piece) {
       return undefined;
     }
   }

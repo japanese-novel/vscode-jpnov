@@ -26,7 +26,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isControlChar } from '../../../src/server/lint/rules/chars.ts';
+import { isControlChar } from '../../../src/server/lint/prescan.ts';
 import type { Span } from '../../../src/shared/ast/nodes.ts';
 import { composeKana, displayText } from '../../../src/shared/chars.ts';
 import { RULES, settingKey } from '../../../src/shared/lint/catalog.ts';

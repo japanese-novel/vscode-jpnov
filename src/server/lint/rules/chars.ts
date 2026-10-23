@@ -5,9 +5,9 @@
  * annotation target or a comment is composed, and loses its control characters, in every output
  * too. Every fix replaces or deletes characters in place.
  */
-import { COMBINING_KANA_MARK, UNSHOWN, composeKana, isCjkIdeograph } from '../../../shared/chars.ts';
+import { COMBINING_KANA_MARK, composeKana, isCjkIdeograph, isLatinLetter } from '../../../shared/chars.ts';
 
-import { rubyKanaScan } from '../prescan.ts';
+import { isControlChar, rubyKanaScan } from '../prescan.ts';
 import type { PreScan } from '../prescan.ts';
 import type { LineRule, LintLine, RuleContext } from '../types.ts';
 
@@ -77,15 +77,6 @@ const zeroWidthScan: PreScan = (text) => {
   return out;
 };
 
-/** What noControlChar reports: C0 except tab, U+007F–009F, and the characters no output can
- *  carry ({@link UNSHOWN}); one class, read as a predicate and as a scan. */
-const CONTROL_CHAR = new RegExp(String.raw`[\0-\x08\x0A-\x1F\x7F-\x9F${UNSHOWN.source.slice(1, -1)}]`);
-const CONTROL_CHARS = new RegExp(CONTROL_CHAR.source, 'g');
-
-export function isControlChar(cp: number): boolean {
-  return CONTROL_CHAR.test(String.fromCharCode(cp));
-}
-
 /** 制御文字 (C0/C1 except \t — terminators never reach a line) and the noncharacters U+FFFE and
  *  U+FFFF, anywhere on the line — prose, ruby readings, annotations and comments alike, since no
  *  output carries the ones `dropUnshown` drops. Each one is deleted; a reading left empty is the
@@ -95,23 +86,25 @@ export function controlCharRule(ctx: RuleContext): LineRule {
     line(line: LintLine): void {
       for (const slice of line.source) {
         const { text, srcStart } = slice;
-        for (const m of text.matchAll(CONTROL_CHARS)) {
-          const i = m.index;
-          const at = srcStart + i;
-          ctx.report({ start: at, end: at + 1 }, { fix: { replace: { slice, start: i, end: i + 1 }, text: '' } });
+        for (let i = 0; i < text.length; i += 1) {
+          if (isControlChar(text.charCodeAt(i))) {
+            const at = srcStart + i;
+            ctx.report({ start: at, end: at + 1 }, { fix: { replace: { slice, start: i, end: i + 1 }, text: '' } });
+          }
         }
       }
     },
   };
 }
 
-/** Kana or a CJK ideograph. */
-const isJa = (ch: string): boolean => {
-  const cp = ch.codePointAt(0) ?? 0;
-  return (cp >= 0x3040 && cp <= 0x30ff) || isCjkIdeograph(cp);
-};
+/** Kana or a CJK ideograph, by code unit: a surrogate half is neither. */
+const isJa = (unit: number): boolean => (unit >= 0x3040 && unit <= 0x30ff) || isCjkIdeograph(unit);
 
-const isAlpha = (ch: string): boolean => /[A-Za-zＡ-Ｚａ-ｚ]/.test(ch);
+/** A capital, either width. */
+const isUpper = (unit: number): boolean => (unit >= 0x41 && unit <= 0x5a) || (unit >= 0xff21 && unit <= 0xff3a);
+
+/** A letter, either width; NaN (past the text) is none. */
+const isAlpha = isLatinLetter;
 
 /** Letters an IME legitimately leaves between Japanese characters (the stock rule's allow list):
  *  the vowels + n in either width, and any capital (Ｘ座標, A案). */
@@ -122,14 +115,14 @@ const NATURAL_ALPHA = new Set(['a', 'i', 'u', 'e', 'o', 'n', 'ａ', 'ｉ', 'ｕ'
 const strayLetterScan: PreScan = (text) => {
   const out: { start: number; end: number }[] = [];
   for (let i = 0; i < text.length; i += 1) {
-    const ch = text.charAt(i);
-    if (!isAlpha(ch) || isAlpha(text.charAt(i - 1)) || isAlpha(text.charAt(i + 1))) {
+    const unit = text.charCodeAt(i);
+    if (!isAlpha(unit) || isAlpha(text.charCodeAt(i - 1)) || isAlpha(text.charCodeAt(i + 1))) {
       continue;
     }
-    if (NATURAL_ALPHA.has(ch) || /[A-ZＡ-Ｚ]/.test(ch)) {
+    if (isUpper(unit) || NATURAL_ALPHA.has(text.charAt(i))) {
       continue;
     }
-    if (isJa(text.charAt(i - 1)) && isJa(text.charAt(i + 1))) {
+    if (isJa(text.charCodeAt(i - 1)) && isJa(text.charCodeAt(i + 1))) {
       out.push({ start: i, end: i + 1 });
     }
   }

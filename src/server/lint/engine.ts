@@ -31,6 +31,7 @@ import { partitionPoint } from '../../shared/utils/lists.ts';
 
 import { diagnostic, finding } from '../diagnostics.ts';
 import type { Finding, Fix } from '../diagnostics.ts';
+import type { ShownLine } from '../shown.ts';
 import { TargetIndex, rangeOf } from '../targets.ts';
 import { rangeKey } from '../../shared/utils/position.ts';
 import { RULE_IMPL } from './modules.ts';
@@ -116,9 +117,10 @@ function materializeFix(spec: FixSpec, doc: TextDocument, ast: Ast, targets: Tar
 
 /**
  * Computes the prose-lint findings of `doc` under `selection` — synchronously; the all-off
- * default costs nothing (no walk, no scans). `ast` is the editor's parse of its text.
+ * default costs nothing (no walk, no scans). `ast` is the editor's parse of its text, `shown` its
+ * lines as shown when the caller keeps them (the parse cache does, per version).
  */
-export function computeLintFindings(doc: TextDocument, ast: Ast, selection: RuleSelection): Finding[] {
+export function computeLintFindings(doc: TextDocument, ast: Ast, selection: RuleSelection, shown?: readonly ShownLine[]): Finding[] {
   if (selection.length === 0) {
     return [];
   }
@@ -151,7 +153,7 @@ export function computeLintFindings(doc: TextDocument, ast: Ast, selection: Rule
   }
 
   if (instances.length > 0) {
-    for (const line of walkLines(ast)) {
+    for (const line of walkLines(ast, shown)) {
       for (const instance of instances) {
         instance.line(line);
       }

@@ -1,7 +1,7 @@
 /**
  * Sentence segmentation over one line's {@link ProseView} — the engine-level boundary definition
  * shared by every sentence-based rule (sentenceLength, maxTen), so their reported positions can
- * never drift apart.
+ * never drift apart; the walker splits each view once (`LintLine.sentences`).
  *
  * A sentence ends at a run of terminators 。！？ (half-width !? and ‼⁇⁈⁉ included),
  * absorbing any closing brackets right after it, or at the end of the view (a line IS a paragraph;
@@ -11,13 +11,9 @@
  */
 import { charClass } from '../../shared/utils/regex.ts';
 
-import type { ProseView } from './types.ts';
+import { SPACES } from './prescan.ts';
 
-/** Half-open `[start, end)` index range into the view this sentence covers. */
-interface SentenceSpan {
-  readonly start: number;
-  readonly end: number;
-}
+import type { ProseView, SentenceSpan } from './types.ts';
 
 /** The ！？ marks that end a sentence: either width, and the characters that hold two of them. */
 export const SENTENCE_MARKS = new Set(['！', '？', '!', '?', '‼', '⁇', '⁈', '⁉']);
@@ -28,7 +24,7 @@ export const TERMINATORS = new Set(['。', ...SENTENCE_MARKS]);
  *  Exported as THE closing-bracket set of the rule layer — format.ts derives its line-end and
  *  after-！？ sets from it, so the three closer sets can never drift apart again. */
 export const CLOSERS = new Set(['」', '』', '）', ')', '】', '〉', '》', '］', '”', '’']);
-const WHITESPACE = new Set([' ', '　', '\t', '\n']);
+const WHITESPACE = new Set([...SPACES, '\n']);
 
 /** One sentence after any whitespace: the body up to a terminator or '\n', the terminator run, the
  *  closers. Every member is one UTF-16 unit, so without the `u` flag the classes step like `charAt`. */

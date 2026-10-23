@@ -31,6 +31,26 @@ export function isKatakana(cp: number): boolean {
   return (cp >= 0x30a1 && cp <= 0x30fa) || cp === 0x30fc;
 }
 
+/** An ASCII digit, by UTF-16 unit (NaN, past the text, is none). */
+export function isAsciiDigit(unit: number): boolean {
+  return unit >= 0x30 && unit <= 0x39;
+}
+
+/** An ASCII Latin letter, by UTF-16 unit. */
+export function isAsciiLetter(unit: number): boolean {
+  return (unit >= 0x41 && unit <= 0x5a) || (unit >= 0x61 && unit <= 0x7a);
+}
+
+/** A digit of either width (０-９ included), by UTF-16 unit. */
+export function isDigit(unit: number): boolean {
+  return isAsciiDigit(unit) || (unit >= 0xff10 && unit <= 0xff19);
+}
+
+/** A Latin letter of either width (Ａ-Ｚａ-ｚ included), by UTF-16 unit. */
+export function isLatinLetter(unit: number): boolean {
+  return isAsciiLetter(unit) || (unit >= 0xff21 && unit <= 0xff3a) || (unit >= 0xff41 && unit <= 0xff5a);
+}
+
 /** The dialogue corners 「『」』, as the body of a character class: the characters of prose that
  *  open and close an utterance. One rule for the dialogue stack, the grammar and the name lists (a
  *  name holds none: a corner is the structure of dialogue, never part of a name). */

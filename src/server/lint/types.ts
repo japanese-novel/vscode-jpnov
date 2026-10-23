@@ -6,7 +6,8 @@
  * The shape of a document, as rules see it: one {@link LintLine} per SOURCE line (never merged —
  * a multi-line utterance stays one line per line). A line carries pieces + context flags + three
  * lazy VIEWS of the line as its reader sees it (the AST's content: kana composed, values
- * substituted, a 外字注記 as its character, the characters no output can carry gone):
+ * substituted, a 外字注記 as its character, the characters no output can carry gone), and remembers
+ * what two rules would otherwise read off a view twice (its sentences, its line form):
  *   - `prose()`     every character shown, in order — markup elided but ADJACENCY kept, so a rule
  *                   reading neighbours sees `聴覚視覚［＃太字］区分装置` as one 8-kanji run.
  *   - `narration()` depth-0 units with each top-level utterance interior collapsed to one 〇
@@ -87,10 +88,18 @@ export interface ProseUnit {
   readonly carrier: Carrier | null;
 }
 
-/** An index-aligned prose view: `text.charAt(k)` ↔ `units[k]`. */
+/** An index-aligned prose view: `text.charAt(k)` ↔ `unit(k)`, undefined past the text. A unit is
+ *  made when asked for (the walker keeps columns, not objects); its piece and carrier are the
+ *  line's own objects, so two units of one piece or one carrier compare equal by identity. */
 export interface ProseView {
   readonly text: string;
-  readonly units: readonly ProseUnit[];
+  unit(k: number): ProseUnit | undefined;
+}
+
+/** Half-open `[start, end)` index range into a view one sentence covers (sentences.ts). */
+export interface SentenceSpan {
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -121,6 +130,12 @@ export interface LintLine {
   prose(): ProseView;
   narration(): ProseView;
   dialogue(): ProseView;
+  /** The sentences of the narration or the dialogue view, split once (sentences.ts). */
+  sentences(view: 'narration' | 'dialogue'): readonly SentenceSpan[];
+  /** An ornament line (a scene break like ＊ or ◇＊◇) or a bullet line (・ポーション×３): inset
+   *  material, not a paragraph of 地の文, so it takes neither the 字下げ nor the 句点. A pause
+   *  line (…… / ―― only) is prose: a silence paragraph reads as a sentence. */
+  inset(): boolean;
 }
 
 /**
