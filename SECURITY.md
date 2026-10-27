@@ -29,8 +29,9 @@ Please report vulnerabilities privately through
 Reports may be written in Japanese or English. 日本語での報告も歓迎します。
 
 > [!IMPORTANT]
-> **Please do not disclose vulnerabilities through public issues, discussions, or pull requests.**
-> **脆弱性については、公開のイシュー、ディスカッション、またはプルリクエストを通じて開示しないでください。**
+> Please do **NOT** disclose vulnerabilities through public issues, discussions, or pull requests.
+>
+> 公開のイシュー、ディスカッション、またはプルリクエストで脆弱性を**開示しないでください**。
 
 A helpful report includes:
 
