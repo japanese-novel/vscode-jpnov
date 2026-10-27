@@ -75,6 +75,9 @@
     ],
     "configurationDefaults": {
       "[jpnov]": {
+        "editor.wordWrap": "bounded",
+        "editor.wordWrapColumn": 128,
+        "editor.wrappingIndent": "none",
         "editor.copyWithSyntaxHighlighting": false,
         "editor.wordBasedSuggestions": "off",
         "editor.semanticHighlighting.enabled": true,

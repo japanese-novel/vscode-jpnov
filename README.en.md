@@ -19,10 +19,10 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
   lines, bold/italic, tate-chū-yoko, indents, page breaks.
 - **Auto indent** — every Enter starts the new line with a full-width space;
   open it with `「` or `『` and the space is removed.
-- **Book builds** — collect chapters into a paginated vertical HTML file which can
-  be **Print / Save as PDF**, EPUB, or a concatenated Aozora-format text.
 - **Proofreading** — hygiene checks on by default, opt-in manuscript-convention
   lints, quick fixes and a fix-all action.
+- **Book builds** — collect chapters into a paginated vertical HTML file which can
+  be **Print / Save as PDF**, EPUB, or a concatenated Aozora-format text.
 - **Cast & keyword highlighting** — semantic colouring of character names and
   coined terms in narration.
 - **Annotation help** — hover an annotation for what it does and what it
@@ -176,7 +176,7 @@ paste it into a `.jpnov` to try:
 　運命［＃「運命」に波線］が動く。
 　英雄《えいゆう》［＃「英雄」の左に「ヒーロー」のルビ］の登場。
 　第42［＃「42」は縦中横］話、太字［＃「太字」は太字］で。
-「何だと!?［＃「!?」は縦中横］」
+「何だと⁉」
 ```
 
 Notes: 傍点/傍線 take a left-side variant spelled differently in each form — the
@@ -293,6 +293,52 @@ chip folds back to the one-line summary. The font button beside it picks the bod
 list (Hiragino Mincho, Yu Mincho, Noto Serif JP, BIZ UDMincho), accepts a typed CSS font-family list, or
 restores the default; the pick is written straight to your user or workspace settings.
 
+## Proofreading (lint)
+
+Japanese Novel runs prose checks as you write, surfaced as editor diagnostics
+with quick fixes (and a **Fix all auto-fixable problems (Japanese Novel)** source action).
+A quick fix applies to that one problem and the fix-all action to the open
+chapter; **Fix Problems in the Book…** in the Books view (see [Building
+books](#building-books)) fixes a whole book at once.
+Everything is a plain `jpnov.lint.*` setting under **Japanese Novel — Lint**.
+
+Every check knows what it is looking at: narration, dialogue (`「…」`), a
+heading line, a ruby reading, an annotation. A narration rule never fires
+inside a line of dialogue, a heading hangs free of the sentence-ending rule,
+and a kanji run split by an annotation (`聴覚視覚［＃太字］区分装置`) still
+counts as one run — the checks see the text the way a reader will.
+
+- **Hygiene checks are on by default** — half-width kana, kana with a
+  detached 濁点/半濁点 (`common.noNfd`), zero-width spaces, invalid control
+  characters, characters Shift JIS lacks (`common.shiftJisSafe`), trailing
+  spaces (`common.noTrailingSpace`), and a half-width space between full-width
+  characters (`common.noHalfWidthSpace`) — so a stray malformed or
+  invisible character never slips into a manuscript. The dash check (`common.dash`) is
+  on too, keeping one dash character throughout.
+- **Manuscript-convention checks are on by default too**, each with its own
+  switch and message: paragraph indent (`narration.indent`), narration lines
+  ending with `。` (`narration.endPeriod` — a trailing `……` or dash still
+  wants its `。`), no punctuation right before a closing bracket
+  (`dialogue.closingPunct`), no leading space on a dialogue line
+  (`dialogue.noIndent`), a space after `！`/`？` (`common.exclamationSpace`),
+  a half-width `!?` pair set in one square (`common.questionExclamationMarks`),
+  even-count ellipses (`common.ellipsis`), and bracket pairing
+  (`noUnmatchedPair`). All but the bracket matcher auto-fixable; a
+  symbol-only scene-break line (`＊`) is exempt from the paragraph rules.
+- **Stricter checks are opt-in.** Length/run limits (`sentenceLength`,
+  `maxTen`, `maxKanjiRun`, `arabicDigits`), blank lines in a row
+  (`blankRun`, auto-fixable), the `！？`-pair style, and the ruby-kana rule.
+
+A fix that lands inside text a forward-ref annotation names (`なに！と［＃「なに！と」に傍点］`,
+where `exclamationSpace` inserts a space) rewrites the annotation's `「…」` with
+it, so the annotation keeps its target; a fix that reaches across the edge of
+that text leaves the `「…」` as written, and the annotation is reported.
+
+Syntax problems (an unclosed `［＃` annotation, a dangling block end, a ruby
+with no base or no reading) are always reported, independent of lint settings.
+
+![A lint squiggle with its quick-fix menu open](docs/images/vscode-lint-quickfix.png)
+
 ## Building books
 
 The **Books** view in the Activity Bar lists every discovered `.jpbook` as
@@ -376,14 +422,17 @@ returns to the list. **Cover pages** manages the `cover`
 list the same way (see [Submission cover sheets and title
 pages](#submission-cover-sheets-and-title-pages)). Expand **Book Info** and
 click a row to edit that value in place; the buttons at the bottom build only
-the open book. **Fix Problems in the Book…** in the title bar lists every
-chapter's problems (syntax and lint) with the auto-fixable ones ticked; **Fix** applies the
-ticked ones, in chapters you have not opened too (an unsaved chapter stays
-unsaved).
+the open book.
 Every action rewrites the `.jpbook` text itself, so the view and
 hand-editing always agree.
 
 ![The Books view with a book open: its Book Info rows, cover pages and chapter list](docs/images/vscode-books-panel.png)
+
+**Fix Problems in the Book…** in the title bar lists every chapter's problems
+(syntax and lint) with the auto-fixable ones ticked; **Fix** applies the ticked
+ones, in chapters you have not opened too (an unsaved chapter stays unsaved).
+
+![The Problems screen of the Books view: each chapter's problems listed, the auto-fixable ones ticked](docs/images/vscode-fix-problems.png)
 
 Renaming or moving a chapter, a folder of chapters, or a `.jpbook` itself
 inside VS Code offers to update every `.jpbook` whose paths it affects —
@@ -576,49 +625,6 @@ sections. Colouring is delivered as LSP semantic tokens; override the colours
 under `editor.semanticTokenColorCustomizations` if you like.
 
 ![Narration with a coloured character subject and a bolded keyword](docs/images/vscode-highlight.png)
-
-## Proofreading (lint)
-
-Japanese Novel runs prose checks as you write, surfaced as editor diagnostics
-with quick fixes (and a **Fix all auto-fixable problems (Japanese Novel)** source action).
-Everything is a plain `jpnov.lint.*` setting under **Japanese Novel — Lint**.
-
-Every check knows what it is looking at: narration, dialogue (`「…」`), a
-heading line, a ruby reading, an annotation. A narration rule never fires
-inside a line of dialogue, a heading hangs free of the sentence-ending rule,
-and a kanji run split by an annotation (`聴覚視覚［＃太字］区分装置`) still
-counts as one run — the checks see the text the way a reader will.
-
-- **Hygiene checks are on by default** — half-width kana, kana with a
-  detached 濁点/半濁点 (`common.noNfd`), zero-width spaces, invalid control
-  characters, characters Shift JIS lacks (`common.shiftJisSafe`), trailing
-  spaces (`common.noTrailingSpace`), and a half-width space between full-width
-  characters (`common.noHalfWidthSpace`) — so a stray malformed or
-  invisible character never slips into a manuscript. The dash check (`common.dash`) is
-  on too, keeping one dash character throughout.
-- **Manuscript-convention checks are on by default too**, each with its own
-  switch and message: paragraph indent (`narration.indent`), narration lines
-  ending with `。` (`narration.endPeriod` — a trailing `……` or dash still
-  wants its `。`), no punctuation right before a closing bracket
-  (`dialogue.closingPunct`), no leading space on a dialogue line
-  (`dialogue.noIndent`), a space after `！`/`？` (`common.exclamationSpace`),
-  a half-width `!?` pair set in one square (`common.questionExclamationMarks`),
-  even-count ellipses (`common.ellipsis`), and bracket pairing
-  (`noUnmatchedPair`). All but the bracket matcher auto-fixable; a
-  symbol-only scene-break line (`＊`) is exempt from the paragraph rules.
-- **Stricter checks are opt-in.** Length/run limits (`sentenceLength`,
-  `maxTen`, `maxKanjiRun`, `arabicDigits`), blank lines in a row
-  (`blankRun`, auto-fixable), the `！？`-pair style, and the ruby-kana rule.
-
-A fix that lands inside text a forward-ref annotation names (`なに！と［＃「なに！と」に傍点］`,
-where `exclamationSpace` inserts a space) rewrites the annotation's `「…」` with
-it, so the annotation keeps its target; a fix that reaches across the edge of
-that text leaves the `「…」` as written, and the annotation is reported.
-
-Syntax problems (an unclosed `［＃` annotation, a dangling block end, a ruby
-with no base or no reading) are always reported, independent of lint settings.
-
-![A lint squiggle with its quick-fix menu open](docs/images/vscode-lint-quickfix.png)
 
 ## Settings reference
 
