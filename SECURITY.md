@@ -28,8 +28,9 @@ Please report vulnerabilities privately through
 [GitHub's private vulnerability reporting](https://github.com/japanese-novel/vscode-jpnov/security/advisories/new).
 Reports may be written in Japanese or English. 日本語での報告も歓迎します。
 
-Please do not disclose vulnerabilities through public issues, discussions, or pull requests
-before a fix is released.
+> [!IMPORTANT]
+> **Please do not disclose vulnerabilities through public issues, discussions, or pull requests.**
+> **脆弱性については、公開のイシュー、ディスカッション、またはプルリクエストを通じて開示しないでください。**
 
 A helpful report includes:
 
