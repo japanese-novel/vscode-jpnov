@@ -551,8 +551,7 @@ export function buildVscode(state: MockState): Record<string, unknown> {
       state.inputBoxCalls.push({ options });
       return Promise.resolve(state.inputBoxQueue.shift());
     },
-    showWorkspaceFolderPick(options?: unknown): Promise<{ uri: Uri } | undefined> {
-      void options;
+    showWorkspaceFolderPick(): Promise<{ uri: Uri } | undefined> {
       return Promise.resolve(state.workspaceFolderPickResult);
     },
     showTextDocument(document: unknown, options?: { selection?: Range }): Promise<unknown> {
