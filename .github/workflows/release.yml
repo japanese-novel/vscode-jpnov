@@ -1,4 +1,4 @@
-name: Publish
+name: Release
 
 on:
   workflow_dispatch:
@@ -8,15 +8,15 @@ permissions:
   actions: write
 
 concurrency:
-  group: publish
+  group: release
 
 jobs:
-  publish:
-    name: Test, package, publish
+  release:
+    name: Test, package, release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -26,8 +26,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$GITHUB_REF_NAME" != "main" ]; then
-            echo "publish must be dispatched from main (got $GITHUB_REF_NAME)"; exit 1
+          if [ "$GITHUB_REF_TYPE" != "branch" ] || [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "release must be dispatched from main (got $GITHUB_REF_TYPE $GITHUB_REF_NAME)"; exit 1
           fi
           VERSION="$(node -p 'require("./package.json").version')"
           TAG="v$VERSION"
@@ -63,10 +63,6 @@ jobs:
           JPNOV_E2E_REQUIRE_BROWSER: '1'
       - name: Package
         run: npm run package
-      - name: Publish to Visual Studio Marketplace
-        run: npx vsce publish --packagePath "jpnov-${{ steps.meta.outputs.version }}.vsix"
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
       - name: Push the tag, release with the VSIX attached
         env:
           GH_TOKEN: ${{ github.token }}
