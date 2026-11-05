@@ -31,16 +31,16 @@ jobs:
       - name: Download the VSIX of the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "$GITHUB_REF_NAME" --pattern "jpnov-${{ steps.meta.outputs.version }}.vsix"
+        run: gh release download "$GITHUB_REF_NAME" --pattern "vscode-jpnov-${{ steps.meta.outputs.version }}.vsix"
       - name: Check the VSIX against the tag
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          MANIFEST="$(unzip -p "jpnov-$VERSION.vsix" extension/package.json)"
+          MANIFEST="$(unzip -p "vscode-jpnov-$VERSION.vsix" extension/package.json)"
           ACTUAL="$(printf '%s' "$MANIFEST" | node -e 'const m = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(`${m.publisher}.${m.name}@${m.version}`)')"
-          EXPECTED="japanese-novel.jpnov@$VERSION"
+          EXPECTED="japanese-novel.vscode-jpnov@$VERSION"
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "the VSIX is $ACTUAL, the tag names $EXPECTED"; exit 1
           fi
       - name: Publish to Visual Studio Marketplace
-        run: npx vsce publish --oidc --packagePath "jpnov-${{ steps.meta.outputs.version }}.vsix"
+        run: npx vsce publish --oidc --packagePath "vscode-jpnov-${{ steps.meta.outputs.version }}.vsix"
