@@ -132,14 +132,14 @@ export async function applyBookEdits(uri: vscode.Uri, replaces: readonly TextRep
   const name = lastPathSegment(uri.toString());
   if (!(await vscode.workspace.applyEdit(edit))) {
     void vscode.window.showErrorMessage(
-      vscode.l10n.t("Japanese Novel: couldn't edit {0}.", name),
+      vscode.l10n.t("Japanese Novel Studio: couldn't edit {0}.", name),
     );
     return false;
   }
   if (save) {
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
     if ((await doc?.save()) === false) {
-      void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel: couldn't save {0}.", name));
+      void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel Studio: couldn't save {0}.", name));
     }
   }
   return true;
@@ -481,7 +481,7 @@ async function promptNewBook(base: vscode.Uri): Promise<string | undefined> {
   // The validator is advisory: re-derive here (writeNewFile re-probes the target too).
   const parsed = normalizeFileInput(raw, suffix);
   if (!parsed.ok) {
-    void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel: this file name cannot be used. Nothing was created.'));
+    void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel Studio: this file name cannot be used. Nothing was created.'));
     return undefined;
   }
   return parsed.rel;
@@ -496,7 +496,7 @@ async function promptNewBook(base: vscode.Uri): Promise<string | undefined> {
 async function writeNewFile(base: vscode.Uri, rel: string, content = ''): Promise<vscode.Uri | null> {
   const target = resolveUri(base, rel);
   if (await fileExists(target)) {
-    void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel: {0} already exists. Nothing was created.', rel));
+    void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel Studio: {0} already exists. Nothing was created.', rel));
     return null;
   }
   try {
@@ -504,12 +504,12 @@ async function writeNewFile(base: vscode.Uri, rel: string, content = ''): Promis
     await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(content));
   } catch (err) {
     const message = errorText(err);
-    void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel: couldn't write {0}. {1}", rel, message));
+    void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel Studio: couldn't write {0}. {1}", rel, message));
     return null;
   }
   if (vscode.workspace.getWorkspaceFolder(base) !== undefined && vscode.workspace.getWorkspaceFolder(target) === undefined) {
     void vscode.window.showWarningMessage(vscode.l10n.t(
-      'Japanese Novel: {0} was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
+      'Japanese Novel Studio: {0} was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
       rel,
     ));
   }

@@ -557,7 +557,7 @@ test('a chosen print browser that is not installed falls back to openExternal pe
   assert.deepEqual(state.openedExternal, [`${root}/out/a.html`, `${root}/out/b.html`]);
   assert.deepEqual(
     state.infoMessages.filter((m) => m.includes('default browser')),
-    ["Japanese Novel: Microsoft Edge wasn't found; opened in the default browser instead."],
+    ["Japanese Novel Studio: Microsoft Edge wasn't found; opened in the default browser instead."],
   );
 });
 
@@ -899,7 +899,7 @@ test('showProblems lists every listed chapter once with its problems in order of
     },
     { uri: 'file:///ws/up.jpnov', path: '../up.jpnov', problems: [tcy] },
   ]);
-  assert.equal((state.progressOptions[0] as { title?: string }).title, 'Japanese Novel: checking 3 chapter(s)…');
+  assert.equal((state.progressOptions[0] as { title?: string }).title, 'Japanese Novel Studio: checking 3 chapter(s)…');
   assert.deepEqual(state.errorMessages, []);
   assert.deepEqual(state.infoMessages, []);
 });
@@ -916,8 +916,8 @@ test('showProblems with nothing to list: a toast and no screen; a chapter that c
   await provider.showProblems();
   assert.equal(client.calls.problems.length, 2);
   assert.equal(posts(view).find((m) => m.type === 'problems'), undefined);
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't check 1 chapter(s). boom"]);
-  assert.deepEqual(state.infoMessages, ['Japanese Novel: no problems in this book.']);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel Studio: couldn't check 1 chapter(s). boom"]);
+  assert.deepEqual(state.infoMessages, ['Japanese Novel Studio: no problems in this book.']);
 });
 
 test('showProblems does nothing without an open detail, and drops the list when the detail closed meanwhile', async () => {
@@ -978,8 +978,8 @@ test('fixProblems fixes the problems named, chapter by chapter: a dirty one stay
   ]);
   assert.deepEqual(saved, ['file:///ws/up.jpnov']); // the dirty ch1 keeps its fixes unsaved
   assert.deepEqual(state.errorMessages, []);
-  assert.deepEqual(state.infoMessages, ['Japanese Novel: fixed 3 problem(s) in 2 chapter(s).']);
-  assert.equal((state.progressOptions[0] as { title?: string }).title, 'Japanese Novel: fixing 2 chapter(s)…');
+  assert.deepEqual(state.infoMessages, ['Japanese Novel Studio: fixed 3 problem(s) in 2 chapter(s).']);
+  assert.equal((state.progressOptions[0] as { title?: string }).title, 'Japanese Novel Studio: fixing 2 chapter(s)…');
 });
 
 test('fixProblems with nothing fixed: no edit, no save, the "none fixed" toast; a refused edit is toasted and left out of the count', async () => {
@@ -991,7 +991,7 @@ test('fixProblems with nothing fixed: no edit, no save, the "none fixed" toast; 
   assert.equal(client.calls.fixAll.length, 1);
   assert.deepEqual(state.appliedEdits, []);
   assert.deepEqual(saved, []);
-  assert.deepEqual(state.infoMessages, ['Japanese Novel: none of the selected problems could be fixed; the text may have changed since they were listed.']);
+  assert.deepEqual(state.infoMessages, ['Japanese Novel Studio: none of the selected problems could be fixed; the text may have changed since they were listed.']);
 
   resetMockState(state);
   state.applyEditResult = false;
@@ -1003,8 +1003,8 @@ test('fixProblems with nothing fixed: no edit, no save, the "none fixed" toast; 
   refused.view.webview.receive({ type: 'fixProblems', uri: refused.bookUri, problems: [{ chapter: 'file:///ws/src/ch1.jpnov', range: R(0, 2, 0, 4), code: 'lint.common.questionExclamationMarks' }] });
   await tick();
   assert.deepEqual(refused.saved, []);
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit ch1.jpnov."]);
-  assert.deepEqual(state.infoMessages, ['Japanese Novel: none of the selected problems could be fixed; the text may have changed since they were listed.']);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel Studio: couldn't edit ch1.jpnov."]);
+  assert.deepEqual(state.infoMessages, ['Japanese Novel Studio: none of the selected problems could be fixed; the text may have changed since they were listed.']);
 });
 
 test('fixProblems ignores a verb for another book or with a malformed problem', async () => {
@@ -1372,7 +1372,7 @@ test('a failed refresh toasts only when the user asked for it, and the panel sta
   await provider.refresh();
   assert.deepEqual(state.errorMessages, []);
   await provider.refresh(true);
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't load the books. Client is not running"]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel Studio: couldn't load the books. Client is not running"]);
   view.webview.receive({ type: 'ready' });
   await tick();
   assert.equal(lastState(view).loading, true);
@@ -1399,7 +1399,7 @@ test('a refresh the server never answers gives up at the cap and cancels the req
   await done;
   assert.equal(token?.isCancellationRequested, true);
   assert.equal(state.errorMessages.length, 1);
-  assert.match(state.errorMessages[0] ?? '', /^Japanese Novel: couldn't load the books\. no reply from the language server within \d+s$/);
+  assert.match(state.errorMessages[0] ?? '', /^Japanese Novel Studio: couldn't load the books\. no reply from the language server within \d+s$/);
 });
 
 test('a book that cannot be opened returns the view to the list with a toast and a re-list', async () => {
@@ -1412,7 +1412,7 @@ test('a book that cannot be opened returns the view to the list with a toast and
   await tick();
   assert.ok(posts(view).some((m) => m.type === 'closeDetail'));
   assert.equal(posts(view).some((m) => m.type === 'detail'), false);
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't open a.jpbook."]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel Studio: couldn't open a.jpbook."]);
   assert.equal((view as { title?: string }).title, undefined);
   const ctx = state.executedCommands.filter((c) => c.command === 'setContext' && c.args[0] === 'jpnov.booksDetail');
   assert.equal(ctx.at(-1)?.args[1], false);
@@ -1424,7 +1424,7 @@ test('a row whose book left the list is refused the same way', async () => {
   view.webview.receive({ type: 'openDetail', uri: 'file:///ws/src/gone.jpbook' });
   await tick();
   assert.ok(posts(view).some((m) => m.type === 'closeDetail'));
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't open gone.jpbook."]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel Studio: couldn't open gone.jpbook."]);
 });
 
 test('the open detail follows its buffer: a change to the book re-pushes it, another document does not', async (t) => {

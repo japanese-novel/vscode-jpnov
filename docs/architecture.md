@@ -1,6 +1,6 @@
 # Architecture
 
-How Japanese Novel is put together, and why: the programs it runs as, the stages
+How Japanese Novel Studio is put together, and why: the programs it runs as, the stages
 a manuscript passes through, and the rules that decide where a piece of logic
 belongs. The README says what the extension does; this says how.
 

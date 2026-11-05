@@ -1,4 +1,4 @@
-# Japanese Novel
+# Japanese Novel Studio
 
 日本語 ｜ [English](./README.en.md)
 
@@ -8,7 +8,7 @@
 
 *出力した本をそのまま印刷した結果です（夏目漱石『吾輩は猫である』・青空文庫より）*
 
-「Japanese Novel」は、無料のエディター「Visual Studio Code（VS Code）」を小説の執筆環境に変える拡張機能です。書いた文章はすぐ隣に縦書きで表示され、章をまとめて HTML・EPUB・テキストの「本」として出力できます。出力した HTML はブラウザーでそのまま印刷・PDF 保存できます。記法は[青空文庫の注記][AozoraAnno]そのまま。原稿はただのテキストファイルです。
+「Japanese Novel Studio」は、無料のエディター「Visual Studio Code（VS Code）」を小説の執筆環境に変える拡張機能です。書いた文章はすぐ隣に縦書きで表示され、章をまとめて HTML・EPUB・テキストの「本」として出力できます。出力した HTML はブラウザーでそのまま印刷・PDF 保存できます。記法は[青空文庫の注記][AozoraAnno]そのまま。原稿はただのテキストファイルです。
 
 ## できること
 

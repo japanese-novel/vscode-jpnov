@@ -1,4 +1,4 @@
-# Japanese Novel
+# Japanese Novel Studio
 
 [日本語](./README.md) | English
 
@@ -49,7 +49,7 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
 ## Quick start
 
 1. **Make a book.** Open the **Books** view in the Activity Bar (the
-   **Japanese Novel** book icon) and click **Create a Book…** (`+`): the
+   **Japanese Novel Studio** book icon) and click **Create a Book…** (`+`): the
    input box already holds `.jpbook`, so type only the name before it. The
    new book opens right there with its **Book Info**, **Cover pages** and
    **Chapters** sections. One `.jpbook` is one book: a plain text file with
@@ -62,7 +62,7 @@ No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
 2. **Write chapters.** Click **Add chapters…** under **Chapters**, type a
    name and press Enter: the `.jpnov` file is created, listed in the book,
    and opened in the editor. Aozora Bunko annotations are highlighted as you type;
-   click the preview icon in the editor title bar (**Japanese Novel: Open
+   click the preview icon in the editor title bar (**Japanese Novel Studio: Open
    Preview to the Side**) to write beside the vertical layout.
 3. **Build it.** Click **Print / Save as PDF** at the bottom of the view: the
    book opens in your browser, and the same button floating on the page
@@ -253,7 +253,7 @@ convention as you type:
   cleared, leaving a true blank line.
 - Only spaces inserted automatically are ever removed.
 
-Turn it off under **Japanese Novel — Editor** (`jpnov.editor.autoIndent`).
+Turn it off under **Japanese Novel Studio — Editor** (`jpnov.editor.autoIndent`).
 
 ## Moving, selecting and deleting by word
 
@@ -272,7 +272,7 @@ its neighbouring pieces, so left and right moves stop at the same places.
 
 VS Code's own behaviour applies during IME composition, and to the move
 commands while a screen reader is running on Windows. To opt out, remove the
-keybindings for the **Japanese Novel** word commands in Keyboard Shortcuts.
+keybindings for the **Japanese Novel Studio** word commands in Keyboard Shortcuts.
 
 ## Preview
 
@@ -282,7 +282,7 @@ it follows the editor cursor, wraps and breaks lines with the exact engine the
 builds use, and shows `［＃改ページ］` as a labelled dashed marker. A faint dotted
 line marks where each page would end at the configured lines per page. Line numbers
 (on by default, running through the whole chapter) and manuscript-paper column rules
-are toggled under **Japanese Novel — Layout & Output**.
+are toggled under **Japanese Novel Studio — Layout & Output**.
 
 A small chip at the preview's top right shows `40 chars × 34 lines`. Click it to
 open the controls and change the characters per line and lines per page on the spot.
@@ -295,12 +295,12 @@ restores the default; the pick is written straight to your user or workspace set
 
 ## Proofreading (lint)
 
-Japanese Novel runs prose checks as you write, surfaced as editor diagnostics
-with quick fixes (and a **Fix all auto-fixable problems (Japanese Novel)** source action).
+Japanese Novel Studio runs prose checks as you write, surfaced as editor diagnostics
+with quick fixes (and a **Fix all auto-fixable problems (Japanese Novel Studio)** source action).
 A quick fix applies to that one problem and the fix-all action to the open
 chapter; **Fix Problems in the Book…** in the Books view (see [Building
 books](#building-books)) fixes a whole book at once.
-Everything is a plain `jpnov.lint.*` setting under **Japanese Novel — Lint**.
+Everything is a plain `jpnov.lint.*` setting under **Japanese Novel Studio — Lint**.
 
 Every check knows what it is looking at: narration, dialogue (`「…」`), a
 heading line, a ruby reading, an annotation. A narration rule never fires
@@ -347,7 +347,7 @@ is an icon button):
 
 - **Print / Save as PDF** — builds the HTML and opens it in a browser: on
   macOS the first of Chrome, Edge and Firefox that is installed, on other OSes
-  your default browser; Print: Browser in the "Japanese Novel — Layout & Output"
+  your default browser; Print: Browser in the "Japanese Novel Studio — Layout & Output"
   settings picks one. The same
   button floating on the page (印刷／PDF 保存) brings up the browser's print
   dialog; print on paper, or save it as a PDF instead. Safari is not
@@ -632,7 +632,7 @@ Most settings are window-level; the output folder is resolved per book file
 (set it per workspace folder or in user settings). The cast and keyword lists
 are not settings: they live in the `.jpbook` files.
 
-### Japanese Novel — Layout & Output
+### Japanese Novel Studio — Layout & Output
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -655,7 +655,7 @@ The running head and page number are **per-book** properties and live in each
 `.jpbook`'s metadata, not in settings — see
 [Per-book metadata](#per-book-metadata).
 
-### Japanese Novel — Lint
+### Japanese Novel Studio — Lint
 
 Threshold rules take an integer or `null` (off). `common.*` rules apply to
 narration and dialogue alike, `narration.*` / `dialogue.*` rules to their own
@@ -689,7 +689,7 @@ form, and `ruby.kana` to ruby readings.
 | `jpnov.lint.common.minusPosition` | `false` | Minus sign not before a number |
 | `jpnov.lint.ruby.kana` | `off` | Ruby readings all-hiragana / all-katakana |
 
-### Japanese Novel — Editor
+### Japanese Novel Studio — Editor
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -698,7 +698,7 @@ form, and `ruby.kana` to ruby readings.
 
 ## Commands
 
-All under the **Japanese Novel** category.
+All under the **Japanese Novel Studio** category.
 
 | Command | Where |
 | --- | --- |

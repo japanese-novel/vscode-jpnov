@@ -181,7 +181,7 @@ export class Preview {
         : (active?.viewColumn ?? vscode.ViewColumn.One);
       panel = vscode.window.createWebviewPanel(
         Preview.viewType,
-        vscode.l10n.t('Japanese Novel Preview'),
+        vscode.l10n.t('Japanese Novel Studio Preview'),
         { viewColumn: column, preserveFocus },
         // Scripts are enabled but locked to a per-render nonce via CSP; the only script is our
         // own bundle (cursor follow + the layout widget), so no remote/inline-eval script can run.
@@ -304,7 +304,7 @@ export class Preview {
     panel?.dispose();
   }
 
-  /** Only Japanese Novel source documents (jpnov / `.jpnov`) are previewable. */
+  /** Only Japanese Novel Studio source documents (jpnov / `.jpnov`) are previewable. */
   private isPreviewable(doc: vscode.TextDocument): boolean {
     return doc.languageId === 'jpnov';
   }

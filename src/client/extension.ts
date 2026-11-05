@@ -167,7 +167,7 @@ function ensureStarted(): void {
             continue; // Command-shaped actions carry no localizable title
           }
           if (action.kind !== undefined && vscode.CodeActionKind.SourceFixAll.contains(action.kind)) {
-            action.title = vscode.l10n.t('Fix all auto-fixable problems (Japanese Novel)');
+            action.title = vscode.l10n.t('Fix all auto-fixable problems (Japanese Novel Studio)');
             continue;
           }
           const data = (action as vscode.CodeAction & { data?: unknown }).data;
@@ -201,7 +201,7 @@ function ensureStarted(): void {
 
   client = new LanguageClient(
     'jpnov',
-    vscode.l10n.t('Japanese Novel Language Server'),
+    vscode.l10n.t('Japanese Novel Studio Language Server'),
     serverOptions,
     clientOptions,
   );

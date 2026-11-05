@@ -1,5 +1,5 @@
 /**
- * LSP message names + payload interfaces for the Japanese Novel client (host) <-> server
+ * LSP message names + payload interfaces for the Japanese Novel Studio client (host) <-> server
  * (forked Node) split. This module is PURE and vscode-free; both sides import it.
  *
  * SINGLE-REPO CONTRACT: the wire shapes live here. Client and server ship together

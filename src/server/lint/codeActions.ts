@@ -25,7 +25,7 @@ import { mergedEdits, rangesOverlap } from '../targets.ts';
 
 type FixableFinding = Finding & { readonly fix: Fix };
 
-const FIX_ALL_TITLE = 'Fix all auto-fixable problems (Japanese Novel)';
+const FIX_ALL_TITLE = 'Fix all auto-fixable problems (Japanese Novel Studio)';
 
 /** Sort edits by position and drop any overlapping an already-kept edit, so the WorkspaceEdit is valid. */
 function nonOverlapping<T extends { readonly range: Range }>(edits: readonly T[]): T[] {

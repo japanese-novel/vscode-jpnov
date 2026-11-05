@@ -1,5 +1,5 @@
 /**
- * Japanese Novel language server (forked Node process, IPC). MUST stay vscode-free — there is
+ * Japanese Novel Studio language server (forked Node process, IPC). MUST stay vscode-free — there is
  * no `vscode` module in the forked process; a value-import would crash it. eslint forbids
  * every import of it in src/server/**, `import type` included.
  *
