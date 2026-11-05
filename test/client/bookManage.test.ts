@@ -238,7 +238,7 @@ test('a typed name landing outside the workspace folder is created all the same,
   assert.deepEqual(state.errorMessages, []);
   assert.deepEqual(state.writtenFiles, [{ uri: 'file:///out/x.jpnov', content: '' }]);
   assert.deepEqual(state.warningMessages, [
-    'Japanese Novel: ../../out/x.jpnov was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
+    'Japanese Novel Studio: ../../out/x.jpnov was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
   ]);
   assert.deepEqual(state.appliedEdits.map((e) => e.newText), ['---\n../../out/x.jpnov\n']);
 });
@@ -288,7 +288,7 @@ test('a file that appeared on disk after the sweep is never overwritten', async 
   state.quickPickQueue.push([{ type: 'taken' }, { toggle: 'taken.jpnov' }, 'accept']);
   await runAddFiles();
 
-  assert.deepEqual(state.errorMessages, ['Japanese Novel: taken.jpnov already exists. Nothing was created.']);
+  assert.deepEqual(state.errorMessages, ['Japanese Novel Studio: taken.jpnov already exists. Nothing was created.']);
   assertNothingWritten();
 });
 
@@ -645,7 +645,7 @@ test('a refused edit or a failed save is toasted (#90)', async () => {
   book(true);
   state.applyEditResult = false;
   await run();
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't edit book.jpbook."]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel Studio: couldn't edit book.jpbook."]);
   assert.equal(saves, 0);
 
   resetMockState(state);
@@ -653,7 +653,7 @@ test('a refused edit or a failed save is toasted (#90)', async () => {
   await run();
   assert.equal(state.appliedEdits.length, 1);
   assert.equal(saves, 1);
-  assert.deepEqual(state.errorMessages, ["Japanese Novel: couldn't save book.jpbook."]);
+  assert.deepEqual(state.errorMessages, ["Japanese Novel Studio: couldn't save book.jpbook."]);
 });
 
 // --- the name lists -------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Security Policy
 
-Japanese Novel runs entirely on your machine. The extension makes no network requests. Besides
+Japanese Novel Studio runs entirely on your machine. The extension makes no network requests. Besides
 its bundled Language Server, the only process it starts is the browser that opens the built HTML
 for Print / Save as PDF, when the `jpnov.layout.print.browser` setting names one; otherwise the
 OS default browser opens it. Nothing you write is sent anywhere unless you build the manuscript

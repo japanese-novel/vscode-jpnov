@@ -146,7 +146,7 @@ test('a book typed above the folder is created there, with a warning', async () 
   assert.deepEqual(state.createdDirs, ['file:///elsewhere']);
   assert.deepEqual(state.writtenFiles, [{ uri: 'file:///elsewhere/作品名.jpbook', content: bookTemplate('作品名') }]);
   assert.deepEqual(state.warningMessages, [
-    'Japanese Novel: ../elsewhere/作品名.jpbook was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
+    'Japanese Novel Studio: ../elsewhere/作品名.jpbook was created outside the workspace folder. The Explorer does not show it; after a rename or move, fix the paths in the book file by hand.',
   ]);
 });
 
@@ -185,7 +185,7 @@ test('an existing target cancels creation', async () => {
   await createFile(undefined);
 
   assert.deepEqual(state.writtenFiles, []);
-  assert.deepEqual(state.errorMessages, ['Japanese Novel: X.jpbook already exists. Nothing was created.']);
+  assert.deepEqual(state.errorMessages, ['Japanese Novel Studio: X.jpbook already exists. Nothing was created.']);
 });
 
 test('a created book is revealed in the panel', async () => {

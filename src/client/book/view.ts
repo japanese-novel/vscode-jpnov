@@ -371,7 +371,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     } catch (err) {
       if (report) {
         const reload = vscode.l10n.t('Reload Window');
-        const message = vscode.l10n.t("Japanese Novel: couldn't load the books. {0}", errorText(err));
+        const message = vscode.l10n.t("Japanese Novel Studio: couldn't load the books. {0}", errorText(err));
         void vscode.window.showErrorMessage(message, reload).then((pick) => {
           if (pick === reload) {
             void vscode.commands.executeCommand('workbench.action.reloadWindow');
@@ -615,7 +615,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private failDetail(uri: string): void {
     this.closeOpenDetail();
     this.applyDetailChrome();
-    void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel: couldn't open {0}.", lastPathSegment(uri)));
+    void vscode.window.showErrorMessage(vscode.l10n.t("Japanese Novel Studio: couldn't open {0}.", lastPathSegment(uri)));
     void this.refresh();
   }
 
@@ -851,7 +851,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       : await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: vscode.l10n.t('Japanese Novel: checking {0} chapter(s)…', String(chapters.length)),
+            title: vscode.l10n.t('Japanese Novel Studio: checking {0} chapter(s)…', String(chapters.length)),
           },
           () => Promise.allSettled(chapters.map((ch) => this.problemsOf(ch))),
         );
@@ -862,12 +862,12 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const failures = settled.flatMap((s) => (s.status === 'rejected' ? [errorText(s.reason)] : []));
     if (failures.length > 0) {
       void vscode.window.showErrorMessage(
-        vscode.l10n.t("Japanese Novel: couldn't check {0} chapter(s). {1}", String(failures.length), failures[0] ?? ''),
+        vscode.l10n.t("Japanese Novel Studio: couldn't check {0} chapter(s). {1}", String(failures.length), failures[0] ?? ''),
       );
     }
     const listed = settled.flatMap((s) => (s.status === 'fulfilled' && s.value.problems.length > 0 ? [s.value] : []));
     if (listed.length === 0) {
-      void vscode.window.showInformationMessage(vscode.l10n.t('Japanese Novel: no problems in this book.'));
+      void vscode.window.showInformationMessage(vscode.l10n.t('Japanese Novel Studio: no problems in this book.'));
       return;
     }
     const message: ProblemsMessage = { type: 'problems', uri, chapters: listed };
@@ -925,7 +925,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       : await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: vscode.l10n.t('Japanese Novel: fixing {0} chapter(s)…', String(targets.length)),
+            title: vscode.l10n.t('Japanese Novel Studio: fixing {0} chapter(s)…', String(targets.length)),
           },
           async () => {
             let fixed = 0;
@@ -942,8 +942,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         );
     void vscode.window.showInformationMessage(
       fixed > 0
-        ? vscode.l10n.t('Japanese Novel: fixed {0} problem(s) in {1} chapter(s).', String(fixed), String(touched))
-        : vscode.l10n.t('Japanese Novel: none of the selected problems could be fixed; the text may have changed since they were listed.'),
+        ? vscode.l10n.t('Japanese Novel Studio: fixed {0} problem(s) in {1} chapter(s).', String(fixed), String(touched))
+        : vscode.l10n.t('Japanese Novel Studio: none of the selected problems could be fixed; the text may have changed since they were listed.'),
     );
   }
 
@@ -956,7 +956,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       result = await this.client.sendRequest<FixAllResult>(FixAllRequest, { uri, text: doc.getText(), only } satisfies FixAllParams);
     } catch (err) {
       void vscode.window.showErrorMessage(
-        vscode.l10n.t("Japanese Novel: couldn't edit {0}. {1}", lastPathSegment(uri), errorText(err)),
+        vscode.l10n.t("Japanese Novel Studio: couldn't edit {0}. {1}", lastPathSegment(uri), errorText(err)),
       );
       return undefined;
     }
@@ -975,7 +975,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private reportBuilt(count: number, label: string, outDirs: readonly string[]): void {
     // showInformationMessage never rejects, so void is safe.
     void vscode.window.showInformationMessage(
-      vscode.l10n.t('Japanese Novel: built {0} {1} file(s).', String(count), label),
+      vscode.l10n.t('Japanese Novel Studio: built {0} {1} file(s).', String(count), label),
     );
     const first = outDirs[0];
     if (this.revealOutput && first !== undefined) {
@@ -1003,7 +1003,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       : { print: 'HTML', epub: 'EPUB' }[action];
     if (books.length === 0) {
       void vscode.window.showInformationMessage(
-        vscode.l10n.t('Japanese Novel: no books selected. Check a book in the Books view, then build.'),
+        vscode.l10n.t('Japanese Novel Studio: no books selected. Check a book in the Books view, then build.'),
       );
       return;
     }
@@ -1014,7 +1014,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const failures = await vscode.window.withProgress<readonly BuildError[]>(
       {
         location: vscode.ProgressLocation.Notification,
-        title: vscode.l10n.t('Japanese Novel: building {0} book(s) to {1}…', String(books.length), label),
+        title: vscode.l10n.t('Japanese Novel Studio: building {0} book(s) to {1}…', String(books.length), label),
         cancellable: true,
       },
       async (_progress, token) => {
@@ -1039,7 +1039,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           const message = errorText(err);
           // This granular popup means buildSelected returns normally (no rethrow) -> no
           // boundary double-popup from the command wrapper.
-          void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel: build failed. {0}', message));
+          void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel Studio: build failed. {0}', message));
           return [];
         }
         if (token.isCancellationRequested) {
@@ -1060,7 +1060,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           } catch (err) {
             const message = errorText(err);
             void vscode.window.showErrorMessage(
-              vscode.l10n.t("Japanese Novel: couldn't write {0}. {1}", uri, message),
+              vscode.l10n.t("Japanese Novel Studio: couldn't write {0}. {1}", uri, message),
             );
           }
         };
@@ -1091,7 +1091,7 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         const errors = result.errors;
         for (const e of errors) {
           void vscode.window.showErrorMessage(
-            vscode.l10n.t('Japanese Novel: build error for {0}. {1}', e.book, renderMessage(e)),
+            vscode.l10n.t('Japanese Novel Studio: build error for {0}. {1}', e.book, renderMessage(e)),
           );
         }
 
@@ -1112,8 +1112,8 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             if (unopened.length > 0 && candidates.length > 0) {
               void vscode.window.showInformationMessage(
                 isBrowser(choice)
-                  ? vscode.l10n.t("Japanese Novel: {0} wasn't found; opened in the default browser instead.", BROWSER_NAMES[choice])
-                  : vscode.l10n.t('Japanese Novel: no Chrome, Edge or Firefox found; opened in the default browser. Safari ignores the paper size and orientation.'),
+                  ? vscode.l10n.t("Japanese Novel Studio: {0} wasn't found; opened in the default browser instead.", BROWSER_NAMES[choice])
+                  : vscode.l10n.t('Japanese Novel Studio: no Chrome, Edge or Firefox found; opened in the default browser. Safari ignores the paper size and orientation.'),
               );
             }
           }
@@ -1123,12 +1123,12 @@ export class BooksViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           void vscode.commands.executeCommand('setContext', 'jpnov.hasBuilt', true);
           if (substitutions > 0) {
             void vscode.window.showWarningMessage(
-              vscode.l10n.t('Japanese Novel: {0} character(s) became 〓 in the text output.', String(substitutions)),
+              vscode.l10n.t('Japanese Novel Studio: {0} character(s) became 〓 in the text output.', String(substitutions)),
             );
           }
         } else if (errors.length === 0) {
           void vscode.window.showInformationMessage(
-            vscode.l10n.t('Japanese Novel: nothing to build.'),
+            vscode.l10n.t('Japanese Novel Studio: nothing to build.'),
           );
         }
         return errors;

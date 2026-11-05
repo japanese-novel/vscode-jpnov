@@ -14,7 +14,7 @@ export async function guarded(run: () => Promise<void> | void): Promise<void> {
   } catch (err) {
     const m = errorText(err);
     // The last-resort popup itself never rejects; void it so this catch can't re-throw.
-    void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel: {0}', m));
+    void vscode.window.showErrorMessage(vscode.l10n.t('Japanese Novel Studio: {0}', m));
   }
 }
 

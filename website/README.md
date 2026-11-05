@@ -1,6 +1,6 @@
 # jpnov.com
 
-The product site for the Japanese Novel extension: Astro + Tailwind CSS 4 + GSAP, Japanese only,
+The product site for the Japanese Novel Studio extension: Astro + Tailwind CSS 4 + GSAP, Japanese only,
 built as a check by `.github/workflows/website.yml` and deployed to GitHub Pages only for a
 release tag or a manual run.
 

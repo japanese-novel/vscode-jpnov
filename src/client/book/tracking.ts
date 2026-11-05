@@ -75,7 +75,7 @@ async function askUser(bookCount: number): Promise<boolean> {
   const always = vscode.l10n.t('Always Update');
   const never = vscode.l10n.t('Never Update');
   const message = vscode.l10n.t(
-    'Japanese Novel: files were renamed or moved — update the paths in {0} book file(s)?',
+    'Japanese Novel Studio: files were renamed or moved — update the paths in {0} book file(s)?',
     String(bookCount),
   );
   const pick = await vscode.window.showInformationMessage(message, update, always, never);
