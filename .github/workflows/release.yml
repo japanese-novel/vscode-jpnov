@@ -68,7 +68,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           git push origin "refs/tags/${{ steps.meta.outputs.tag }}"
-          gh release create "${{ steps.meta.outputs.tag }}" "jpnov-${{ steps.meta.outputs.version }}.vsix" --verify-tag --title "${{ steps.meta.outputs.tag }}" --generate-notes
+          gh release create "${{ steps.meta.outputs.tag }}" "vscode-jpnov-${{ steps.meta.outputs.version }}.vsix" --verify-tag --title "${{ steps.meta.outputs.tag }}" --generate-notes
       - name: Deploy the website at this tag
         env:
           GH_TOKEN: ${{ github.token }}

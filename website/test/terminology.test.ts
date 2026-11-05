@@ -12,8 +12,8 @@ import { UI } from '../src/copy/ui.ts';
 import { readRootText, sitePath } from '../scripts/root.ts';
 
 const FORBIDDEN = ['柱', 'ノンブル', '文章チェック', '題名', '著者', '和文小説'];
-/** Names quoted in prose that are not product labels; the manifest name is the Marketplace search term. */
-const QUOTED_NAMES = ['Japanese Novel', 'Visual Studio Code', 'Japanese Language Pack', 'これは人名らしい', 'ようこそ', (JSON.parse(await readRootText('package.json')) as { name: string }).name];
+/** Names quoted in prose that are not product labels; `jpnov` is the Marketplace search term the README and the site tell readers to type (a manifest keyword). */
+const QUOTED_NAMES = ['Japanese Novel', 'Visual Studio Code', 'Japanese Language Pack', 'これは人名らしい', 'ようこそ', 'jpnov'];
 
 /** The files under `dir` matching `ext`, the `skip` sub-directories excluded. */
 async function files(dir: string, ext: RegExp, skip: readonly string[] = []): Promise<string[]> {
