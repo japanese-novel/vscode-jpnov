@@ -2,12 +2,13 @@
 
 [日本語](./README.md) | English
 
-Write, proofread, and typeset Japanese novels in Visual Studio Code — vertical
+Write, proofread, and typeset Japanese novels in VS Code or
+[VSCodium](https://vscodium.com/) — vertical
 layout, [Aozora Bunko](https://www.aozora.gr.jp/annotation/index.html) markup,
 one-command HTML / EPUB / text builds, printing straight from your browser.
 No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
 Available on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=japanese-novel.vscode-jpnov)
-and [Open VSX](https://open-vsx.org/extension/japanese-novel/vscode-jpnov); works in VS Code and [VSCodium](https://vscodium.com/).
+and [Open VSX](https://open-vsx.org/extension/japanese-novel/vscode-jpnov).
 
 ![A vertically typeset novel page with ruby glosses, a running head, and a page number](docs/images/hero-page.png)
 
@@ -30,7 +31,7 @@ and [Open VSX](https://open-vsx.org/extension/japanese-novel/vscode-jpnov); work
 - **Annotation help** — hover an annotation for what it does and what it
   applies to; F2 renames a forward-ref target together with the text it names.
 
-![VS Code while writing: the Books view on the left, an annotated chapter in the middle, the vertical preview on the right](docs/images/vscode-workspace.png)
+![The editor while writing: the Books view on the left, an annotated chapter in the middle, the vertical preview on the right](docs/images/vscode-workspace.png)
 
 *The everyday writing layout: the book's table of contents, the manuscript, and the vertical preview in one window.*
 
@@ -56,7 +57,7 @@ and [Open VSX](https://open-vsx.org/extension/japanese-novel/vscode-jpnov); work
    new book opens right there with its **Book Info**, **Cover pages** and
    **Chapters** sections. One `.jpbook` is one book: a plain text file with
    one chapter path per line, each counted from the `.jpbook`'s own folder
-   (`../` reaches up, as in an import); move the book inside VS Code and its
+   (`../` reaches up, as in an import); move the book inside the editor and its
    paths are rewritten to keep naming the same files. The lines above its `---` carry the
    book's own metadata — title, running head, page-number style (see
    [Per-book metadata](#per-book-metadata)); Create a Book writes them all.
@@ -260,7 +261,7 @@ Turn it off under **Japanese Novel Studio — Editor** (`jpnov.editor.autoIndent
 ## Moving, selecting and deleting by word
 
 In `.jpnov` editors, ⌥← / ⌥→ (Ctrl+← / Ctrl+→ on Windows and Linux) stop
-partway through a sentence. By default, VS Code jumps to the start or end of
+partway through a sentence. By default, the editor jumps to the start or end of
 the line: it only breaks words at ASCII punctuation and spaces, so it treats a
 Japanese paragraph as one word. Add ⇧ to select up to the next stop; ⌥⌫ / ⌥⌦
 (Ctrl+Backspace / Ctrl+Delete) delete up to it.
@@ -272,7 +273,7 @@ punctuation and spaces, cut before an opening bracket and after a closing one.
 `聖剣を / 抜いたのは / 山田 / 　 / 太郎だった / 。`. Each stop depends only on
 its neighbouring pieces, so left and right moves stop at the same places.
 
-VS Code's own behaviour applies during IME composition, and to the move
+The editor's own behaviour applies during IME composition, and to the move
 commands while a screen reader is running on Windows. To opt out, remove the
 keybindings for the **Japanese Novel Studio** word commands in Keyboard Shortcuts.
 
@@ -380,11 +381,11 @@ as unknown keys or duplicates, never stop a build.
 
 Chapters and the `.jpbook` itself are taken as the editor shows them: an open
 file contributes its current text, unsaved edits included, so a build matches
-the preview; a closed file is read from disk with the encoding VS Code picks
+the preview; a closed file is read from disk with the encoding the editor picks
 for it (`files.encoding`, `files.autoGuessEncoding`, a byte order mark). Keep
 `files.autoGuessEncoding` on if you bring in manuscripts saved by other apps,
 such as Windows Notepad. A Shift JIS manuscript that reads correctly in the
-editor builds correctly; a file VS Code cannot decode as text fails that
+editor builds correctly; a file the editor cannot decode as text fails that
 book's build with `cannot read "…": not a text file`.
 
 A PDF saved from the print dialog embeds a subset of each font it uses. With
@@ -437,11 +438,11 @@ ones, in chapters you have not opened too (an unsaved chapter stays unsaved).
 ![The Problems screen of the Books view: each chapter's problems listed, the auto-fixable ones ticked](docs/images/vscode-fix-problems.png)
 
 Renaming or moving a chapter, a folder of chapters, or a `.jpbook` itself
-inside VS Code offers to update every `.jpbook` whose paths it affects —
+inside the editor offers to update every `.jpbook` whose paths it affects —
 `jpnov.editor.updateRefsOnFileMove` picks `prompt` (default), `always`, or
-`never` — the same three choices VS Code offers for updating imports on file
+`never` — the same three choices the editor offers for updating imports on file
 move. A book moved together with its chapters needs no update. Renames made
-outside VS Code can't be tracked; the missing path is flagged in the editor
+outside the editor can't be tracked; the missing path is flagged in the `.jpbook`
 instead.
 
 ### Per-book metadata

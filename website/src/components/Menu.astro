@@ -1,0 +1,19 @@
+---
+/** A button that opens a list of links: zero script (`popovertarget` + `popover`), positioned by CSS anchoring where supported. */
+interface Props {
+  id: string;
+  label: string;
+  items: readonly { label: string; href: string }[];
+  /** The link-like look (`.jp-cta-quiet`) instead of the filled button. */
+  quiet?: boolean;
+}
+
+const { id, label, items, quiet = false } = Astro.props;
+---
+
+<button type="button" class={quiet ? 'jp-cta-quiet' : 'jp-cta'} popovertarget={id}>{label}</button>
+<ul id={id} class="jp-get-menu" popover>
+  {items.map((item) => (
+    <li><a href={item.href} target="_blank" rel="noopener">{item.label}</a></li>
+  ))}
+</ul>

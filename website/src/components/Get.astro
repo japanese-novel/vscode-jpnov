@@ -1,15 +1,16 @@
 ---
 import { LINKS } from '../copy/links.ts';
+import Menu from './Menu.astro';
 
 interface Props {
   id: string;
 }
 
 const { id } = Astro.props;
+const STORES = [
+  { label: 'Visual Studio Marketplace', href: LINKS.marketplace },
+  { label: 'Open VSX', href: LINKS.openvsx },
+] as const;
 ---
 
-<button type="button" class="jp-cta" popovertarget={id}>今すぐ入手する</button>
-<ul id={id} class="jp-get-menu" popover>
-  <li><a href={LINKS.marketplace} target="_blank" rel="noopener">VS Code Marketplace</a></li>
-  <li><a href={LINKS.openvsx} target="_blank" rel="noopener">Open VSX</a></li>
-</ul>
+<Menu id={id} label="今すぐ入手する" items={STORES} />

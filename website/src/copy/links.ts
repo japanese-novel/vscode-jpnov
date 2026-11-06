@@ -6,6 +6,7 @@ export const LINKS = {
   readmeEn: 'https://github.com/japanese-novel/vscode-jpnov/blob/main/README.en.md',
   license: 'https://github.com/japanese-novel/vscode-jpnov/blob/main/LICENSE',
   vscode: 'https://code.visualstudio.com/',
+  vscodium: 'https://vscodium.com/',
   aozora: 'https://www.aozora.gr.jp/annotation/index.html',
   aozoraNeko: 'https://www.aozora.gr.jp/cards/000148/card789.html',
   codicons: 'https://github.com/microsoft/vscode-codicons',
