@@ -41,6 +41,15 @@ export function isAsciiLetter(unit: number): boolean {
   return (unit >= 0x41 && unit <= 0x5a) || (unit >= 0x61 && unit <= 0x7a);
 }
 
+/**
+ * A cluster or run headed by printable ASCII: a half-width glyph, 0.5–0.6em wide in the 明朝
+ * fonts, where any other glyph is a full em. The one class the ruby lanes and the 縦中横 measure.
+ */
+export function isHalfWidth(text: string): boolean {
+  const unit = text.charCodeAt(0);
+  return unit >= 0x20 && unit <= 0x7e;
+}
+
 /** A digit of either width (０-９ included), by UTF-16 unit. */
 export function isDigit(unit: number): boolean {
   return isAsciiDigit(unit) || (unit >= 0xff10 && unit <= 0xff19);

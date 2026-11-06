@@ -521,8 +521,8 @@ test('ダッシュ: postfix targets match the SOURCE spelling; the emitted run i
   // ［＃「―い」…］ names U+2015. Matching runs on Unit.text — translating it would turn every
   // such postfix into a syntax.postfixTargetMissing false positive.
   assert.match(dashFlow('あ――い［＃「―い」に傍点］'), /あ—<span class="emph-fs">—い<\/span>/);
-  // A postfix 縦中横 rebuilds its combined cell from the source text — the cell keeps ―.
-  assert.match(dashFlow('あ――い［＃「―い」は縦中横］'), /あ—<span class="tcy">―い<\/span>/);
+  // A postfix 縦中横 rebuilds its combined cell from the source text — the cell keeps ― (two full-width glyphs: the size class).
+  assert.match(dashFlow('あ――い［＃「―い」は縦中横］'), /あ—<span class="tcy tcy-small">―い<\/span>/);
   // A ルビ lane rebuilds its base the same way (a dash may still be a 左ルビ base).
   assert.match(dashFlow('――［＃「――」の左に「and」のルビ］'), /<ruby class="lr">/);
 });
@@ -866,9 +866,22 @@ test('the used sink collects the tcy class (on-demand stylesheet)', () => {
   const used = new Set<string>();
   pagesToHtml(sheets(pages('令和［＃縦中横］12［＃縦中横終わり］年')), used, OFF);
   assert.ok(used.has('tcy'));
+  assert.ok(!used.has('tcy-small'));
+  const wide = new Set<string>();
+  assert.match(pagesToHtml(sheets(pages('西暦［＃縦中横］1868［＃縦中横終わり］年')), wide, OFF), /西暦<span class="tcy tcy-small">1868<\/span>年/);
+  assert.ok(wide.has('tcy') && wide.has('tcy-small'));
   const clean = new Set<string>();
   pagesToHtml(sheets(pages('ただの本文')), clean, OFF);
   assert.ok(!clean.has('tcy'));
+});
+
+test('縦中横: from TCY_MAX half-widths the cell takes the size class, still one cell', () => {
+  const classes = (src: string): string[] => unitsOf(src).flatMap((u) => u.cssClass ?? []);
+  assert.deepEqual(classes('西暦123［＃「123」は縦中横］年'), ['tcy']);
+  assert.deepEqual(classes('西暦1868［＃「1868」は縦中横］年'), ['tcy tcy-small']); // four half-widths
+  assert.deepEqual(classes('［＃縦中横］２０［＃縦中横終わり］'), ['tcy tcy-small']); // two full-width = four
+  assert.deepEqual(classes('［＃縦中横］12345［＃縦中横終わり］'), ['tcy tcy-small']); // wider: the same class, no further step
+  assert.equal(unitsOf('1868［＃「1868」は縦中横］')[0]?.cells, 1);
 });
 
 // --------------------------------------------------------------- postfix boundary alignment
@@ -1418,13 +1431,13 @@ test('NFD: a postfix target matches its text whichever side is decomposed', () =
   }
   const [row] = rowsOf(`た${D}め［＃「だめ」は大見出し］`);
   assert.equal(row?.kind === 'line' ? row.heading : undefined, 1);
-  assert.deepEqual(unitsOf(`か${D}き［＃「がき」は縦中横］`).map((u) => [u.text, u.cssClass]), [['がき', 'tcy']]);
+  assert.deepEqual(unitsOf(`か${D}き［＃「がき」は縦中横］`).map((u) => [u.text, u.cssClass]), [['がき', 'tcy tcy-small']]);
 });
 
 test('NFD: 縦中横 content, a value, a broken ［＃ and the empty-base literal compose as well', () => {
   assert.deepEqual(
     unitsOf(`［＃縦中横］か${D}き［＃縦中横終わり］`).map((u) => [u.text, u.html]),
-    [['がき', '<span class="tcy">がき</span>']],
+    [['がき', '<span class="tcy tcy-small">がき</span>']],
   );
   const title = new Map([[VALUE_NAMES.title, `か${D}`]]);
   assert.deepEqual(unitsOf(valueAnnotation(VALUE_NAMES.title), title).map((u) => u.text), ['が']);

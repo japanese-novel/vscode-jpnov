@@ -1,0 +1,6 @@
+/* Reflow-only 縦中横: the reading system combines the run upright in one square, the way the
+   電書協 EPUB 3 制作ガイド standard CSS and the 青空文庫 converters write it
+   (https://ebpaj.jp/counsel/guide); the legacy -webkit-/-epub- spellings are for older reading
+   systems (the standard property, last, wins wherever both are known). The paginated media set
+   the run in class.tcy.css instead: a reader that drops flex layout would lose the cell here. */
+.tcy{-webkit-text-combine:horizontal;-epub-text-combine:horizontal;text-combine-upright:all}

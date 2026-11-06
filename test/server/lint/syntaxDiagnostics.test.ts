@@ -14,12 +14,13 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { Finding } from '../../../src/server/diagnostics.ts';
 import { buildCodeActions } from '../../../src/server/lint/codeActions.ts';
-import { INDENT_TOO_LARGE, TCY_MAX, syntaxFindings } from '../../../src/server/syntax.ts';
+import { INDENT_TOO_LARGE, syntaxFindings } from '../../../src/server/syntax.ts';
 import { rangeOf } from '../../../src/server/targets.ts';
 import { INDENT_MAX, fullWidthDigits, indentAnnotation } from '../../../src/shared/ast/notation.ts';
 import { parse } from '../../../src/shared/ast/parse.ts';
 import { COVER_TEMPLATE } from '../../../src/shared/book/create.ts';
 import { renderEnglish } from '../../../src/shared/messages.ts';
+import { TCY_MAX } from '../../../src/shared/tcy.ts';
 import { D } from '../../shared/_kana.ts';
 import { at, blockOf, gaijiOf } from '../../shared/ast/_shape.ts';
 import { fixAllOf, openDoc as doc } from '../helpers.ts';
@@ -293,18 +294,18 @@ test('縦中横 structural issues surface as Warnings with their codes', () => {
   assert.deepEqual(annotationDiagnostics(doc('［＃縦中横終わり］'))[0]?.data, {
     code: 'syntax.danglingTcyEnd',
   });
-  assert.deepEqual(annotationDiagnostics(doc('［＃縦中横］1234［＃縦中横終わり］'))[0]?.data, {
+  assert.deepEqual(annotationDiagnostics(doc('［＃縦中横］12345［＃縦中横終わり］'))[0]?.data, {
     code: 'syntax.tcyTooLong',
   });
   assert.deepEqual(annotationDiagnostics(doc('令和［＃縦中横］12［＃縦中横終わり］年')), []);
 });
 
 test('縦中横: a postfix combining too much warns over its target', () => {
-  const diags = annotationDiagnostics(doc('1234［＃「1234」は縦中横］'));
+  const diags = annotationDiagnostics(doc('12345［＃「12345」は縦中横］'));
   assert.deepEqual(diags.map((d): unknown => d.data), [{ code: 'syntax.tcyTooLong' }]);
   assert.deepEqual(diags[0]?.range, {
-    start: { line: 0, character: 7 },
-    end: { line: 0, character: 11 }, // 1234, inside ［＃「1234」は縦中横］
+    start: { line: 0, character: 8 },
+    end: { line: 0, character: 13 }, // 12345, inside ［＃「12345」は縦中横］
   });
 });
 
@@ -328,31 +329,37 @@ test('値の表示: a function word the notation does not define warns over the 
 });
 
 test('縦中横: a span holding too much warns over what it holds, whatever closes it', () => {
-  assert.deepEqual(onLine('［＃縦中横］1234［＃縦中横終わり］'), [['syntax.tcyTooLong', '1234']]);
-  assert.deepEqual(onLine('［＃縦中横］123［＃縦中横終わり］'), []); // three render cleanly
+  assert.deepEqual(onLine('［＃縦中横］12345［＃縦中横終わり］'), [['syntax.tcyTooLong', '12345']]);
+  assert.deepEqual(onLine('［＃縦中横］1234［＃縦中横終わり］'), []); // four half-widths are set small, not warned
   assert.deepEqual(onLine('［＃縦中横］12辻\u{E0100}［＃縦中横終わり］'), []); // a variation selector is no character of its own
   // A ruby inside keeps its base alone (its reading is reported instead); a comment adds nothing.
   assert.deepEqual(onLine('［＃縦中横］漢《かん》［＃縦中横終わり］'), [['syntax.rubyInTcy', '《かん》']]);
   assert.deepEqual(onLine('［＃縦中横］漢字《かんじ》の国［＃縦中横終わり］'), [['syntax.tcyTooLong', '漢字《かんじ》の国'], ['syntax.rubyInTcy', '《かんじ》']]);
-  assert.deepEqual(onLine('［＃縦中横］12［＃x］3［＃縦中横終わり］'), []);
+  assert.deepEqual(onLine('［＃縦中横］12［＃x］34［＃縦中横終わり］'), []);
   // Closed by the line end: the range is the content still.
   for (const eol of ['', '\n次', '\r\n次']) {
     assert.deepEqual(
-      onLine(`［＃縦中横］1234［＃メモ］${eol}`),
-      [['syntax.unterminatedTcy', '［＃縦中横］'], ['syntax.tcyTooLong', '1234']],
+      onLine(`［＃縦中横］12345［＃メモ］${eol}`),
+      [['syntax.unterminatedTcy', '［＃縦中横］'], ['syntax.tcyTooLong', '12345']],
       JSON.stringify(eol),
     );
   }
 });
 
-test('縦中横: the length is counted on the composed text', () => {
-  assert.deepEqual(onLine(`［＃縦中横］か${D}きく［＃縦中横終わり］`), []);
-  assert.deepEqual(onLine(`か${D}きく［＃「か${D}きく」は縦中横］`), []);
-  assert.deepEqual(onLine(`［＃縦中横］か${D}きくけ［＃縦中横終わり］`), [['syntax.tcyTooLong', `か${D}きくけ`]]);
+test('縦中横: a full-width character counts as two half-widths (the measure itself: test/shared/tcy.test.ts)', () => {
+  assert.deepEqual(onLine('［＃縦中横］１２［＃縦中横終わり］'), []); // 4
+  assert.deepEqual(onLine('１２３［＃「１２３」は縦中横］'), [['syntax.tcyTooLong', '１２３']]); // 6
+  assert.deepEqual(onLine('※［＃感嘆符疑問符、1-8-78］!［＃「⁉!」は縦中横］'), []); // the 外字 is its full-width character: 3
+});
+
+test('縦中横: the width is counted on the composed text', () => {
+  assert.deepEqual(onLine(`［＃縦中横］か${D}き［＃縦中横終わり］`), []);
+  assert.deepEqual(onLine(`か${D}き［＃「か${D}き」は縦中横］`), []);
+  assert.deepEqual(onLine(`［＃縦中横］か${D}きく［＃縦中横終わり］`), [['syntax.tcyTooLong', `か${D}きく`]]);
 });
 
 test('縦中横: a character no output can carry is not counted, in either form', () => {
-  const fits = `1\u0007${'2'.repeat(TCY_MAX - 1)}\uFFFE`;
+  const fits = `1\u0007${'2'.repeat(TCY_MAX - 1)}\uFFFE`; // half-width digits: one unit each
   assert.deepEqual(onLine(`［＃縦中横］${fits}［＃縦中横終わり］`), []);
   assert.deepEqual(onLine(`${fits}［＃「${fits}」は縦中横］`), []);
   assert.deepEqual(onLine(`［＃縦中横］${fits}3［＃縦中横終わり］`), [['syntax.tcyTooLong', `${fits}3`]]);
@@ -362,8 +369,8 @@ test('縦中横: a character no output can carry is not counted, in either form'
 test('縦中横: a value field counts as what it shows, never as its annotation', () => {
   assert.deepEqual(onLine('［＃縦中横］［＃ここに「総ページ数」の値を表示］［＃縦中横終わり］'), []);
   assert.deepEqual(
-    onLine('［＃縦中横］123［＃ここに「ページ番号」の値を表示］［＃縦中横終わり］'),
-    [['syntax.tcyTooLong', '123［＃ここに「ページ番号」の値を表示］']],
+    onLine('［＃縦中横］1234［＃ここに「ページ番号」の値を表示］［＃縦中横終わり］'),
+    [['syntax.tcyTooLong', '1234［＃ここに「ページ番号」の値を表示］']],
   );
   // A text value shows its name, a name outside the table itself.
   assert.deepEqual(

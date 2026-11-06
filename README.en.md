@@ -205,8 +205,9 @@ part). Left readings are exempt from the ruby-kana lint, since they are often
 Latin. Left ruby needs room to the left of the line — set
 `jpnov.layout.linePitch` to `2` or wider. At tighter pitches the reading
 overlaps the neighbouring line. **縦中横** stands a short run upright in one
-square — keep it to 3 characters or fewer (a longer run is squeezed to fit
-and raises a Warning). A half-width pair (`!!` `!?` `?!` `??`) takes the same
+square — keep it to 4 half-width characters (a full-width character counts
+as two; a longer run raises a Warning). Up to 3 of those the run keeps the body
+size; at 4 it is set at 0.75 of it. A half-width pair (`!!` `!?` `?!` `??`) takes the same
 annotation (`!?［＃「!?」は縦中横］`); without it the pair lies on its side, two
 squares long. A lint rule flags a pair that lacks it
 (`jpnov.lint.common.questionExclamationMarks`). Its quick fix depends on the

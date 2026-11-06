@@ -37,7 +37,7 @@ function preview(
 test('renderPreview: a half-width pair is one cell under its 縦中横 annotation, two characters without', () => {
   const on = preview('えっ!?［＃「!?」は縦中横］');
   assert.match(on, /<span class="tcy">!\?<\/span>/);
-  assert.match(on, /\.tcy\{[^}]*text-combine-upright:all\}/); // the on-demand rule rides along
+  assert.match(on, /\.tcy\{display:inline-flex;[^}]*\}/); // the on-demand rule rides along
   const off = preview('えっ!?');
   assert.doesNotMatch(off, /tcy/); // the pair stays plain rotated text, zero dead rules
 });

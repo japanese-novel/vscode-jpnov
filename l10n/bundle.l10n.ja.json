@@ -130,7 +130,7 @@
   "annotation target \"{0}\" is not on this line, or is not aligned to a character boundary": "注記の対象文字列「{0}」が行内で見つからないか、文字境界に揃っていません",
   "unterminated 縦中横 (missing ［＃縦中横終わり］ before the end of the line)": "縦中横が閉じられていません（行末までに「［＃縦中横終わり］」が必要です）",
   "［＃縦中横終わり］ without a matching ［＃縦中横］": "「［＃縦中横終わり］」に対応する「［＃縦中横］」がありません",
-  "縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)": "縦中横が長すぎます（3 文字以内にすると字形が崩れません）",
+  "縦中横 is too long (keep it to 4 half-width characters; a full-width character counts as 2)": "縦中横が長すぎます（半角 4 文字まで。全角は 2 文字分）",
   "ruby reading 《{0}》 has no base text before it (it prints as typed; for brackets, write the 二重山括弧 外字注記)": "《{0}》の前にルビのかかる文字がありません（ルビにならず、文字のまま出力されます。括弧として使うなら二重山括弧の外字注記で書きます）",
   "empty ruby reading 《》 (it prints as typed)": "ルビの読みが空です（《》は文字のまま出力されます）",
   "ruby reading {0} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)": "ルビ「{0}」は縦中横にかけられません（読みは出力されず、ルビのかかる文字だけが出力されます）",

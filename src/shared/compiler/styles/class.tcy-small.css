@@ -1,0 +1,4 @@
+/* A 縦中横 of TCY_MAX (src/shared/tcy.ts) half-width units or more: the glyphs scale to 0.75 in both
+   directions, like a reading, so four digits hang no further into the line gap than three at body
+   size (1.76em at the widest digits). Wider runs take the same class, with no promise of fitting. */
+.tcy-small{--tcy-scale:.75}

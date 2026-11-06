@@ -191,11 +191,12 @@ test('an emphasis boundary splits an insep run (equal channels required)', () =>
 
 test('縦中横 and emphasis channel runs ride through emitUnits unchanged', () => {
   const used = new Set<string>();
-  const out = reflowSegments(rows('12［＃「12」は縦中横］だ、そうだ［＃「そうだ」に傍点］'), CPL, used, 'horizontalBar');
+  const out = reflowSegments(rows('12［＃「12」は縦中横］だ、1868［＃「1868」は縦中横］年そうだ［＃「そうだ」に傍点］'), CPL, used, 'horizontalBar');
   const b = out[0]?.body ?? '';
   assert.match(b, /<span class="tcy">12<\/span>/);
+  assert.match(b, /<span class="tcy tcy-small">1868<\/span>/); // the size class rides along, as every cssClass does
   assert.match(b, /<span class="emph-fs">そうだ<\/span>/);
-  assert.ok(used.has('tcy'));
+  assert.ok(used.has('tcy') && used.has('tcy-small'));
   assert.ok(used.has('emph-fs'));
 });
 
