@@ -1,5 +1,6 @@
 export const LINKS = {
   marketplace: 'https://marketplace.visualstudio.com/items?itemName=japanese-novel.vscode-jpnov',
+  openvsx: 'https://open-vsx.org/extension/japanese-novel/vscode-jpnov',
   github: 'https://github.com/japanese-novel/vscode-jpnov',
   readmeJa: 'https://github.com/japanese-novel/vscode-jpnov#readme',
   readmeEn: 'https://github.com/japanese-novel/vscode-jpnov/blob/main/README.en.md',

@@ -45,7 +45,7 @@ body:
     id: env
     attributes:
       label: 環境
-      description: メニューの「ヘルプ」→「バージョン情報」（macOS では「Code」メニュー）を開き、「コピー」を押してここに貼り付けてください。この拡張機能のバージョンは、拡張機能の一覧で「Japanese Novel Studio」を開くと、名前の横に表示されます。変更した設定があれば、それも書いてください。
+      description: メニューの「ヘルプ」→「バージョン情報」（macOS では「Code」メニュー）を開き、「コピー」を押してここに貼り付けてください。この拡張機能のバージョンは、拡張機能の一覧で「Japanese Novel Studio」を開くと、名前の横に表示されます。VSCodium でも手順は同じです。変更した設定があれば、それも書いてください。
       placeholder: |
         バージョン: 1.143.0
         OS: Windows_NT x64 10.0.26100

@@ -2,8 +2,8 @@
 
 `docs/images/` holds two kinds of images: **generated renders** produced straight
 from the compiler (section A) and **manual VS Code UI captures** (section B).
-Nothing under `docs/` ships in the VSIX — the Marketplace loads these images from
-the GitHub repository via the manifest's `repository` field, so the repo must be
+Nothing under `docs/` ships in the VSIX — the Marketplace and Open VSX load these
+images from the GitHub repository via the manifest's `repository` field, so the repo must be
 public by publish time. README.md references every image; README.en.md all but
 `vscode-settings.png` and the two `vscode-encoding-*` crops.
 

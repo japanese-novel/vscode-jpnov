@@ -1,0 +1,46 @@
+name: Publish to Open VSX
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-openvsx
+
+jobs:
+  publish:
+    name: Publish the release VSIX
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve the release
+        id: meta
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ] || ! printf '%s' "$GITHUB_REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "publish must be dispatched on a release tag vX.Y.Z — pick the tag in \"Run workflow\" (got $GITHUB_REF_TYPE $GITHUB_REF_NAME)"; exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Download the VSIX of the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --pattern "vscode-jpnov-${{ steps.meta.outputs.version }}.vsix"
+      - name: Check the VSIX against the tag
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          MANIFEST="$(unzip -p "vscode-jpnov-$VERSION.vsix" extension/package.json)"
+          ACTUAL="$(printf '%s' "$MANIFEST" | node -e 'const m = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(`${m.publisher}.${m.name}@${m.version}`)')"
+          EXPECTED="japanese-novel.vscode-jpnov@$VERSION"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "the VSIX is $ACTUAL, the tag names $EXPECTED"; exit 1
+          fi
+      - name: Publish to Open VSX
+        run: npx ovsx publish --trusted-publishing "vscode-jpnov-${{ steps.meta.outputs.version }}.vsix"

@@ -127,9 +127,25 @@ pre.jp-source {
   padding: 0.9rem 1.6rem;
   font-size: 0.9375rem;
   letter-spacing: 0.04em;
+  cursor: pointer;
 }
 .jp-cta:hover { background: var(--color-vermilion); }
 .jp-cta-quiet { font-size: 0.9375rem; }
+/* The get menu (Get.astro). */
+.jp-cta:has(+ .jp-get-menu:popover-open) { background: var(--color-vermilion); }
+.jp-get-menu {
+  padding: 0.5rem 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
+  box-shadow: 0 1px 2px rgba(38, 33, 28, 0.1), 0 12px 32px -12px rgba(38, 33, 28, 0.35);
+}
+@supports (position-area: bottom) {
+  .jp-get-menu { inset: auto; margin: 0.5rem 0 0; position-area: bottom span-right; min-width: anchor-size(width); }
+}
+.jp-get-menu a { display: block; padding: 0.6rem 1.6rem; font-size: 0.9375rem; white-space: nowrap; text-decoration: none; }
+.jp-get-menu a:hover, .jp-get-menu a:focus-visible { background: color-mix(in srgb, var(--color-ink) 6%, transparent); color: var(--color-vermilion); }
+.jp-get-menu a { display: block; padding: 0.5rem 1.6rem; font-size: 0.9375rem; white-space: nowrap; }
 /* An embedded product render (scripts/scope.ts): the product's own box model under the preflight's border-box. */
 .jp-scope, .jp-scope *, .jp-scope *::before, .jp-scope *::after { box-sizing: content-box; }
 .jp-paper { --jp-paper-width: 100cqw; }

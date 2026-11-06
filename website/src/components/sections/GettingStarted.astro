@@ -1,5 +1,6 @@
 ---
 import { LINKS } from '../../copy/links.ts';
+import Get from '../Get.astro';
 import Q from '../Q.astro';
 
 const STEPS = [
@@ -21,10 +22,10 @@ const STEPS = [
         </li>
       ))}
     </ol>
-    <p class="jp-cta-row">
-      <a class="jp-cta" href={LINKS.marketplace}>VS Code Marketplace で入手する</a>
+    <div class="jp-cta-row">
+      <Get id="get-start" />
       <a class="jp-cta-quiet" href={LINKS.vscode}>VS Code をダウンロード</a>
-    </p>
+    </div>
     <p class="jp-note">同じ流れは、VS Code の<Q>ようこそ</Q>画面にあるガイド「小説をはじめる」でも案内しています。</p>
   </div>
 </section>
