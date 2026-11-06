@@ -1,5 +1,11 @@
-/* 縦中横: combine the cell's chars upright in one square. Media-independent (pure text
-   combination, no geometry), so the one rule serves preview, build and the reflow EPUB alike;
-   the legacy -webkit-/-epub- spellings are for older EPUB reading systems (the standard
-   property, last, wins wherever both are known). */
-.tcy{-webkit-text-combine:horizontal;-epub-text-combine:horizontal;text-combine-upright:all}
+/* 縦中横 (preview and build): the run is set horizontally with its glyphs as they are — never the
+   browser's text-combine-upright, which swaps in narrow glyphs or squeezes them — centred in a
+   square of ONE body em along the line, so the line grid never moves; what exceeds the square hangs
+   into the line gap by the same amount on both sides (JLREQ 3.2.5: the run is set solid, left to
+   right, centred on the line). The anonymous flex item is wider than its box, and `center` lets it
+   overflow both ends equally. --tcy-scale sizes the glyphs (class.tcy-small.css); the box divides it
+   back out, so the square stays the PARENT em at any scale. line-height 1 keeps the glyphs centred
+   on the square's middle. A 縦中横 takes no ruby, and a 傍点 is ruby's kin: none paints inside
+   (it would sit above the horizontal glyphs, along the column; a 傍線 already stops at the box,
+   as a decoration does not propagate into an atomic inline). */
+.tcy{display:inline-flex;justify-content:center;align-items:center;writing-mode:horizontal-tb;width:calc(1em/var(--tcy-scale,1));height:calc(1em/var(--tcy-scale,1));font-size:calc(1em*var(--tcy-scale,1));line-height:1;text-emphasis:none}

@@ -34,12 +34,14 @@ import { EMR_PROBE_JS } from './emrProbe.generated.ts';
 import * as S from './styles/styles.generated.ts';
 
 /**
- * The static, media-independent class rules by the class name the emitters write: `tcy` (縦中横),
- * `midashi` (見出し), `hang` (ぶら下げ), `insep` (分離禁止), `emr` (傍点 line compensation) and the
- * ruby lanes, each authored as a `styles/class.*.css` fragment that carries its own rationale.
+ * The static class rules by the class name the emitters write: `tcy` (縦中横; the reflow output
+ * takes {@link reflowStylesheet}'s rule instead) and `tcy-small` (its 0.75em size), `midashi`
+ * (見出し), `hang` (ぶら下げ), `insep` (分離禁止), `emr` (傍点 line compensation) and the ruby lanes,
+ * each authored as a `styles/class.*.css` fragment that carries its own rationale.
  */
 const FRAGMENT_RULES: ReadonlyMap<string, string> = new Map([
   ['tcy', S.classTcy],
+  ['tcy-small', S.classTcySmall],
   ['midashi', S.classMidashi],
   ['hang', S.classHang],
   ['insep', S.classInsep],
@@ -310,9 +312,11 @@ const LINE_BREAK: Readonly<Record<KinsokuMode, string>> = {
  * fragments, no `@page` — the reading system owns line breaking, pagination and page
  * furniture. 禁則 maps onto the reader's own JIS line breaking via {@link LINE_BREAK};
  * ぶら下げ rides along as hanging-punctuation while kinsoku is active (WebKit-only; other
- * engines ignore it).
+ * engines ignore it). 縦中横 is the reading system's own `text-combine-upright` (reflow.tcy.css);
+ * its size class rides along as a custom property nothing reads there.
  */
 export function reflowStylesheet(kinsoku: KinsokuMode, usedClasses: readonly string[]): string {
   const hang = kinsoku === 'none' ? '' : ';hanging-punctuation:allow-end';
-  return [S.reflowBase, `body{line-break:${LINE_BREAK[kinsoku]}${hang}}`, ...usedClasses.map(classRule)].join('');
+  const rules = usedClasses.map((name) => (name === 'tcy' ? S.reflowTcy : classRule(name)));
+  return [S.reflowBase, `body{line-break:${LINE_BREAK[kinsoku]}${hang}}`, ...rules].join('');
 }

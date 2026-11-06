@@ -8,9 +8,9 @@
  *
  * Line breaking is a simple hard wrap at `charsPerLine` cells (a character = 1 cell,
  * a ruby unit = its TRUE advance — the base char count, or the longest reading's extent in
- * whole cells when that is longer — and is atomic, a 縦中横 cell = ALWAYS 1 cell however many
- * chars it combines, emphasis adds no cells, comments are zero-width). 禁則処理 is selected
- * by the `kinsoku` mode (`none` = bare wrap) and lives in {@link wrapRow}: 分離禁止 binding,
+ * whole cells when that is longer — and is atomic, a 縦中横 cell = ALWAYS 1 cell however wide its
+ * run, emphasis adds no cells, comments are zero-width). 禁則処理 is selected by the `kinsoku`
+ * mode (`none` = bare wrap) and lives in {@link wrapRow}: 分離禁止 binding,
  * ぶら下げ of a trailing 句読点, the space dropped after a line-end 区切り約物, then the leftward
  * 追い出し nudge of the break point.
  * ［＃改ページ］ forces a new page.
@@ -22,8 +22,9 @@ import type { Ast, HeadingLevel, Inline, Line, Mark, Marks, Ruby, ValueLookup } 
 import { paintsNothing } from '../ast/resolve.ts';
 import { clusterStart } from '../ast/span.ts';
 import type { DashMode, KinsokuMode } from '../config/types.ts';
-import { clusterStrings, codePoints, graphemeCount, graphemes } from '../chars.ts';
+import { clusterStrings, codePoints, graphemeCount, graphemes, isHalfWidth } from '../chars.ts';
 import { DASH_BY_MODE, DASH_CODES, DASH_GLYPH } from '../dash.ts';
+import { TCY_MAX, tcyWidth } from '../tcy.ts';
 import { append } from '../utils/lists.ts';
 import type { BuildChrome } from './chrome.ts';
 import { markClass } from './emphasis.ts';
@@ -51,7 +52,7 @@ export interface RubyText {
 
 /**
  * One laid-out glyph group: a character (1 cell, one grapheme cluster), a ruby unit (base char
- * count, atomic), or a 縦中横 cell (ALWAYS 1 cell however many half-width chars it combines, atomic).
+ * count, atomic), or a 縦中横 cell (ALWAYS 1 cell however wide its run, atomic).
  */
 export interface Unit {
   cells: number;
@@ -67,7 +68,7 @@ export interface Unit {
   /** The four channels in a fixed order as one class attribute, the adjacent-merge key ({@link unitKey}); '' = no decoration. */
   readonly key: string;
   /**
-   * Space-separated on-demand stylesheet classes baked inside `html` (tcy / rr / lr / br /
+   * Space-separated on-demand stylesheet classes baked inside `html` (tcy / tcy-small / rr / lr / br /
    * rh-N / hang / insep / ru) — not channels (invisible to `key`); emitLine collects them into
    * `used` so css.ts emits each rule only when actually present (zero dead rules).
    */
@@ -137,9 +138,6 @@ function commentUnit(inner: string, at: number): Unit {
  */
 const RUBY_OVERHANG_QUARTERS = 2;
 
-/** A reading unit that is a rotated half-width run: printable ASCII at its head. */
-const HALF_WIDTH_RUN = /^[\x20-\x7e]/;
-
 /**
  * Justification units for a ruby-lane run (a reading or a base): one per CJK glyph (U+3000
  * included — it paints as its own full-width blank), one per half-width run with its U+0020s
@@ -150,7 +148,7 @@ function readingUnits(reading: string): string[] {
   const units: string[] = [];
   let word = '';
   for (const ch of graphemes(reading)) {
-    if (HALF_WIDTH_RUN.test(ch)) {
+    if (isHalfWidth(ch)) {
       word += ch; // a rotated half-width run must not split — U+0020 stays inside it
     } else {
       if (word !== '') {
@@ -173,7 +171,7 @@ function measureSide(text: string): RubySide {
   for (const u of units) {
     // Painted width, not source length: CSS collapses a U+0020 run to one space and trims a
     // unit's edges, so counting raw chars would stretch the base under phantom spaces.
-    quarters += HALF_WIDTH_RUN.test(u) ? u.replace(/ +/g, ' ').trim().length : 2;
+    quarters += isHalfWidth(u) ? u.replace(/ +/g, ' ').trim().length : 2;
   }
   return { text, units, quarters };
 }
@@ -284,9 +282,12 @@ function unitsOf(item: Inline, want: string | undefined, lineStart: number, out:
       out.push({ ...mk(cells, rubyHtml(ruby, lane), item.base, at, channelsOf(item.marks)), ruby, cssClass: lane });
       return;
     }
-    case 'tcy':
-      out.push({ ...mk(1, `<span class="tcy">${escapeHtml(item.text)}</span>`, item.text, at, channelsOf(item.marks)), cssClass: 'tcy' });
+    case 'tcy': {
+      // From TCY_MAX half-widths the cell takes the size class (class.tcy-small.css).
+      const cls = tcyWidth(item.text) >= TCY_MAX ? 'tcy tcy-small' : 'tcy';
+      out.push({ ...mk(1, `<span class="${cls}">${escapeHtml(item.text)}</span>`, item.text, at, channelsOf(item.marks)), cssClass: cls });
       return;
+    }
     case 'comment':
       out.push(commentUnit(item.inner, at));
       return;

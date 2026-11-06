@@ -125,7 +125,7 @@ test('jpnov/renderFile renders ruby, 縦中横, and the pagebreak marker over th
   assert.ok(html.includes('<span class="tcy">12</span>'), 'explicit 縦中横 span must combine');
   assert.ok(html.includes('<span class="tcy">!?</span>'), 'the 縦中横 annotation must combine the half-width !? pair');
   assert.ok(html.includes('vertical-rl'), 'vertical flow CSS must be inlined');
-  assert.ok(html.includes('text-combine-upright'), 'the on-demand tcy fragment must be gated in');
+  assert.ok(html.includes('.tcy{display:inline-flex;'), 'the on-demand tcy fragment must be gated in');
   assert.ok(html.includes('pagebreak'), '改ページ must surface as the preview pagebreak marker');
 });
 

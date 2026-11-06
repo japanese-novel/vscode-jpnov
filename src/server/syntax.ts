@@ -1,6 +1,6 @@
 /**
  * The always-on syntax diagnostics of an open .jpnov buffer: the AST's structural findings, plus
- * the one judgement made here — a 縦中横 cell holding too much. They publish under every lint
+ * the one judgement made here — a 縦中横 cell wider than the typesetting answers for. They publish under every lint
  * configuration, ahead of the lint findings in the same cache, and carry a fix where one is
  * mechanical: an end annotation of the other form than its start is respelled as the AST says;
  * a start that sets again what is in effect, and an end with nothing open (a render no-op), are
@@ -18,15 +18,13 @@ import type { Ast, Issue, Span } from '../shared/ast/nodes.ts';
 import { INDENT_MAX, RUBY_CLOSE, RUBY_OPEN, fullWidthDigits, gaijiAnnotation } from '../shared/ast/notation.ts';
 import { paintsNothing } from '../shared/ast/resolve.ts';
 import { bySource } from '../shared/ast/span.ts';
-import { displayText, graphemeCount } from '../shared/chars.ts';
+import { displayText } from '../shared/chars.ts';
 import type { LocalizableMessage } from '../shared/protocol.ts';
+import { TCY_MAX, tcyWidth } from '../shared/tcy.ts';
 
 import { diagnostic, finding } from './diagnostics.ts';
 import type { Finding, Fix } from './diagnostics.ts';
 import { rangeOf } from './targets.ts';
-
-/** Combined cells squish visibly beyond this many characters. */
-export const TCY_MAX = 3;
 
 interface Found {
   readonly span: Span;
@@ -35,7 +33,7 @@ interface Found {
 }
 
 function tooLong(text: string): boolean {
-  return graphemeCount(text) > TCY_MAX;
+  return tcyWidth(text) > TCY_MAX;
 }
 
 /** The message of a 字下げ above {@link INDENT_MAX}: it names the limit in the digits the count is written in. */
@@ -116,8 +114,8 @@ function fixOf(issue: Issue, doc: TextDocument, ast: Ast): Fix | undefined {
 }
 
 /**
- * Every 縦中横 holding more than {@link TCY_MAX} characters: a span over what it holds, a
- * postfix over its target, bound or not.
+ * Every 縦中横 wider than {@link TCY_MAX} half-width units: a span over what it holds, a postfix
+ * over its target, bound or not.
  */
 function tcyTooLong(ast: Ast): Found[] {
   const message: LocalizableMessage = { code: 'syntax.tcyTooLong' };

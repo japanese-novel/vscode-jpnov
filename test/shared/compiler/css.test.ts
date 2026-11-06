@@ -374,13 +374,17 @@ test('太字/斜体 rules come through classRule → styleRule forwarding', () =
 });
 
 test('縦中横 .tcy rule is on-demand and identical in both media', () => {
-  // Legacy spellings first, standard last (wins where both are known) — the EPUB reading
-  // systems that need -epub-/-webkit- share this one fragment.
-  const rule = '.tcy{-webkit-text-combine:horizontal;-epub-text-combine:horizontal;text-combine-upright:all}';
-  assert.ok(preview({ usedClasses: ['tcy'] }).includes(rule));
-  assert.ok(build({ usedClasses: ['tcy'] }).includes(rule));
+  // The run is set horizontally in a 1em square of the parent em, its glyphs untouched — never
+  // the browser's text-combine-upright, which swaps in narrow glyphs (that is the EPUB rule alone).
+  const rule = '.tcy{display:inline-flex;justify-content:center;align-items:center;writing-mode:horizontal-tb;' +
+    'width:calc(1em/var(--tcy-scale,1));height:calc(1em/var(--tcy-scale,1));font-size:calc(1em*var(--tcy-scale,1));line-height:1;text-emphasis:none}';
+  for (const css of [preview({ usedClasses: ['tcy'] }), build({ usedClasses: ['tcy'] })]) {
+    assert.ok(css.includes(rule));
+    assert.doesNotMatch(css, /\.tcy-small/); // the size class rides its own fragment
+  }
   assert.doesNotMatch(preview(), /\.tcy\b/); // zero dead rules
   assert.doesNotMatch(build(), /\.tcy\b/);
+  assert.ok(build({ usedClasses: ['tcy', 'tcy-small'] }).includes('.tcy-small{--tcy-scale:.75}'));
 });
 
 test('見出し .midashi rule is on-demand and identical in both media', () => {
@@ -788,10 +792,14 @@ test('reflow kinsoku maps onto the reader line breaker: none→loose, relaxed→
 });
 
 test('reflow used-class tail rides the same on-demand pipe (insep/tcy/indent/emphasis)', () => {
-  const css = reflowStylesheet('strict', ['emph-fs', 'indent-3', 'insep', 'tcy']);
+  const css = reflowStylesheet('strict', ['emph-fs', 'indent-3', 'insep', 'tcy', 'tcy-small']);
   assert.ok(css.includes('.insep{white-space:nowrap}'));
   assert.ok(css.includes('.indent-3{padding-inline-start:3em}'));
-  assert.match(css, /\.tcy\{[^}]*text-combine-upright:all\}/);
+  // The reading system combines the run itself (legacy spellings first, the standard property
+  // last): the paginated .tcy rule stays out of the EPUB; the size class is a property nothing reads there.
+  assert.ok(css.includes('.tcy{-webkit-text-combine:horizontal;-epub-text-combine:horizontal;text-combine-upright:all}'));
+  assert.doesNotMatch(css, /inline-flex/);
+  assert.ok(css.includes('.tcy-small{--tcy-scale:.75}'));
   assert.match(css, /\.emph-fs\{/);
   assert.doesNotMatch(reflowStylesheet('strict', []), /\.insep|\.tcy|\.indent-/); // zero dead rules
 });

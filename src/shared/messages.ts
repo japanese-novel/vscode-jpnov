@@ -43,7 +43,7 @@ export const TEMPLATES: Readonly<Record<MsgCode, string>> = {
   'syntax.postfixTargetMissing': 'annotation target "{0}" is not on this line, or is not aligned to a character boundary',
   'syntax.unterminatedTcy': 'unterminated 縦中横 (missing ［＃縦中横終わり］ before the end of the line)',
   'syntax.danglingTcyEnd': '［＃縦中横終わり］ without a matching ［＃縦中横］',
-  'syntax.tcyTooLong': '縦中横 is too long (keep it to 3 characters or fewer to avoid distortion)',
+  'syntax.tcyTooLong': '縦中横 is too long (keep it to 4 half-width characters; a full-width character counts as 2)',
   'syntax.rubyBaseMissing': 'ruby reading 《{0}》 has no base text before it (it prints as typed; for brackets, write the 二重山括弧 外字注記)',
   'syntax.rubyReadingEmpty': 'empty ruby reading 《》 (it prints as typed)',
   'syntax.rubyInTcy': 'ruby reading {0} is lost to a 縦中横 (a 縦中横 takes no ruby: only its base text prints)',
