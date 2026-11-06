@@ -131,8 +131,12 @@ pre.jp-source {
 }
 .jp-cta:hover { background: var(--color-vermilion); }
 .jp-cta-quiet { font-size: 0.9375rem; }
-/* The get menu (Get.astro). */
+/* A quiet button keeps the link look. */
+button.jp-cta-quiet { background: none; border: 0; padding: 0; font-family: inherit; color: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-vermilion) 60%, transparent); text-underline-offset: 0.2em; }
+button.jp-cta-quiet:hover { text-decoration-color: var(--color-vermilion); }
+/* The popover menus (Menu.astro): the stores, the editors. */
 .jp-cta:has(+ .jp-get-menu:popover-open) { background: var(--color-vermilion); }
+.jp-cta-quiet:has(+ .jp-get-menu:popover-open) { color: var(--color-vermilion); }
 .jp-get-menu {
   padding: 0.5rem 0;
   list-style: none;
@@ -143,9 +147,8 @@ pre.jp-source {
 @supports (position-area: bottom) {
   .jp-get-menu { inset: auto; margin: 0.5rem 0 0; position-area: bottom span-right; min-width: anchor-size(width); }
 }
-.jp-get-menu a { display: block; padding: 0.6rem 1.6rem; font-size: 0.9375rem; white-space: nowrap; text-decoration: none; }
+.jp-get-menu a { display: block; padding: 0.5rem 1.6rem; font-size: 0.9375rem; white-space: nowrap; text-decoration: none; }
 .jp-get-menu a:hover, .jp-get-menu a:focus-visible { background: color-mix(in srgb, var(--color-ink) 6%, transparent); color: var(--color-vermilion); }
-.jp-get-menu a { display: block; padding: 0.5rem 1.6rem; font-size: 0.9375rem; white-space: nowrap; }
 /* An embedded product render (scripts/scope.ts): the product's own box model under the preflight's border-box. */
 .jp-scope, .jp-scope *, .jp-scope *::before, .jp-scope *::after { box-sizing: content-box; }
 .jp-paper { --jp-paper-width: 100cqw; }

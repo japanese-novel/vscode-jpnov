@@ -16,7 +16,8 @@ preview, or produce HTML or EPUB output that does anything beyond displaying the
 ## Supported Versions
 
 Only the latest release receives security fixes. It is published on the
-[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=japanese-novel.vscode-jpnov),
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=japanese-novel.vscode-jpnov) and
+[Open VSX](https://open-vsx.org/extension/japanese-novel/vscode-jpnov),
 with the same VSIX attached to the corresponding
 [GitHub release](https://github.com/japanese-novel/vscode-jpnov/releases). These are the only
 official distribution channels. Older releases are not patched, so please keep the extension up

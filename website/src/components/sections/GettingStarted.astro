@@ -1,19 +1,24 @@
 ---
 import { LINKS } from '../../copy/links.ts';
 import Get from '../Get.astro';
+import Menu from '../Menu.astro';
 import Q from '../Q.astro';
 
 const STEPS = [
-  { title: 'VS Code を入れる', body: '無料でダウンロードして、インストールします。拡張機能「Japanese Language Pack」を入れると、画面が日本語になります。' },
+  { title: 'エディターを入れる', body: 'VS Code か VSCodium を、無料でダウンロードしてインストールします。拡張機能「Japanese Language Pack」を入れると、画面が日本語になります。' },
   { title: '「jpnov」を入れる', body: '拡張機能の検索欄に <code>jpnov</code> と入力してインストールします。原稿を入れるフォルダーを作り、開きます。' },
   { title: '本を作って、書く', body: 'アクティビティバーの「小説」を開き、「本の一覧」の「本を作成…」で本を作ります。「章を追加…」で章を作って書き、「プレビューを横に開く」で確かめ、「印刷／PDF 保存」で本にします。' },
+] as const;
+const EDITORS = [
+  { label: 'VS Code', href: LINKS.vscode },
+  { label: 'VSCodium', href: LINKS.vscodium },
 ] as const;
 ---
 
 <section class="jp-start" aria-labelledby="start-h">
   <div class="jp-wrap">
     <p class="jp-eyebrow">はじめかた</p>
-    <h2 id="start-h" class="jp-section-title">VS Code に慣れていなくても大丈夫です。</h2>
+    <h2 id="start-h" class="jp-section-title">エディターに慣れていなくても大丈夫です。</h2>
     <ol class="jp-steps">
       {STEPS.map((s) => (
         <li>
@@ -24,8 +29,8 @@ const STEPS = [
     </ol>
     <div class="jp-cta-row">
       <Get id="get-start" />
-      <a class="jp-cta-quiet" href={LINKS.vscode}>VS Code をダウンロード</a>
+      <Menu id="download-start" label="エディターをダウンロード" items={EDITORS} quiet />
     </div>
-    <p class="jp-note">同じ流れは、VS Code の<Q>ようこそ</Q>画面にあるガイド「小説をはじめる」でも案内しています。</p>
+    <p class="jp-note">同じ流れは、エディターの<Q>ようこそ</Q>画面にあるガイド「小説をはじめる」でも案内しています。</p>
   </div>
 </section>
