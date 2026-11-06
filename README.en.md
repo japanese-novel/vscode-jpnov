@@ -6,6 +6,8 @@ Write, proofread, and typeset Japanese novels in Visual Studio Code — vertical
 layout, [Aozora Bunko](https://www.aozora.gr.jp/annotation/index.html) markup,
 one-command HTML / EPUB / text builds, printing straight from your browser.
 No AI anywhere in the writing path (see [No-AI policy](#no-ai-policy)).
+Available on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=japanese-novel.vscode-jpnov)
+and [Open VSX](https://open-vsx.org/extension/japanese-novel/vscode-jpnov); works in VS Code and [VSCodium](https://vscodium.com/).
 
 ![A vertically typeset novel page with ruby glosses, a running head, and a page number](docs/images/hero-page.png)
 
