@@ -696,7 +696,7 @@ function wrapRow(
   const units = mode === 'none' ? row.units : separate(row.units, mode);
   const indent = effectiveIndent(row.indent, charsPerLine);
   const budget = charsPerLine - indent;
-  // 見出し and the chapter propagate to every display line (wrapped continuations stay gothic,
+  // 見出し and the chapter propagate to every display line (wrapped continuations stay bold,
   // like indent); conditional for the same absent-key contract the row snapshots rely on.
   const hs: { heading?: HeadingLevel; chapter?: number } = {
     ...(row.heading === undefined ? {} : { heading: row.heading }),

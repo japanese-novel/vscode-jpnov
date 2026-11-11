@@ -5,6 +5,6 @@
 html{-epub-writing-mode:vertical-rl;-webkit-writing-mode:vertical-rl;writing-mode:vertical-rl}
 body{margin:0;font-family:serif;text-align:justify}
 p{margin:0}
-/* 見出し: same-size gothic bold, mirroring class.midashi.css (the 文庫 convention). Real hN
-   here — the reading system's navigation reads document structure. */
-h1,h2,h3{margin:0;font-size:1em;font-family:sans-serif;font-weight:bold}
+/* 見出し: same-size bold in the body's font, mirroring class.midashi.css. Real hN here — the
+   reading system's navigation reads document structure. */
+h1,h2,h3{margin:0;font-size:1em;font-weight:bold}

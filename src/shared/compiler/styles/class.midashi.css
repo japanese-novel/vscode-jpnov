@@ -1,5 +1,4 @@
-/* 通常の見出し: same-size gothic bold (明朝 body + ゴシック heading, the 文庫 convention) —
-   deliberately NOT the font of the .book rule (css.ts fontRule), which the rest of the book
-   inherits. Generic sans-serif keeps CJK glyphs full-width, so the 1字=1マス grid is
-   untouched. */
-.midashi{font-family:sans-serif;font-weight:bold}
+/* 通常の見出し: same-size bold in the font of the book (css.ts fontRule), so it follows
+   `jpnov.layout.fontFamily` like every other line. No font-family here: the 1字=1マス grid
+   stays on one font. */
+.midashi{font-weight:bold}

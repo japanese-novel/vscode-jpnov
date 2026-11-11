@@ -388,11 +388,21 @@ test('縦中横 .tcy rule is on-demand and identical in both media', () => {
 });
 
 test('見出し .midashi rule is on-demand and identical in both media', () => {
-  const rule = '.midashi{font-family:sans-serif;font-weight:bold}';
+  const rule = '.midashi{font-weight:bold}'; // no font-family: the heading follows the book's font
   assert.ok(preview({ usedClasses: ['midashi'] }).includes(rule));
   assert.ok(build({ usedClasses: ['midashi'] }).includes(rule));
   assert.doesNotMatch(preview(), /\.midashi\b/); // zero dead rules
   assert.doesNotMatch(build(), /\.midashi\b/);
+});
+
+test('one font for the whole book: no class rule or page furniture names its own', () => {
+  const usedClasses = ['tcy', 'tcy-small', 'midashi', 'hang', 'insep', 'rr', 'lr', 'br', 'ru', 'emr', 'indent-2', 'rh-3'];
+  const sheets = [
+    preview({ chrome: { lineNumbers: true, edgeLine: 'red' }, usedClasses }),
+    build({ chrome: BUILD_ON, usedClasses }),
+    reflowStylesheet('strict', usedClasses),
+  ];
+  for (const css of sheets) assert.equal(css.match(/font-family:/g)?.length, 1);
 });
 
 test('ruby rr/lr/br rule sets are on-demand, self-contained and media-identical', () => {

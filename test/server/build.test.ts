@@ -140,7 +140,7 @@ test('a metadata divider lands between heading-less chapters in BOTH artifacts',
   assert.ok(html.content.includes(`<div class="line">${'　'.repeat(19)}＊</div>`), 'centred divider row');
   assert.doesNotMatch(html.content, /indent-19/);
   assert.match(html.content, /<div class="line midashi" data-line="0">終章<\/div>/);
-  assert.match(html.content, /\.midashi\{font-family:sans-serif;font-weight:bold\}/);
+  assert.match(html.content, /\.midashi\{font-weight:bold\}/);
 });
 
 test('a span left open at a chapter end is closed at the .txt seam, matching the HTML reset', async () => {
