@@ -405,8 +405,8 @@ book keeps its order.
 
 The built output has no table-of-contents page yet. Headings come from
 annotations (see [Annotations](#annotations)): a line carrying a heading
-annotation is a heading as a whole, set in a bold gothic (sans-serif) face at
-the body size, and the three levels look the same.
+annotation is a heading as a whole, set in bold in the same font and
+size as the body, and the three levels look the same.
 Chapters appear in the order the `.jpbook` lists them.
 
 On `.jpbook` files the editor offers completion (chapter paths, metadata keys,
