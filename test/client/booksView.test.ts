@@ -41,7 +41,7 @@ type Verb = (typeof VERBS)[number];
 type AnyVerb = (...args: unknown[]) => Promise<void>;
 const verbs = Object.fromEntries(VERBS.map((v) => [v, manage[v] as AnyVerb])) as Record<Verb, AnyVerb>;
 mock.module('../../src/client/book/manage.ts', {
-  namedExports: { ...manage, ...Object.fromEntries(VERBS.map((v) => [v, (...args: unknown[]) => verbs[v](...args)])) },
+  exports: { ...manage, ...Object.fromEntries(VERBS.map((v) => [v, (...args: unknown[]) => verbs[v](...args)])) },
 });
 /** Records every call of the named verbs instead of running them. */
 function recordVerbs(): { verb: Verb; args: unknown[] }[] {
